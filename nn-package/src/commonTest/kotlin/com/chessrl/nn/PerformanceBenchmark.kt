@@ -176,27 +176,18 @@ class PerformanceBenchmark {
             println("${result.operation}:")
             println("  Total time: ${result.totalTime}")
             println("  Iterations: ${result.iterations}")
-            println("  Avg time per op: ${String.format("%.3f", avgTimeMs)} ms (${String.format("%.1f", avgTimeMicros)} μs)")
-            println("  Operations/sec: ${String.format("%.0f", opsPerSecond)}")
+            println("  Avg time per op: ${avgTimeMs.formatLocal(3)} ms (${avgTimeMicros.formatLocal(1)} μs)")
+            println("  Operations/sec: ${opsPerSecond.formatLocal(0)}")
             println()
         }
     }
     
     private fun getPlatformInfo(): String {
-        return try {
-            // This will work differently on different platforms
-            System.getProperty("java.vm.name") ?: "Unknown Platform"
-        } catch (e: Exception) {
-            "Native Platform"
-        }
+        return "Multiplatform Kotlin"
     }
     
     private fun getCurrentTimestamp(): String {
-        return try {
-            java.time.LocalDateTime.now().toString()
-        } catch (e: Exception) {
-            "Unknown Time"
-        }
+        return getCurrentTimeMillis().toString()
     }
     
     data class BenchmarkResult(
@@ -204,4 +195,22 @@ class PerformanceBenchmark {
         val iterations: Int,
         val totalTime: Duration
     )
+}
+
+// Extension function for formatting doubles (multiplatform compatible)
+private fun Double.formatLocal(digits: Int): String {
+    val multiplier = when (digits) {
+        0 -> 1.0
+        1 -> 10.0
+        2 -> 100.0
+        3 -> 1000.0
+        4 -> 10000.0
+        else -> {
+            var result = 1.0
+            repeat(digits) { result *= 10.0 }
+            result
+        }
+    }
+    val rounded = kotlin.math.round(this * multiplier) / multiplier
+    return rounded.toString()
 }

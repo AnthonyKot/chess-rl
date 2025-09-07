@@ -1,5 +1,9 @@
 # Implementation Plan
 
+## Performance Note
+
+**JVM Target Recommended**: Comprehensive benchmarks show JVM significantly outperforms native compilation for neural network operations (2-16x faster). Current plan uses JVM for training and development. Native compilation performance will be re-evaluated with RL and chess-specific workloads before final deployment decisions.
+
 - [x] 1. Set up local development environment and project structure
   - Create Kotlin multiplatform project with Gradle configuration
   - Set up native compilation targets and build scripts
@@ -113,13 +117,20 @@
     - Write unit tests for RL framework components
     - _Requirements: 5_
   
-  - [ ] 6.2 Implement DQN algorithm with experience replay batching
-    - Create DQN algorithm with Q-learning and target network updates
-    - Implement experience replay buffer with efficient batch sampling (32-128 experiences per update)
-    - Add mini-batch training for Q-network updates with proper target computation
-    - Implement double DQN to reduce overestimation bias in batch updates
+  - [ ] 6.2 Implement minimal DQN or policy network agent with core RL functionality
+    - **Minimal DQN implementation**: Create streamlined Q-learning agent
+      - Basic Q-network with target network for stability
+      - Experience replay buffer with efficient batch sampling (32-128 experiences per update)
+      - Simple epsilon-greedy exploration strategy
+    - **Alternative policy network**: Implement basic policy gradient agent
+      - Direct policy network outputting move probabilities
+      - REINFORCE or simple actor-critic architecture
+    - **Experience buffer and batched updates**: Core training infrastructure
+      - Efficient experience storage and batch sampling
+      - Proper target computation for Q-learning or policy gradients
+      - Mini-batch training integration with neural network package
     - Add training metrics and policy update validation for batch-based learning
-    - Write unit tests for DQN components including batch processing
+    - Write unit tests for RL algorithm components including batch processing
     - _Requirements: 5_
   
   - [ ] 6.3 Validate RL framework with simple toy problems
@@ -130,16 +141,30 @@
     - _Requirements: 5_
 
 - [ ] 7. Refactor chess package to create RL-compatible API
-  - [ ] 7.1 Create chess environment interface for RL integration
+  - [ ] 7.1 Create chess environment interface for RL integration with concrete state/action encoding
     - Implement ChessEnvironment that conforms to RL Environment interface
-    - Create state encoding (board position to neural network input)
-    - Implement action encoding (neural network output to chess moves)
-    - Write unit tests for state/action encoding and decoding
+    - **State encoding specification**: Define board planes → DoubleArray input format
+      - Replace 775 placeholder with firm specification (e.g., 8x8x12 piece planes + game state features)
+      - Implement board position encoding with piece placement, castling rights, en passant, move counts
+      - Add position normalization and feature scaling for neural network input
+    - **Action encoding specification**: Map legal chess moves to NN output indices
+      - Define move encoding scheme (e.g., from-square × to-square + promotion encoding)
+      - Implement action masking to filter invalid moves from neural network output
+      - Create efficient legal move → action index mapping and reverse lookup
+    - **Terminal detection integration**: Hook GameStateDetector into environment done signal
+      - Use existing checkmate/stalemate/draw detection from GameStateDetector
+      - Implement proper game termination with outcome reporting
+    - Write unit tests for state/action encoding, decoding, and terminal detection
     - _Requirements: 6, 7_
   
   - [ ] 7.2 Add chess-specific reward functions and game outcome handling
-    - Implement reward calculation based on game outcomes and positions
-    - Create chess-specific metrics (game length, piece values, etc.)
+    - **Outcome-based rewards**: Implement primary reward signal from game results
+      - Win/loss/draw rewards with proper scaling (+1/-1/0 or similar)
+      - Game length normalization to encourage efficient play
+    - **Optional intermediate heuristics**: Add position-based reward shaping
+      - Material balance, piece activity, king safety, center control
+      - Configurable reward weights for experimentation
+    - Create chess-specific metrics (game length, piece values, move diversity)
     - Add support for partial game rewards and position evaluation
     - Write unit tests for reward calculation and game outcome detection
     - _Requirements: 6, 7_
@@ -176,31 +201,51 @@
     - Add tools to manually inspect and validate specific training scenarios
     - _Requirements: 7_
 
-- [ ] 9. Implement self-play training system
-  - [ ] 9.1 Create self-play game engine
-    - Implement self-play loop where agent plays against itself
-    - Create game data collection and experience generation
-    - Add support for multiple concurrent self-play games
+- [ ] 9. Implement self-play training system with complete pipeline
+  - [ ] 9.1 Create self-play game engine with data collection
+    - **Game generation**: Implement self-play loop where agent plays against itself
+      - Efficient game execution with proper move selection and game state management
+      - Support for multiple concurrent self-play games for data diversity
+      - Game outcome tracking and statistics collection
+    - **Experience collection**: Systematic experience data gathering
+      - Position-action-reward-next_position tuples from complete games
+      - Proper experience labeling with game outcomes (win/loss/draw)
+      - Experience preprocessing for neural network training
     - Write unit tests for self-play mechanics and data collection
     - _Requirements: 8_
   
-  - [ ] 9.2 Integrate self-play with batch-based RL training
-    - Connect self-play experience generation with batch-based RL learning updates
-    - Implement training schedule: play multiple games, collect experience batches, train network, repeat
-    - Add experience buffer management to accumulate sufficient data for effective batch training
-    - Implement adaptive batch sizes and training frequency based on learning progress
-    - Add experience prioritization for more effective batch sampling from self-play data
-    - Write integration tests for self-play training loop with batch processing
+  - [ ] 9.2 Integrate self-play with complete training pipeline
+    - **Training schedule implementation**: Structured learning cycle
+      - Play multiple games → collect experience batches → train network → repeat
+      - Configurable game/training ratios and scheduling parameters
+      - Progress tracking and convergence monitoring
+    - **Periodic training and checkpointing**: Model persistence and recovery
+      - Regular model saving with training statistics
+      - Checkpoint loading for training resumption
+      - Model versioning and performance comparison
+    - **Experience buffer management**: Efficient data handling for batch training
+      - Accumulate sufficient data for effective batch training
+      - Experience prioritization and sampling strategies
+      - Memory management for large experience datasets
+    - Write integration tests for complete self-play training pipeline
     - _Requirements: 8_
   
-  - [ ] 9.3 Add comprehensive monitoring and human-readable analysis tools
-    - Create detailed logging of training progress, game outcomes, and learning metrics
-    - Implement analysis tools for game quality, move patterns, and learning curves
-    - Add visualization of training progress and agent improvement
-    - Create human-readable game summaries with move quality annotations
-    - Implement tools to save and replay interesting games for manual analysis
-    - Add comparative analysis between different training stages
-    - Document training process and provide improvement recommendations
+  - [ ] 9.3 Add metrics and simple CLI for monitoring training progress
+    - **Training metrics collection**: Core performance indicators
+      - Win/loss/draw rates over time
+      - Average game length and move diversity
+      - Neural network loss and convergence metrics
+      - Training speed and throughput statistics
+    - **Simple CLI monitoring interface**: Real-time training observation
+      - Console-based progress display with key metrics
+      - Training status, current performance, and time estimates
+      - Simple commands for training control (pause/resume/stop)
+    - **Basic analysis tools**: Essential debugging and validation
+      - Game quality assessment (move legality, game completion)
+      - Learning curve visualization (text-based charts)
+      - Model performance comparison between checkpoints
+    - Create human-readable training logs and progress reports
+    - Implement basic game replay for manual inspection of training games
     - _Requirements: 8_
   
   - [ ] 9.4 Create interactive game analysis and debugging interface
@@ -223,9 +268,19 @@
     - _Requirements: 9_
   
   - [ ] 10.2 Add system optimization and performance tuning
-    - Optimize neural network operations for native compilation
-    - Tune RL hyperparameters for chess learning effectiveness
-    - Add memory management and performance monitoring
+    - **Native compilation optimization**: Performance improvements for production use
+      - Optimize neural network operations for native compilation
+      - Memory management and efficient data structures for native runtime
+      - Profile and optimize critical paths in training and inference
+    - **Optional native release runner**: Enhanced performance measurement
+      - Create native release binaries for tighter performance timings
+      - Compare against current test binary benchmarks
+      - Production-ready deployment configuration
+    - **RL hyperparameter tuning**: Chess-specific optimization
+      - Learning rates, batch sizes, exploration parameters
+      - Reward scaling and training frequency optimization
+      - Network architecture tuning for chess position evaluation
+    - Add comprehensive performance monitoring and profiling tools
     - Create performance benchmarks and optimization guidelines
     - _Requirements: 9_
   

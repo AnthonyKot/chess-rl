@@ -253,6 +253,21 @@ object ConvergenceMonitor {
 }
 
 /**
- * Extension function for formatting doubles
+ * Extension function for formatting doubles (multiplatform compatible)
  */
-fun Double.format(digits: Int): String = "%.${digits}f".format(this)
+fun Double.format(digits: Int): String {
+    val multiplier = when (digits) {
+        0 -> 1.0
+        1 -> 10.0
+        2 -> 100.0
+        3 -> 1000.0
+        4 -> 10000.0
+        else -> {
+            var result = 1.0
+            repeat(digits) { result *= 10.0 }
+            result
+        }
+    }
+    val rounded = kotlin.math.round(this * multiplier) / multiplier
+    return rounded.toString()
+}

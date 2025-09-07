@@ -4,6 +4,11 @@ import kotlin.math.*
 import kotlin.random.Random
 
 /**
+ * Multiplatform time function
+ */
+expect fun getCurrentTimeMillis(): Long
+
+/**
  * Comprehensive validation demo for neural network implementation
  * This demonstrates all the capabilities required for subtask 3.3
  */
@@ -68,9 +73,9 @@ object ValidationDemo {
             )
             val network = FeedforwardNetwork(layers, MSELoss(), SGDOptimizer(0.01))
             
-            val startTime = System.currentTimeMillis()
+            val startTime = getCurrentTimeMillis()
             val metrics = network.train(train.first, train.second, epochs = 20, batchSize = batchSize)
-            val trainingTime = System.currentTimeMillis() - startTime
+            val trainingTime = getCurrentTimeMillis() - startTime
             
             // Evaluate on test set
             var testLoss = 0.0
@@ -257,9 +262,9 @@ object ValidationDemo {
             )
             val network = FeedforwardNetwork(layers, MSELoss(), SGDOptimizer(0.01))
             
-            val startTime = System.currentTimeMillis()
+            val startTime = getCurrentTimeMillis()
             val metrics = network.train(inputs, targets, epochs = 10, batchSize = batchSize)
-            val trainingTime = System.currentTimeMillis() - startTime
+            val trainingTime = getCurrentTimeMillis() - startTime
             
             val finalLoss = metrics.last().averageLoss
             val avgGradientNorm = metrics.map { it.gradientNorm }.average()
@@ -275,7 +280,7 @@ object ValidationDemo {
             println("    Gradient stability (std): ${gradientStability.formatLocal(4)}")
             
             if (batchSize > 1) {
-                val efficiency = 1000.0 / trainingTime * finalLoss // Higher is better
+                val efficiency = 1000.0 / trainingTime.toDouble() * finalLoss // Higher is better
                 println("    Efficiency score: ${efficiency.formatLocal(2)}")
             }
         }
@@ -287,5 +292,20 @@ object ValidationDemo {
     }
 }
 
-// Extension function for better formatting
-private fun Double.formatLocal(digits: Int): String = "%.${digits}f".format(this)
+// Extension function for better formatting (multiplatform compatible)
+private fun Double.formatLocal(digits: Int): String {
+    val multiplier = when (digits) {
+        0 -> 1.0
+        1 -> 10.0
+        2 -> 100.0
+        3 -> 1000.0
+        4 -> 10000.0
+        else -> {
+            var result = 1.0
+            repeat(digits) { result *= 10.0 }
+            result
+        }
+    }
+    val rounded = kotlin.math.round(this * multiplier) / multiplier
+    return rounded.toString()
+}

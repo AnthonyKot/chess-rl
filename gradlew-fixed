@@ -1,4 +1,0 @@
-#!/bin/bash
-# Gradle wrapper with cache fix
-export GRADLE_USER_HOME=/tmp/gradle
-./gradlew "$@"

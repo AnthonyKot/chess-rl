@@ -1,6 +1,10 @@
 # Chess RL Bot
 
-A reinforcement learning chess bot built with Kotlin/Native, featuring modular architecture with separate packages for neural networks, chess engine, RL framework, and integration.
+A reinforcement learning chess bot built with Kotlin Multiplatform, featuring modular architecture with separate packages for neural networks, chess engine, RL framework, and integration.
+
+## Performance Note
+
+**JVM Target Recommended**: Based on comprehensive benchmarks, the JVM target significantly outperforms native compilation for neural network operations (2-16x faster). We recommend using JVM for training and development, with native compilation reserved for deployment scenarios requiring smaller memory footprint or no JVM dependency. Further verification with RL and chess-specific workloads is planned.
 
 ## Project Structure
 
