@@ -2,7 +2,27 @@ plugins {
     kotlin("multiplatform")
 }
 
+repositories {
+    mavenCentral()
+}
+
 kotlin {
+    // JVM target for testing
+    jvm {
+        testRuns["test"].executionTask.configure {
+            useJUnitPlatform()
+        }
+        compilations.getByName("main") {
+            tasks.register("runDemo", JavaExec::class) {
+                dependsOn("jvmMainClasses")
+                classpath = runtimeDependencyFiles + output.allOutputs
+                mainClass.set("com.chessrl.chess.DemoKt")
+                group = "application"
+                description = "Run the chess engine demo"
+            }
+        }
+    }
+    
     // Native target for the current platform
     val hostOs = System.getProperty("os.name")
     val isMingwX64 = hostOs.startsWith("Windows")
@@ -24,6 +44,8 @@ kotlin {
                 implementation(kotlin("test"))
             }
         }
+        val jvmMain by getting
+        val jvmTest by getting
         val nativeMain by getting
         val nativeTest by getting
     }

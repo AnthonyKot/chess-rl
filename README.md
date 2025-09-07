@@ -81,6 +81,26 @@ Each module has its own test suite and can be developed independently. The modul
 - Chess engine that can be extended for human play
 - Clear separation of concerns
 
+### Chess Engine Demo
+
+The chess engine includes a comprehensive demo showcasing all features:
+
+```bash
+# Run the chess engine demo
+./gradlew :chess-engine:runDemo
+
+# Run chess engine tests
+./gradlew :chess-engine:jvmTest
+```
+
+The demo demonstrates:
+- ✅ Board visualization with ASCII art
+- ✅ Move execution and history tracking
+- ✅ FEN parsing and generation
+- ✅ Position analysis and validation
+- ✅ Game state management
+- ✅ Move highlighting and comparison tools
+
 ## Continuous Integration
 
 The project includes GitHub Actions workflow for:

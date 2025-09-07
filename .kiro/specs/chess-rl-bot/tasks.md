@@ -8,20 +8,20 @@
   - Set up continuous integration and build verification
   - _Requirements: 0_
 
-- [ ] 2. Implement basic chess package with core data structures
-  - [ ] 2.1 Create chess board representation and basic piece structures
+- [x] 2. Implement basic chess package with core data structures
+  - [x] 2.1 Create chess board representation and basic piece structures
     - Implement ChessBoard, Piece, Position, Move data classes
     - Create board initialization and piece placement logic
     - Write comprehensive unit tests for data structures
     - _Requirements: 1_
   
-  - [ ] 2.2 Add basic move representation and board state management
+  - [x] 2.2 Add basic move representation and board state management
     - Implement move encoding/decoding and board state updates
     - Create FEN (Forsyth-Edwards Notation) parsing and generation
     - Write unit tests for board state transitions
     - _Requirements: 1_
   
-  - [ ] 2.3 Create manual validation and board visualization tools
+  - [x] 2.3 Create manual validation and board visualization tools
     - Implement ASCII board renderer for console display of chess positions
     - Create move history display with algebraic notation
     - Add interactive board state inspector for debugging
