@@ -54,20 +54,20 @@
     - _Requirements: 2_
 
 - [ ] 4. Complete chess package with full move validation
-  - [ ] 4.1 Implement piece-specific move validation logic
+  - [x] 4.1 Implement piece-specific move validation logic
     - Create move validators for each piece type (Pawn, Rook, Bishop, Knight, Queen, King)
     - Implement basic move generation for each piece
     - Write comprehensive unit tests for each piece's movement rules
     - _Requirements: 3_
   
-  - [ ] 4.2 Add advanced chess rules and game state detection
+  - [x] 4.2 Add advanced chess rules and game state detection
     - Implement check detection, checkmate, and stalemate logic
     - Add special moves: castling, en passant, pawn promotion
     - Create game status tracking and move history
     - Write unit tests for complex chess scenarios and edge cases
     - _Requirements: 3_
   
-  - [ ] 4.3 Add PGN parsing and game replay capabilities
+  - [x] 4.3 Add PGN parsing and game replay capabilities
     - Implement PGN file parser for loading chess games
     - Create utilities to convert between different chess notations
     - Add support for loading standard chess databases

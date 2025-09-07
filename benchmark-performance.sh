@@ -42,7 +42,7 @@ run_benchmark() {
     
     # Run benchmark
     echo "  Running benchmark..."
-    if ./gradlew :nn-package:${gradle_task} --tests "com.chessrl.nn.PerformanceBenchmark.benchmarkNeuralNetworkPerformance" --info > "$output_file" 2>&1; then
+    if ./gradlew :nn-package:${gradle_task} --tests "com.chessrl.nn.PerformanceBenchmark.benchmarkNeuralNetworkTraining" --info > "$output_file" 2>&1; then
         echo "  Benchmark completed successfully"
     else
         echo "  Benchmark failed - check $output_file"
@@ -97,25 +97,22 @@ extract_metrics() {
         # Extract key benchmark results
         echo "Key Performance Metrics:"
         
-        # Network Creation
-        if grep -A 3 "Network Creation:" "$file" > /dev/null; then
-            echo "  Network Creation:"
-            grep -A 2 "Avg time per op:" "$file" | head -1 | sed 's/^/    /'
-            grep -A 3 "Operations/sec:" "$file" | head -1 | sed 's/^/    /'
+        # XOR Training block
+        if grep -q "--- XOR Problem Training Benchmark ---" "$file"; then
+            echo "  XOR Training:"
+            grep -A 3 "--- XOR Problem Training Benchmark ---" "$file" | grep -E "(XOR Training|Average per epoch)" | sed 's/^/    /'
         fi
-        
-        # Forward Pass
-        if grep -A 3 "Forward Pass:" "$file" > /dev/null; then
-            echo "  Forward Pass:"
-            grep -A 2 "Forward Pass:" "$file" | grep "Avg time per op:" | sed 's/^/    /'
-            grep -A 3 "Forward Pass:" "$file" | grep "Operations/sec:" | sed 's/^/    /'
+
+        # Polynomial Regression block
+        if grep -q "--- Polynomial Regression Benchmark ---" "$file"; then
+            echo "  Polynomial Regression:"
+            grep -A 3 "--- Polynomial Regression Benchmark ---" "$file" | grep -E "(Polynomial Regression|Average per epoch)" | sed 's/^/    /'
         fi
-        
-        # Training Iteration
-        if grep -A 3 "Training Iteration:" "$file" > /dev/null; then
-            echo "  Training Iteration:"
-            grep -A 2 "Training Iteration:" "$file" | grep "Avg time per op:" | sed 's/^/    /'
-            grep -A 3 "Training Iteration:" "$file" | grep "Operations/sec:" | sed 's/^/    /'
+
+        # Large Network block
+        if grep -q "--- Large Network Training Benchmark ---" "$file"; then
+            echo "  Large Network:"
+            grep -A 3 "--- Large Network Training Benchmark ---" "$file" | grep -E "(Large Network|Average per epoch)" | sed 's/^/    /'
         fi
         
         echo

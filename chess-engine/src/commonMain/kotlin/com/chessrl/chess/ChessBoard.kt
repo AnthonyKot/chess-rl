@@ -139,7 +139,7 @@ data class ChessBoard(
     }
     
     /**
-     * Execute a move on the board
+     * Execute a move on the board (basic version without full validation)
      */
     fun makeMove(move: Move): MoveResult {
         if (!isValidPosition(move.from) || !isValidPosition(move.to)) {
@@ -147,12 +147,139 @@ data class ChessBoard(
         }
         
         val piece = getPieceAt(move.from) ?: return MoveResult.INVALID_MOVE
+        val capturedPiece = getPieceAt(move.to)
         
-        // Basic move execution (without validation for now)
-        setPieceAt(move.from, null)
-        setPieceAt(move.to, if (move.isPromotion()) Piece(move.promotion!!, piece.color) else piece)
+        // Handle special moves
+        when {
+            // Castling
+            piece.type == PieceType.KING && kotlin.math.abs(move.to.file - move.from.file) == 2 -> {
+                executeCastling(move)
+            }
+            // En passant
+            piece.type == PieceType.PAWN && capturedPiece == null && move.from.file != move.to.file -> {
+                executeEnPassant(move)
+            }
+            // Regular move
+            else -> {
+                setPieceAt(move.from, null)
+                setPieceAt(move.to, if (move.isPromotion()) Piece(move.promotion!!, piece.color) else piece)
+            }
+        }
+        
+        // Update game state
+        updateGameStateAfterMove(move, piece, capturedPiece)
         
         return MoveResult.SUCCESS
+    }
+    
+    /**
+     * Execute a move with full legal validation
+     */
+    fun makeLegalMove(move: Move): MoveResult {
+        val legalValidator = LegalMoveValidator()
+        if (!legalValidator.isLegalMove(this, move)) {
+            return MoveResult.INVALID_MOVE
+        }
+        
+        return makeMove(move)
+    }
+    
+    /**
+     * Execute castling move
+     */
+    private fun executeCastling(move: Move) {
+        val king = getPieceAt(move.from)!!
+        val isKingside = move.to.file > move.from.file
+        val rookFromFile = if (isKingside) 7 else 0
+        val rookToFile = if (isKingside) move.to.file - 1 else move.to.file + 1
+        
+        val rookFrom = Position(move.from.rank, rookFromFile)
+        val rookTo = Position(move.from.rank, rookToFile)
+        val rook = getPieceAt(rookFrom)!!
+        
+        // Move king
+        setPieceAt(move.from, null)
+        setPieceAt(move.to, king)
+        
+        // Move rook
+        setPieceAt(rookFrom, null)
+        setPieceAt(rookTo, rook)
+    }
+    
+    /**
+     * Execute en passant capture
+     */
+    private fun executeEnPassant(move: Move) {
+        val pawn = getPieceAt(move.from)!!
+        val capturedPawnRank = move.from.rank
+        val capturedPawnFile = move.to.file
+        val capturedPawnPos = Position(capturedPawnRank, capturedPawnFile)
+        
+        // Move pawn
+        setPieceAt(move.from, null)
+        setPieceAt(move.to, pawn)
+        
+        // Remove captured pawn
+        setPieceAt(capturedPawnPos, null)
+    }
+    
+    /**
+     * Update game state after a move
+     */
+    private fun updateGameStateAfterMove(move: Move, piece: Piece, capturedPiece: Piece?) {
+        // Update castling rights
+        when (piece.type) {
+            PieceType.KING -> {
+                if (piece.color == PieceColor.WHITE) {
+                    gameState.whiteCanCastleKingside = false
+                    gameState.whiteCanCastleQueenside = false
+                } else {
+                    gameState.blackCanCastleKingside = false
+                    gameState.blackCanCastleQueenside = false
+                }
+            }
+            PieceType.ROOK -> {
+                when {
+                    piece.color == PieceColor.WHITE && move.from == Position(0, 0) -> 
+                        gameState.whiteCanCastleQueenside = false
+                    piece.color == PieceColor.WHITE && move.from == Position(0, 7) -> 
+                        gameState.whiteCanCastleKingside = false
+                    piece.color == PieceColor.BLACK && move.from == Position(7, 0) -> 
+                        gameState.blackCanCastleQueenside = false
+                    piece.color == PieceColor.BLACK && move.from == Position(7, 7) -> 
+                        gameState.blackCanCastleKingside = false
+                }
+            }
+            else -> {}
+        }
+        
+        // Update castling rights if rook is captured
+        when (move.to) {
+            Position(0, 0) -> gameState.whiteCanCastleQueenside = false
+            Position(0, 7) -> gameState.whiteCanCastleKingside = false
+            Position(7, 0) -> gameState.blackCanCastleQueenside = false
+            Position(7, 7) -> gameState.blackCanCastleKingside = false
+        }
+        
+        // Update en passant target
+        gameState.enPassantTarget = if (piece.type == PieceType.PAWN && 
+                                       kotlin.math.abs(move.to.rank - move.from.rank) == 2) {
+            Position((move.from.rank + move.to.rank) / 2, move.from.file)
+        } else {
+            null
+        }
+        
+        // Update halfmove clock
+        if (piece.type == PieceType.PAWN || capturedPiece != null) {
+            gameState.halfmoveClock = 0
+        } else {
+            gameState.halfmoveClock++
+        }
+        
+        // Update fullmove number
+        if (piece.color == PieceColor.BLACK) {
+            gameState.fullmoveNumber++
+        }
     }
     
     /**
@@ -282,13 +409,61 @@ data class ChessBoard(
     }
     
     fun getAllValidMoves(color: PieceColor): List<Move> {
-        // TODO: Implement move generation
-        return emptyList()
+        val validator = MoveValidationSystem()
+        return validator.getAllValidMoves(this, color)
     }
     
     fun isInCheck(color: PieceColor): Boolean {
-        // TODO: Implement check detection
-        return false
+        val detector = GameStateDetector()
+        return detector.isInCheck(this, color)
+    }
+    
+    /**
+     * Check if the current position is checkmate
+     */
+    fun isCheckmate(color: PieceColor): Boolean {
+        val detector = GameStateDetector()
+        return detector.isCheckmate(this, color)
+    }
+    
+    /**
+     * Check if the current position is stalemate
+     */
+    fun isStalemate(color: PieceColor): Boolean {
+        val detector = GameStateDetector()
+        return detector.isStalemate(this, color)
+    }
+    
+    /**
+     * Get the current game status
+     */
+    fun getGameStatus(gameHistory: List<String> = emptyList()): GameStatus {
+        val detector = GameStateDetector()
+        return detector.getGameStatus(this, gameHistory)
+    }
+    
+    /**
+     * Check if a square is attacked by the given color
+     */
+    fun isSquareAttacked(position: Position, attackingColor: PieceColor): Boolean {
+        val detector = GameStateDetector()
+        return detector.isSquareAttacked(this, position, attackingColor)
+    }
+    
+    /**
+     * Validate a move using the move validation system
+     */
+    fun isValidMove(move: Move): Boolean {
+        val validator = MoveValidationSystem()
+        return validator.isValidMove(this, move)
+    }
+    
+    /**
+     * Get valid moves for a piece at a position
+     */
+    fun getValidMovesForPiece(position: Position): List<Move> {
+        val validator = MoveValidationSystem()
+        return validator.getValidMoves(this, position)
     }
     
     /**
