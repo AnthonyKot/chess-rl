@@ -2,7 +2,18 @@ plugins {
     kotlin("multiplatform")
 }
 
+repositories {
+    mavenCentral()
+}
+
 kotlin {
+    // JVM target to enable running unit tests without native toolchains
+    jvm {
+        testRuns["test"].executionTask.configure {
+            useJUnitPlatform()
+        }
+    }
+
     // Native target for the current platform
     val hostOs = System.getProperty("os.name")
     val isMingwX64 = hostOs.startsWith("Windows")
@@ -24,6 +35,8 @@ kotlin {
                 implementation(kotlin("test"))
             }
         }
+        val jvmMain by getting
+        val jvmTest by getting
         val nativeMain by getting
         val nativeTest by getting
     }

@@ -16,7 +16,7 @@ chess-rl-bot/
 
 ## Requirements
 
-- JDK 11 or higher
+- JDK 17 or higher
 - Gradle 8.4+ (included via wrapper)
 - Native compilation support for your platform
 
@@ -27,20 +27,30 @@ chess-rl-bot/
 ./verify-build.sh
 ```
 
-### Build all modules (requires Xcode on macOS)
+What it does:
+- Compiles Kotlin metadata for all modules
+- Runs JVM unit tests where available (including `:nn-package:jvmTest`)
+- Optionally runs native tests and builds native binaries on macOS if Xcode is available
+- Lists built native binaries, when produced
+
+### Build all modules
 ```bash
 ./gradlew build
 ```
 
-### Compile Kotlin code only
-```bash
-./gradlew compileKotlinMetadata
-```
-
 ### Run tests
 ```bash
-./gradlew test --exclude-task nativeTest  # Skip native tests if Xcode not available
-./gradlew test                            # Full test suite (requires Xcode on macOS)
+# Neural network package JVM tests (fast, no native toolchain required)
+./gradlew :nn-package:jvmTest
+
+# Chess engine JVM tests (if available)
+./gradlew :chess-engine:jvmTest
+
+# All tests except native
+./gradlew test --exclude-task nativeTest
+
+# Full test suite including native (requires Xcode on macOS)
+./gradlew test
 ```
 
 ### Build native executable (requires Xcode on macOS)
@@ -48,21 +58,27 @@ chess-rl-bot/
 ./gradlew nativeBinaries
 ```
 
-### Run the application (requires native build)
-```bash
-./gradlew run
-```
-
 ## Platform Requirements
 
 ### macOS
-- Xcode and Command Line Tools must be installed for native compilation
+- **Xcode Command Line Tools required** for native compilation
 - Install with: `xcode-select --install`
+- Verify installation: `xcode-select -p`
 - For full Xcode: Install from Mac App Store
 
-### Linux/Windows
-- Native compilation should work out of the box
-- Requires appropriate system development tools
+### Linux
+- Native compilation supported with system development tools
+- Usually works out of the box on most distributions
+
+### Windows
+- Native compilation supported with MinGW
+- May require additional setup for some configurations
+
+### CI/CD Considerations
+- GitHub Actions workflow: `.github/workflows/build.yml`
+- macOS runners: Native steps only run when Xcode is available
+- Other platforms: Metadata compilation and JVM tests
+- Artifacts: Native binaries from successful macOS builds (when applicable)
 
 ## Module Dependencies
 
@@ -103,10 +119,19 @@ The demo demonstrates:
 
 ## Continuous Integration
 
-The project includes GitHub Actions workflow for:
-- Multi-platform builds (Linux, macOS, Windows)
-- Automated testing
-- Native compilation verification
+The project includes GitHub Actions workflow (`.github/workflows/ci.yml`) for:
+- **Multi-platform builds**: Linux, macOS, Windows
+- **Gradle cache management**: Automatic caching and cleanup
+- **Xcode detection**: Graceful handling of macOS runners without Xcode
+- **Selective testing**: Native tests only on macOS with Xcode
+- **Build validation**: Metadata compilation on all platforms
+- **Artifact upload**: Native binaries from successful macOS builds
+
+### CI Build Strategy
+- **All platforms**: Kotlin metadata compilation and validation
+- **macOS only**: Native tests and binary builds (when Xcode available)
+- **Fallback**: Graceful degradation when native tools unavailable
+- **Caching**: Gradle dependencies cached for faster builds
 
 ## Version Control
 

@@ -29,14 +29,14 @@
     - Write tools to load and display positions from FEN strings
     - _Requirements: 1_
 
-- [ ] 3. Implement basic neural network with synthetic data validation
-  - [ ] 3.1 Create core neural network data structures and forward propagation
+- [x] 3. Implement basic neural network with synthetic data validation
+  - [x] 3.1 Create core neural network data structures and forward propagation
     - Implement Layer interface, DenseLayer, and basic ActivationFunction classes
     - Create NeuralNetwork interface with forward propagation
     - Write unit tests for layer operations and network structure
     - _Requirements: 2_
   
-  - [ ] 3.2 Add backpropagation and mini-batch training capabilities
+  - [x] 3.2 Add backpropagation and mini-batch training capabilities
     - Implement backward propagation with gradient computation and accumulation
     - Create mini-batch SGD optimizer with configurable batch sizes (16, 32, 64, 128)
     - Implement gradient accumulation and averaging across batch samples
@@ -44,7 +44,7 @@
     - Write unit tests with numerical gradient checking for both single samples and batches
     - _Requirements: 2_
   
-  - [ ] 3.3 Validate neural network with synthetic multidimensional function using mini-batches
+  - [x] 3.3 Validate neural network with synthetic multidimensional function using mini-batches
     - Create synthetic datasets with sufficient samples (1000+ for polynomial regression, XOR problem)
     - Implement complete training loop with mini-batch processing and data shuffling
     - Test different batch sizes (16, 32, 64) and compare convergence speed and stability
