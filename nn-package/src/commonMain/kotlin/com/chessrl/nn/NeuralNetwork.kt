@@ -284,28 +284,30 @@ data class TrainingMetrics(
  * Simple feedforward neural network implementation with full training capabilities
  */
 class FeedforwardNetwork(
-    private val layers: List<Layer>,
+    private val _layers: List<Layer>,
     private val lossFunction: LossFunction = MSELoss(),
     private val optimizer: SGDOptimizer = SGDOptimizer()
 ) : NeuralNetwork {
+    
+    val layers: List<Layer> get() = _layers
     
     private var lastOutput: DoubleArray = doubleArrayOf()
     private val trainingHistory = mutableListOf<TrainingMetrics>()
     
     init {
-        require(layers.isNotEmpty()) { "Network must have at least one layer" }
+        require(_layers.isNotEmpty()) { "Network must have at least one layer" }
         
         // Validate layer connectivity
-        for (i in 1 until layers.size) {
-            require(layers[i-1].outputSize == layers[i].inputSize) {
-                "Layer ${i-1} output size ${layers[i-1].outputSize} doesn't match layer $i input size ${layers[i].inputSize}"
+        for (i in 1 until _layers.size) {
+            require(_layers[i-1].outputSize == _layers[i].inputSize) {
+                "Layer ${i-1} output size ${_layers[i-1].outputSize} doesn't match layer $i input size ${_layers[i].inputSize}"
             }
         }
     }
     
     override fun forward(input: DoubleArray): DoubleArray {
         var output = input
-        for (layer in layers) {
+        for (layer in _layers) {
             output = layer.forward(output)
         }
         lastOutput = output.copyOf()
@@ -323,8 +325,8 @@ class FeedforwardNetwork(
         var gradient = lossFunction.computeGradient(lastOutput, target)
         
         // Backpropagate through layers in reverse order
-        for (i in layers.size - 1 downTo 0) {
-            gradient = layers[i].backward(gradient)
+        for (i in _layers.size - 1 downTo 0) {
+            gradient = _layers[i].backward(gradient)
         }
         
         return doubleArrayOf(loss)
@@ -354,7 +356,7 @@ class FeedforwardNetwork(
         }
         
         // Update weights using accumulated gradients
-        optimizer.updateWeights(layers)
+        optimizer.updateWeights(_layers)
         
         val avgLoss = totalLoss / batch.batchSize
         val avgGradientNorm = totalGradientNorm / batch.batchSize
@@ -441,7 +443,6 @@ class FeedforwardNetwork(
     }
     
     // Helper methods for testing and monitoring
-    fun getLayers(): List<Layer> = layers
     fun getTrainingHistory(): List<TrainingMetrics> = trainingHistory.toList()
     fun getLossFunction(): LossFunction = lossFunction
 }

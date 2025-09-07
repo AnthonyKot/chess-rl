@@ -1,0 +1,200 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/Users/user/.gradle/wrapper/dists/gradle-8.4-bin/1w5dpkrfk8irigvoxmyhowfim/gradle-8.4/lib/native-platform-0.22-milestone-25.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+Initialized native services in: /Users/user/.gradle/native
+Initialized jansi services in: /Users/user/.gradle/native
+Received JVM installation metadata from '/usr/local/Cellar/openjdk/24.0.2/libexec/openjdk.jdk/Contents/Home': {JAVA_HOME=/usr/local/Cellar/openjdk/24.0.2/libexec/openjdk.jdk/Contents/Home, JAVA_VERSION=24.0.2, JAVA_VENDOR=Homebrew, RUNTIME_NAME=OpenJDK Runtime Environment, RUNTIME_VERSION=24.0.2, VM_NAME=OpenJDK 64-Bit Server VM, VM_VERSION=24.0.2, VM_VENDOR=Homebrew, OS_ARCH=x86_64}
+Found daemon DaemonInfo{pid=34331, address=[b790e44b-7168-4e69-b89a-a01bf7fca6c1 port:61548, addresses:[/127.0.0.1]], state=Idle, lastBusy=1757268404517, context=DefaultDaemonContext[uid=c8723011-c5cd-443b-8fff-236fcd543259,javaHome=/usr/local/Cellar/openjdk/21.0.2/libexec/openjdk.jdk/Contents/Home,daemonRegistryDir=/Users/user/.gradle/daemon,pid=34331,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=384m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=NL,-Duser.language=en,-Duser.variant]} however its context does not match the desired criteria.
+Java home is different.
+Wanted: DefaultDaemonContext[uid=null,javaHome=/usr/local/Cellar/openjdk/24.0.2/libexec/openjdk.jdk/Contents/Home,daemonRegistryDir=/Users/user/.gradle/daemon,pid=45911,idleTimeout=null,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=384m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=NL,-Duser.language=en,-Duser.variant]
+Actual: DefaultDaemonContext[uid=c8723011-c5cd-443b-8fff-236fcd543259,javaHome=/usr/local/Cellar/openjdk/21.0.2/libexec/openjdk.jdk/Contents/Home,daemonRegistryDir=/Users/user/.gradle/daemon,pid=34331,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=384m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=NL,-Duser.language=en,-Duser.variant]
+
+  Looking for a different daemon...
+Found daemon DaemonInfo{pid=40247, address=[3bfdbbef-5398-416d-b20c-399028a4328c port:62749, addresses:[/127.0.0.1]], state=Idle, lastBusy=1757268845936, context=DefaultDaemonContext[uid=4449a54a-eb26-443b-8e7b-5c78a2b2403d,javaHome=/Users/user/Library/Java/JavaVirtualMachines/openjdk-21.0.2/Contents/Home,daemonRegistryDir=/Users/user/.gradle/daemon,pid=40247,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=384m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=NL,-Duser.language=en,-Duser.variant]} however its context does not match the desired criteria.
+Java home is different.
+Wanted: DefaultDaemonContext[uid=null,javaHome=/usr/local/Cellar/openjdk/24.0.2/libexec/openjdk.jdk/Contents/Home,daemonRegistryDir=/Users/user/.gradle/daemon,pid=45911,idleTimeout=null,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=384m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=NL,-Duser.language=en,-Duser.variant]
+Actual: DefaultDaemonContext[uid=4449a54a-eb26-443b-8e7b-5c78a2b2403d,javaHome=/Users/user/Library/Java/JavaVirtualMachines/openjdk-21.0.2/Contents/Home,daemonRegistryDir=/Users/user/.gradle/daemon,pid=40247,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=384m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=NL,-Duser.language=en,-Duser.variant]
+
+  Looking for a different daemon...
+The client will now receive all logging from the daemon (pid: 43141). The daemon log file: /Users/user/.gradle/daemon/8.4/daemon-43141.out.log
+Starting 21st build in daemon [uptime: 33 mins 18.33 secs, performance: 99%, GC rate: 0.00/s, heap usage: 1% of 512 MiB, non-heap usage: 37% of 384 MiB]
+Using 16 worker leases.
+Now considering [/Users/user/Projects/chess-rl] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file '/Users/user/Projects/chess-rl/settings.gradle.kts'.
+Projects loaded. Root project using build file '/Users/user/Projects/chess-rl/build.gradle.kts'.
+Included projects: [root project 'chess-rl-bot', project ':chess-engine', project ':integration', project ':nn-package', project ':rl-framework']
+
+> Configure project :
+Evaluating root project 'chess-rl-bot' using build file '/Users/user/Projects/chess-rl/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle81 variant
+Caching disabled for Kotlin DSL accessors for root project 'chess-rl-bot' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for root project 'chess-rl-bot' as it is up-to-date.
+Kotlin/Native distribution: /Users/user/.konan/kotlin-native-prebuilt-macos-x86_64-1.9.20
+
+> Configure project :chess-engine
+Evaluating project ':chess-engine' using build file '/Users/user/Projects/chess-rl/chess-engine/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle81 variant
+Caching disabled for Kotlin DSL accessors for project ':chess-engine' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':chess-engine' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+Kotlin/Native distribution: /Users/user/.konan/kotlin-native-prebuilt-macos-x86_64-1.9.20
+
+> Configure project :integration
+Evaluating project ':integration' using build file '/Users/user/Projects/chess-rl/integration/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle81 variant
+Caching disabled for Kotlin DSL accessors for project ':integration' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':integration' as it is up-to-date.
+Kotlin/Native distribution: /Users/user/.konan/kotlin-native-prebuilt-macos-x86_64-1.9.20
+
+> Configure project :nn-package
+Evaluating project ':nn-package' using build file '/Users/user/Projects/chess-rl/nn-package/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle81 variant
+Caching disabled for Kotlin DSL accessors for project ':nn-package' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':nn-package' as it is up-to-date.
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+Kotlin/Native distribution: /Users/user/.konan/kotlin-native-prebuilt-macos-x86_64-1.9.20
+
+> Configure project :rl-framework
+Evaluating project ':rl-framework' using build file '/Users/user/Projects/chess-rl/rl-framework/build.gradle.kts'.
+Using Kotlin Gradle Plugin gradle81 variant
+Caching disabled for Kotlin DSL accessors for project ':rl-framework' because:
+  Build cache is disabled
+Skipping Kotlin DSL accessors for project ':rl-framework' as it is up-to-date.
+Kotlin/Native distribution: /Users/user/.konan/kotlin-native-prebuilt-macos-x86_64-1.9.20
+All projects evaluated.
+Task path ':nn-package:jvmTest' matched project ':nn-package'
+Task name matched 'jvmTest'
+Selected primary task 'jvmTest' from project :nn-package
+Kotlin does not yet support 24 JDK target, falling back to Kotlin JVM_21 JVM target
+Kotlin does not yet support 24 JDK target, falling back to Kotlin JVM_21 JVM target
+Tasks to be executed: [task ':nn-package:checkKotlinGradlePluginConfigurationErrors', task ':nn-package:compileKotlinJvm', task ':nn-package:jvmProcessResources', task ':nn-package:jvmMainClasses', task ':nn-package:compileTestKotlinJvm', task ':nn-package:jvmTestProcessResources', task ':nn-package:jvmTestClasses', task ':nn-package:jvmTest']
+Tasks that were excluded: []
+Resolve mutations for :nn-package:checkKotlinGradlePluginConfigurationErrors (Thread[#1459,Execution worker,5,main]) started.
+:nn-package:checkKotlinGradlePluginConfigurationErrors (Thread[#1459,Execution worker,5,main]) started.
+
+> Task :nn-package:checkKotlinGradlePluginConfigurationErrors
+Caching disabled for task ':nn-package:checkKotlinGradlePluginConfigurationErrors' because:
+  Build cache is disabled
+Task ':nn-package:checkKotlinGradlePluginConfigurationErrors' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Resolve mutations for :nn-package:compileKotlinJvm (Thread[#1459,Execution worker,5,main]) started.
+:nn-package:compileKotlinJvm (Thread[#1459,Execution worker,5,main]) started.
+
+> Task :nn-package:compileKotlinJvm UP-TO-DATE
+Kotlin does not yet support 24 JDK target, falling back to Kotlin JVM_21 JVM target
+Transforming kotlin-stdlib-1.9.20.jar with ClasspathEntrySnapshotTransform
+Transforming annotations-13.0.jar with ClasspathEntrySnapshotTransform
+Caching disabled for task ':nn-package:compileKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':nn-package:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :nn-package:jvmProcessResources (Thread[#1459,Execution worker,5,main]) started.
+:nn-package:jvmProcessResources (Thread[#1459,Execution worker,5,main]) started.
+
+> Task :nn-package:jvmProcessResources NO-SOURCE
+Skipping task ':nn-package:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :nn-package:jvmMainClasses (Thread[#1459,Execution worker,5,main]) started.
+:nn-package:jvmMainClasses (Thread[#1459,Execution worker,5,main]) started.
+
+> Task :nn-package:jvmMainClasses UP-TO-DATE
+Skipping task ':nn-package:jvmMainClasses' as it has no actions.
+Resolve mutations for :nn-package:compileTestKotlinJvm (Thread[#1459,Execution worker,5,main]) started.
+:nn-package:compileTestKotlinJvm (Thread[#1459,Execution worker,5,main]) started.
+
+> Task :nn-package:compileTestKotlinJvm UP-TO-DATE
+Kotlin does not yet support 24 JDK target, falling back to Kotlin JVM_21 JVM target
+Transforming main with ClasspathEntrySnapshotTransform
+Transforming kotlin-test-junit5-1.9.20.jar with ClasspathEntrySnapshotTransform
+Transforming kotlin-test-1.9.20.jar with ClasspathEntrySnapshotTransform
+Transforming kotlin-stdlib-1.9.20.jar with ClasspathEntrySnapshotTransform
+Transforming annotations-13.0.jar with ClasspathEntrySnapshotTransform
+Transforming junit-platform-commons-1.6.3.jar with ClasspathEntrySnapshotTransform
+Transforming junit-jupiter-api-5.6.3.jar with ClasspathEntrySnapshotTransform
+Transforming apiguardian-api-1.1.0.jar with ClasspathEntrySnapshotTransform
+Transforming opentest4j-1.2.0.jar with ClasspathEntrySnapshotTransform
+Caching disabled for task ':nn-package:compileTestKotlinJvm' because:
+  Build cache is disabled
+Skipping task ':nn-package:compileTestKotlinJvm' as it is up-to-date.
+Resolve mutations for :nn-package:jvmTestProcessResources (Thread[#1459,Execution worker,5,main]) started.
+:nn-package:jvmTestProcessResources (Thread[#1459,Execution worker,5,main]) started.
+
+> Task :nn-package:jvmTestProcessResources NO-SOURCE
+Skipping task ':nn-package:jvmTestProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :nn-package:jvmTestClasses (Thread[#1459,Execution worker,5,main]) started.
+:nn-package:jvmTestClasses (Thread[#1459,Execution worker,5,main]) started.
+
+> Task :nn-package:jvmTestClasses UP-TO-DATE
+Skipping task ':nn-package:jvmTestClasses' as it has no actions.
+Resolve mutations for :nn-package:jvmTest (Thread[#1459,Execution worker,5,main]) started.
+:nn-package:jvmTest (Thread[#1459,Execution worker,5,main]) started.
+Gradle Test Executor 10 started executing tests.
+Gradle Test Executor 10 finished executing tests.
+
+> Task :nn-package:jvmTest
+Caching disabled for task ':nn-package:jvmTest' because:
+  Build cache is disabled
+Task ':nn-package:jvmTest' is not up-to-date because:
+  Value of input property 'filter.commandLineIncludePatterns' has changed for task ':nn-package:jvmTest'
+Starting process 'Gradle Test Executor 10'. Working directory: /Users/user/Projects/chess-rl/nn-package Command: /usr/local/Cellar/openjdk/24.0.2/libexec/openjdk.jdk/Contents/Home/bin/java -Dorg.gradle.internal.worker.tmpdir=/Users/user/Projects/chess-rl/nn-package/build/tmp/jvmTest/work -Dorg.gradle.native=false @/Users/user/.gradle/.tmp/gradle-worker-classpath4211521149018678422txt -Xmx512m -Dfile.encoding=UTF-8 -Duser.country=NL -Duser.language=en -Duser.variant -ea worker.org.gradle.process.internal.worker.GradleWorkerMain 'Gradle Test Executor 10'
+Successfully started process 'Gradle Test Executor 10'
+
+PerformanceBenchmark[jvm] > benchmarkNeuralNetworkPerformance()[jvm] STANDARD_OUT
+    === Neural Network Performance Benchmark ===
+
+    === Benchmark Results ===
+    Platform: OpenJDK 64-Bit Server VM
+    Timestamp: 2025-09-07T21:41:49.775320
+
+    Network Creation:
+      Total time: 33.492126ms
+      Iterations: 1000
+      Avg time per op: 0,033 ms (33,5 μs)
+      Operations/sec: 30303
+
+    Forward Pass:
+      Total time: 18.583264ms
+      Iterations: 10000
+      Avg time per op: 0,002 ms (1,9 μs)
+      Operations/sec: 555556
+
+    Backward Pass:
+      Total time: 15.022769ms
+      Iterations: 5000
+      Avg time per op: 0,003 ms (3,0 μs)
+      Operations/sec: 333333
+
+    Training Iteration:
+      Total time: 22.117732ms
+      Iterations: 1000
+      Avg time per op: 0,022 ms (22,1 μs)
+      Operations/sec: 45455
+
+    Large Network Training:
+      Total time: 212.416552ms
+      Iterations: 100
+      Avg time per op: 2,120 ms (2124,2 μs)
+      Operations/sec: 472
+
+Finished generating test XML results (0.001 secs) into: /Users/user/Projects/chess-rl/nn-package/build/test-results/jvmTest
+Generating HTML test report...
+Finished generating test html results (0.004 secs) into: /Users/user/Projects/chess-rl/nn-package/build/reports/tests/jvmTest
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.4/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 2s
+4 actionable tasks: 2 executed, 2 up-to-date
+Watched directory hierarchies: [/Users/user/Projects/chess-rl]

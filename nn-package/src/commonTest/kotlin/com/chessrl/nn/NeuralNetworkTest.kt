@@ -180,7 +180,7 @@ class NeuralNetworkTest {
         )
         
         val network = FeedforwardNetwork(layers)
-        assertEquals(2, network.getLayers().size)
+        assertEquals(2, network.layers.size)
     }
     
     @Test

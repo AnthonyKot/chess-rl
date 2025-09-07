@@ -58,6 +58,19 @@ What it does:
 ./gradlew nativeBinaries
 ```
 
+### Benchmark Performance
+
+Compare JVM vs Native performance for the NN package:
+
+```bash
+./benchmark-performance.sh
+```
+
+Notes:
+- JVM benchmark runs on all platforms.
+- Native benchmark runs when a native toolchain is available (Xcode on macOS, appropriate toolchains on Linux/Windows).
+- Output filters to show only benchmark summaries.
+
 ## Platform Requirements
 
 ### macOS
