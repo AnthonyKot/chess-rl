@@ -88,6 +88,22 @@ The project includes GitHub Actions workflow for:
 - Automated testing
 - Native compilation verification
 
+## Version Control
+
+The project is initialized with Git and includes a comprehensive .gitignore file that excludes:
+- Build artifacts and Gradle cache
+- IDE-specific files (IntelliJ, VS Code, Eclipse)
+- Platform-specific files (macOS, Windows, Linux)
+- Chess RL specific files (models, training data, logs)
+
+```bash
+# Check repository status
+git status
+
+# View commit history
+git log --oneline
+```
+
 ## Next Steps
 
 This project structure is ready for implementing the chess RL bot according to the task plan. Each module provides the foundation for incremental development of:
@@ -98,3 +114,11 @@ This project structure is ready for implementing the chess RL bot according to t
 4. Integration layer connecting chess with RL
 5. Self-play training system
 6. Training interface and monitoring tools
+
+The development environment is fully configured with:
+- ✅ Modular Kotlin multiplatform project structure
+- ✅ Comprehensive build system with Gradle
+- ✅ Testing framework setup
+- ✅ Continuous integration pipeline
+- ✅ Git repository with proper ignore rules
+- ✅ Cross-platform build verification
