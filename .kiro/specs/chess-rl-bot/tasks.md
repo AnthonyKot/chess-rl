@@ -78,7 +78,7 @@
     - Write unit tests with real chess game data
     - _Requirements: 0_
   
-  - [ ] 4.4 Create comprehensive game visualization and replay tools
+  - [x] 4.4 Create comprehensive game visualization and replay tools
     - Implement game replay functionality with step-by-step move visualization
     - Create tools to save and load complete games with move annotations
     - Add game analysis tools to display move quality and position evaluation
@@ -87,7 +87,7 @@
     - _Requirements: 0_
 
 - [ ] 5. Complete neural network package with advanced training features
-  - [ ] 5.1 Implement advanced optimizers with proper batch handling
+  - [x] 5.1 Implement advanced optimizers with proper batch handling
     - Add Adam and RMSprop optimizers with momentum and batch-wise parameter updates
     - Implement CrossEntropy and Huber loss functions with batch averaging
     - Create regularization techniques (L1/L2, dropout) that work correctly with mini-batches

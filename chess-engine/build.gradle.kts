@@ -20,6 +20,13 @@ kotlin {
                 group = "application"
                 description = "Run the chess engine demo"
             }
+            tasks.register("runVisualizationDemo", JavaExec::class) {
+                dependsOn("jvmMainClasses")
+                classpath = runtimeDependencyFiles + output.allOutputs
+                mainClass.set("com.chessrl.chess.GameVisualizationDemoKt")
+                group = "application"
+                description = "Run the game visualization and replay tools demo"
+            }
         }
     }
     
