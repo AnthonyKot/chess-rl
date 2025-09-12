@@ -131,8 +131,8 @@ object TrainingInfrastructureDemo {
         println("Total epochs: ${history.totalEpochs}")
         println("Training duration: ${history.trainingDuration}ms")
         println("Average epoch time: ${history.averageEpochTime.toInt()}ms")
-        println("Final training loss: ${String.format("%.6f", history.finalTrainingLoss)}")
-        println("Best validation loss: ${String.format("%.6f", history.bestValidationLoss ?: 0.0)}")
+        println("Final training loss: ${history.finalTrainingLoss.format(6)}")
+        println("Best validation loss: ${(history.bestValidationLoss ?: 0.0).format(6)}")
         println("Best epoch: ${history.bestEpoch}")
         history.convergenceEpoch?.let { 
             println("Converged at epoch: $it")
@@ -142,9 +142,9 @@ object TrainingInfrastructureDemo {
         println("\nTraining Progress (every 20 epochs):")
         history.metrics.filterIndexed { index, _ -> index % 20 == 0 || index == history.metrics.size - 1 }
             .forEach { metrics ->
-                val valLoss = metrics.validationLoss?.let { String.format("%.6f", it) } ?: "N/A"
-                println("Epoch ${metrics.epoch}: Train Loss = ${String.format("%.6f", metrics.averageLoss)}, " +
-                       "Val Loss = $valLoss, LR = ${String.format("%.6f", metrics.learningRate)}")
+                val valLoss = metrics.validationLoss?.let { it.format(6) } ?: "N/A"
+                println("Epoch ${metrics.epoch}: Train Loss = ${metrics.averageLoss.format(6)}, " +
+                       "Val Loss = $valLoss, LR = ${metrics.learningRate.format(6)}")
             }
         
         println()
@@ -177,10 +177,10 @@ object TrainingInfrastructureDemo {
             classificationPredicted, classificationActual, 0.3
         )
         
-        println("  Accuracy: ${String.format("%.3f", classMetrics.accuracy ?: 0.0)}")
-        println("  Precision: ${String.format("%.3f", classMetrics.precision ?: 0.0)}")
-        println("  Recall: ${String.format("%.3f", classMetrics.recall ?: 0.0)}")
-        println("  F1 Score: ${String.format("%.3f", classMetrics.f1Score ?: 0.0)}")
+        println("  Accuracy: ${(classMetrics.accuracy ?: 0.0).format(3)}")
+        println("  Precision: ${(classMetrics.precision ?: 0.0).format(3)}")
+        println("  Recall: ${(classMetrics.recall ?: 0.0).format(3)}")
+        println("  F1 Score: ${(classMetrics.f1Score ?: 0.0).format(3)}")
         println("  Sample Count: ${classMetrics.sampleCount}")
         
         // Regression metrics demo
@@ -202,9 +202,9 @@ object TrainingInfrastructureDemo {
             regressionPredicted, regressionActual, 0.05
         )
         
-        println("  MAE: ${String.format("%.3f", regMetrics.meanAbsoluteError ?: 0.0)}")
-        println("  RMSE: ${String.format("%.3f", regMetrics.rootMeanSquareError ?: 0.0)}")
-        println("  R² Score: ${String.format("%.3f", regMetrics.r2Score ?: 0.0)}")
+        println("  MAE: ${(regMetrics.meanAbsoluteError ?: 0.0).format(3)}")
+        println("  RMSE: ${(regMetrics.rootMeanSquareError ?: 0.0).format(3)}")
+        println("  R² Score: ${(regMetrics.r2Score ?: 0.0).format(3)}")
         println("  Sample Count: ${regMetrics.sampleCount}")
         println()
     }
@@ -276,8 +276,8 @@ object TrainingInfrastructureDemo {
             val simulatedLoss = Random.nextDouble(0.1, 1.0)
             val simulatedAccuracy = Random.nextDouble(0.7, 0.95)
             
-            println("  Final Validation Loss: ${String.format("%.4f", simulatedLoss)}")
-            println("  Final Accuracy: ${String.format("%.3f", simulatedAccuracy)}")
+            println("  Final Validation Loss: ${simulatedLoss.format(4)}")
+            println("  Final Accuracy: ${simulatedAccuracy.format(3)}")
         }
         
         // Show utility functions

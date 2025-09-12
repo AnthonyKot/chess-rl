@@ -637,7 +637,7 @@ data class PlayerStatistics(
         result.appendLine("Brilliant: $brilliantMoves, Excellent: $excellentMoves, Good: $goodMoves")
         result.appendLine("Neutral: $neutralMoves, Dubious: $dubiousMoves")
         result.appendLine("Mistakes: $mistakes, Blunders: $blunders")
-        result.appendLine("Average quality: ${"%.2f".format(averageQuality)}")
+        result.appendLine("Average quality: ${(averageQuality * 100).toInt() / 100.0}")
         result.appendLine("Material gained: $materialGained")
         return result.toString()
     }

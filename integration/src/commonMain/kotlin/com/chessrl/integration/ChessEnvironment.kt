@@ -4,44 +4,689 @@ import com.chessrl.chess.*
 import com.chessrl.rl.*
 
 /**
+ * Extension function to get opposite color
+ */
+fun PieceColor.opposite(): PieceColor = when (this) {
+    PieceColor.WHITE -> PieceColor.BLACK
+    PieceColor.BLACK -> PieceColor.WHITE
+}
+
+/**
  * Integration Package - Connects chess engine with RL framework
  * This package provides the integration layer that allows RL agents
  * to interact with the chess environment.
  */
 
 /**
- * Chess environment implementation for RL training
+ * Chess state encoder that converts board positions to neural network input format
+ * 
+ * State encoding specification:
+ * - 8x8x12 piece planes (6 piece types × 2 colors) = 768 features
+ * - 4 castling rights (white/black kingside/queenside) = 4 features  
+ * - 1 en passant file (0-7, or -1 if none) = 1 feature
+ * - 1 active color (0=white, 1=black) = 1 feature
+ * - 1 halfmove clock (normalized 0-1) = 1 feature
+ * - 1 fullmove number (normalized 0-1) = 1 feature
+ * Total: 776 features
  */
-class ChessEnvironment : Environment<DoubleArray, Int> {
-    private var chessBoard = ChessBoard()
-    
-    override fun reset(): DoubleArray {
-        chessBoard = ChessBoard()
-        // TODO: Implement state encoding
-        return DoubleArray(775) // Placeholder for encoded state size
+class ChessStateEncoder {
+    companion object {
+        const val BOARD_PLANES = 768 // 8x8x12
+        const val CASTLING_FEATURES = 4
+        const val EN_PASSANT_FEATURES = 1
+        const val ACTIVE_COLOR_FEATURES = 1
+        const val HALFMOVE_FEATURES = 1
+        const val FULLMOVE_FEATURES = 1
+        const val TOTAL_FEATURES = BOARD_PLANES + CASTLING_FEATURES + EN_PASSANT_FEATURES + 
+                                  ACTIVE_COLOR_FEATURES + HALFMOVE_FEATURES + FULLMOVE_FEATURES
     }
     
-    override fun step(action: Int): StepResult<DoubleArray> {
-        // TODO: Implement action decoding and move execution
-        val nextState = DoubleArray(775) // Placeholder
-        return StepResult(
-            nextState = nextState,
-            reward = 0.0,
-            done = false
+    /**
+     * Encode chess board position to neural network input format
+     */
+    fun encode(board: ChessBoard): DoubleArray {
+        val state = DoubleArray(TOTAL_FEATURES)
+        var index = 0
+        
+        // Encode piece planes (8x8x12)
+        index = encodePiecePlanes(board, state, index)
+        
+        // Encode game state features
+        encodeGameStateFeatures(board, state, index)
+        
+        return state
+    }
+    
+    /**
+     * Encode piece positions as 12 planes (6 piece types × 2 colors)
+     */
+    private fun encodePiecePlanes(board: ChessBoard, state: DoubleArray, startIndex: Int): Int {
+        var index = startIndex
+        
+        // Order: White pieces first, then black pieces
+        // For each color: Pawn, Rook, Knight, Bishop, Queen, King
+        val pieceOrder = listOf(
+            Pair(PieceColor.WHITE, PieceType.PAWN),
+            Pair(PieceColor.WHITE, PieceType.ROOK),
+            Pair(PieceColor.WHITE, PieceType.KNIGHT),
+            Pair(PieceColor.WHITE, PieceType.BISHOP),
+            Pair(PieceColor.WHITE, PieceType.QUEEN),
+            Pair(PieceColor.WHITE, PieceType.KING),
+            Pair(PieceColor.BLACK, PieceType.PAWN),
+            Pair(PieceColor.BLACK, PieceType.ROOK),
+            Pair(PieceColor.BLACK, PieceType.KNIGHT),
+            Pair(PieceColor.BLACK, PieceType.BISHOP),
+            Pair(PieceColor.BLACK, PieceType.QUEEN),
+            Pair(PieceColor.BLACK, PieceType.KING)
+        )
+        
+        for ((color, pieceType) in pieceOrder) {
+            // Encode 8x8 plane for this piece type and color
+            for (rank in 0..7) {
+                for (file in 0..7) {
+                    val piece = board.getPieceAt(Position(rank, file))
+                    state[index] = if (piece?.color == color && piece.type == pieceType) 1.0 else 0.0
+                    index++
+                }
+            }
+        }
+        
+        return index
+    }
+    
+    /**
+     * Encode game state features (castling, en passant, active color, clocks)
+     */
+    private fun encodeGameStateFeatures(board: ChessBoard, state: DoubleArray, startIndex: Int): Int {
+        var index = startIndex
+        val gameState = board.getGameState()
+        
+        // Castling rights (4 features)
+        state[index++] = if (gameState.whiteCanCastleKingside) 1.0 else 0.0
+        state[index++] = if (gameState.whiteCanCastleQueenside) 1.0 else 0.0
+        state[index++] = if (gameState.blackCanCastleKingside) 1.0 else 0.0
+        state[index++] = if (gameState.blackCanCastleQueenside) 1.0 else 0.0
+        
+        // En passant target file (1 feature, normalized to 0-1 range)
+        state[index++] = if (gameState.enPassantTarget != null) {
+            gameState.enPassantTarget!!.file / 7.0 // Normalize 0-7 to 0-1
+        } else {
+            -1.0 // Special value for no en passant
+        }
+        
+        // Active color (1 feature)
+        state[index++] = if (gameState.activeColor == PieceColor.WHITE) 0.0 else 1.0
+        
+        // Halfmove clock (1 feature, normalized)
+        state[index++] = gameState.halfmoveClock / 100.0 // Normalize to 0-1 (50-move rule = 100 halfmoves)
+        
+        // Fullmove number (1 feature, normalized)
+        state[index++] = kotlin.math.min(gameState.fullmoveNumber / 200.0, 1.0) // Cap at 200 moves
+        
+        return index
+    }
+}
+
+/**
+ * Chess action encoder/decoder for mapping between moves and neural network outputs
+ * 
+ * Action encoding specification:
+ * - From square (0-63) × To square (0-63) = 4096 base moves
+ * - Promotion moves: additional encoding for queen, rook, bishop, knight promotions
+ * - Total action space: 4096 (simplified, promotions handled by move validation)
+ */
+class ChessActionEncoder {
+    companion object {
+        const val BOARD_SIZE = 64
+        const val ACTION_SPACE_SIZE = BOARD_SIZE * BOARD_SIZE // 4096
+    }
+    
+    /**
+     * Encode a chess move to action index
+     */
+    fun encodeMove(move: Move): Int {
+        val fromIndex = move.from.rank * 8 + move.from.file
+        val toIndex = move.to.rank * 8 + move.to.file
+        return fromIndex * BOARD_SIZE + toIndex
+    }
+    
+    /**
+     * Decode action index to chess move (without promotion info)
+     */
+    fun decodeAction(actionIndex: Int): Move {
+        val fromIndex = actionIndex / BOARD_SIZE
+        val toIndex = actionIndex % BOARD_SIZE
+        
+        val fromRank = fromIndex / 8
+        val fromFile = fromIndex % 8
+        val toRank = toIndex / 8
+        val toFile = toIndex % 8
+        
+        return Move(
+            from = Position(fromRank, fromFile),
+            to = Position(toRank, toFile)
         )
     }
     
+    /**
+     * Get all possible action indices for legal moves
+     */
+    fun encodeValidMoves(moves: List<Move>): List<Int> {
+        return moves.map { encodeMove(it) }
+    }
+    
+    /**
+     * Create action mask for valid moves (1.0 for valid, 0.0 for invalid)
+     */
+    fun createActionMask(validMoves: List<Move>): DoubleArray {
+        val mask = DoubleArray(ACTION_SPACE_SIZE) { 0.0 }
+        for (move in validMoves) {
+            mask[encodeMove(move)] = 1.0
+        }
+        return mask
+    }
+}
+
+/**
+ * Chess-specific reward configuration for RL training
+ */
+data class ChessRewardConfig(
+    val winReward: Double = 1.0,
+    val lossReward: Double = -1.0,
+    val drawReward: Double = 0.0,
+    val invalidMoveReward: Double = -0.1,
+    val gameLengthNormalization: Boolean = true,
+    val maxGameLength: Int = 200,
+    
+    // Position-based reward shaping (optional)
+    val enablePositionRewards: Boolean = false,
+    val materialWeight: Double = 0.01,
+    val pieceActivityWeight: Double = 0.005,
+    val kingSafetyWeight: Double = 0.01,
+    val centerControlWeight: Double = 0.005,
+    val developmentWeight: Double = 0.005
+)
+
+/**
+ * Chess-specific metrics for training analysis
+ */
+data class ChessMetrics(
+    val gameLength: Int,
+    val totalMaterialValue: Int,
+    val piecesInCenter: Int,
+    val developedPieces: Int,
+    val kingSafetyScore: Double,
+    val moveCount: Int,
+    val captureCount: Int,
+    val checkCount: Int
+)
+
+/**
+ * Position evaluator for chess-specific reward shaping
+ */
+class ChessPositionEvaluator {
+    companion object {
+        // Piece values for material evaluation
+        val PIECE_VALUES = mapOf(
+            PieceType.PAWN to 1,
+            PieceType.KNIGHT to 3,
+            PieceType.BISHOP to 3,
+            PieceType.ROOK to 5,
+            PieceType.QUEEN to 9,
+            PieceType.KING to 0
+        )
+        
+        // Center squares for positional evaluation
+        val CENTER_SQUARES = setOf(
+            Position(3, 3), Position(3, 4), Position(4, 3), Position(4, 4) // d4, e4, d5, e5
+        )
+        
+        val EXTENDED_CENTER_SQUARES = setOf(
+            Position(2, 2), Position(2, 3), Position(2, 4), Position(2, 5),
+            Position(3, 2), Position(3, 3), Position(3, 4), Position(3, 5),
+            Position(4, 2), Position(4, 3), Position(4, 4), Position(4, 5),
+            Position(5, 2), Position(5, 3), Position(5, 4), Position(5, 5)
+        )
+    }
+    
+    /**
+     * Evaluate material balance for a color
+     */
+    fun evaluateMaterial(board: ChessBoard, color: PieceColor): Int {
+        var materialValue = 0
+        for (rank in 0..7) {
+            for (file in 0..7) {
+                val piece = board.getPieceAt(Position(rank, file))
+                if (piece?.color == color) {
+                    materialValue += PIECE_VALUES[piece.type] ?: 0
+                }
+            }
+        }
+        return materialValue
+    }
+    
+    /**
+     * Evaluate piece activity (pieces in center and extended center)
+     */
+    fun evaluatePieceActivity(board: ChessBoard, color: PieceColor): Int {
+        var activityScore = 0
+        for (rank in 0..7) {
+            for (file in 0..7) {
+                val position = Position(rank, file)
+                val piece = board.getPieceAt(position)
+                if (piece?.color == color && piece.type != PieceType.PAWN) {
+                    when {
+                        CENTER_SQUARES.contains(position) -> activityScore += 3
+                        EXTENDED_CENTER_SQUARES.contains(position) -> activityScore += 1
+                    }
+                }
+            }
+        }
+        return activityScore
+    }
+    
+    /**
+     * Evaluate king safety (distance from center, pieces around king)
+     */
+    fun evaluateKingSafety(board: ChessBoard, color: PieceColor): Double {
+        val kingPosition = findKing(board, color) ?: return -10.0 // King missing = very unsafe
+        
+        var safetyScore = 0.0
+        
+        // King should generally stay away from center in opening/middlegame
+        val distanceFromCenter = kotlin.math.min(
+            kotlin.math.abs(kingPosition.rank - 3.5),
+            kotlin.math.abs(kingPosition.file - 3.5)
+        )
+        safetyScore += distanceFromCenter
+        
+        // Count friendly pieces around king (within 1 square)
+        var protectingPieces = 0
+        for (rankOffset in -1..1) {
+            for (fileOffset in -1..1) {
+                if (rankOffset == 0 && fileOffset == 0) continue
+                val adjacentPos = Position(
+                    kingPosition.rank + rankOffset,
+                    kingPosition.file + fileOffset
+                )
+                if (adjacentPos.isValid()) {
+                    val piece = board.getPieceAt(adjacentPos)
+                    if (piece?.color == color) {
+                        protectingPieces++
+                    }
+                }
+            }
+        }
+        safetyScore += protectingPieces * 0.5
+        
+        return safetyScore
+    }
+    
+    /**
+     * Evaluate piece development (knights and bishops off starting squares)
+     */
+    fun evaluateDevelopment(board: ChessBoard, color: PieceColor): Int {
+        var developmentScore = 0
+        
+        val startingRank = if (color == PieceColor.WHITE) 0 else 7
+        val knightFiles = listOf(1, 6) // b and g files
+        val bishopFiles = listOf(2, 5) // c and f files
+        
+        // Check if knights are developed
+        for (file in knightFiles) {
+            val piece = board.getPieceAt(Position(startingRank, file))
+            if (piece?.type != PieceType.KNIGHT || piece.color != color) {
+                developmentScore++ // Knight has moved from starting square
+            }
+        }
+        
+        // Check if bishops are developed
+        for (file in bishopFiles) {
+            val piece = board.getPieceAt(Position(startingRank, file))
+            if (piece?.type != PieceType.BISHOP || piece.color != color) {
+                developmentScore++ // Bishop has moved from starting square
+            }
+        }
+        
+        return developmentScore
+    }
+    
+    /**
+     * Find king position for a color
+     */
+    private fun findKing(board: ChessBoard, color: PieceColor): Position? {
+        for (rank in 0..7) {
+            for (file in 0..7) {
+                val position = Position(rank, file)
+                val piece = board.getPieceAt(position)
+                if (piece?.type == PieceType.KING && piece.color == color) {
+                    return position
+                }
+            }
+        }
+        return null
+    }
+    
+    /**
+     * Calculate comprehensive position evaluation
+     */
+    fun evaluatePosition(board: ChessBoard, color: PieceColor, config: ChessRewardConfig): Double {
+        if (!config.enablePositionRewards) return 0.0
+        
+        val material = evaluateMaterial(board, color)
+        val opponentMaterial = evaluateMaterial(board, color.opposite())
+        val materialAdvantage = material - opponentMaterial
+        
+        val activity = evaluatePieceActivity(board, color)
+        val kingSafety = evaluateKingSafety(board, color)
+        val development = evaluateDevelopment(board, color)
+        
+        return materialAdvantage * config.materialWeight +
+               activity * config.pieceActivityWeight +
+               kingSafety * config.kingSafetyWeight +
+               development * config.developmentWeight
+    }
+}
+
+/**
+ * Chess environment implementation for RL training
+ */
+class ChessEnvironment(
+    private val rewardConfig: ChessRewardConfig = ChessRewardConfig()
+) : Environment<DoubleArray, Int> {
+    private var chessBoard = ChessBoard()
+    private val stateEncoder = ChessStateEncoder()
+    private val actionEncoder = ChessActionEncoder()
+    private val gameStateDetector = GameStateDetector()
+    private val legalMoveValidator = LegalMoveValidator()
+    private val positionEvaluator = ChessPositionEvaluator()
+    
+    // Game history for draw detection
+    private val gameHistory = mutableListOf<String>()
+    
+    // Game metrics tracking
+    private var moveCount = 0
+    private var captureCount = 0
+    private var checkCount = 0
+    private var previousMaterialValue = 0
+    
+    override fun reset(): DoubleArray {
+        chessBoard = ChessBoard()
+        gameHistory.clear()
+        gameHistory.add(chessBoard.toFEN())
+        
+        // Reset game metrics
+        moveCount = 0
+        captureCount = 0
+        checkCount = 0
+        previousMaterialValue = calculateTotalMaterialValue()
+        
+        return stateEncoder.encode(chessBoard)
+    }
+    
+    override fun step(action: Int): StepResult<DoubleArray> {
+        // Decode action to move
+        val baseMove = actionEncoder.decodeAction(action)
+        
+        // Find the actual legal move that matches this action
+        val legalMoves = legalMoveValidator.getAllLegalMoves(chessBoard, chessBoard.getActiveColor())
+        val actualMove = findMatchingMove(baseMove, legalMoves)
+        
+        if (actualMove == null) {
+            // Invalid move - return current state with negative reward
+            return StepResult(
+                nextState = stateEncoder.encode(chessBoard),
+                reward = -1.0, // Penalty for invalid move
+                done = false,
+                info = mapOf("error" to "Invalid move: ${baseMove.toAlgebraic()}")
+            )
+        }
+        
+        // Execute the move
+        val moveResult = chessBoard.makeLegalMove(actualMove)
+        if (moveResult != MoveResult.SUCCESS) {
+            return StepResult(
+                nextState = stateEncoder.encode(chessBoard),
+                reward = -1.0,
+                done = false,
+                info = mapOf("error" to "Move execution failed")
+            )
+        }
+        
+        // Switch active color
+        chessBoard.switchActiveColor()
+        
+        // Add position to history for draw detection
+        gameHistory.add(chessBoard.toFEN())
+        
+        // Update game metrics
+        updateGameMetrics(actualMove)
+        
+        // Get game status and calculate reward
+        val gameStatus = gameStateDetector.getGameStatus(chessBoard, gameHistory)
+        val reward = calculateReward(gameStatus, actualMove, chessBoard.getActiveColor().opposite())
+        val done = gameStatus.isGameOver
+        
+        val nextState = stateEncoder.encode(chessBoard)
+        
+        return StepResult(
+            nextState = nextState,
+            reward = reward,
+            done = done,
+            info = mapOf(
+                "game_status" to gameStatus.name,
+                "move" to actualMove.toAlgebraic(),
+                "fen" to chessBoard.toFEN()
+            )
+        )
+    }
+    
+    /**
+     * Find legal move that matches the decoded action (handles promotions)
+     */
+    private fun findMatchingMove(baseMove: Move, legalMoves: List<Move>): Move? {
+        // First try exact match
+        val exactMatch = legalMoves.find { it.from == baseMove.from && it.to == baseMove.to && it.promotion == null }
+        if (exactMatch != null) return exactMatch
+        
+        // If it's a pawn promotion, default to queen promotion
+        val promotionMatch = legalMoves.find { 
+            it.from == baseMove.from && it.to == baseMove.to && it.promotion == PieceType.QUEEN 
+        }
+        if (promotionMatch != null) return promotionMatch
+        
+        // Try any promotion
+        return legalMoves.find { it.from == baseMove.from && it.to == baseMove.to }
+    }
+    
+    /**
+     * Calculate reward based on game outcome and position evaluation
+     */
+    private fun calculateReward(gameStatus: GameStatus, move: Move, movingColor: PieceColor): Double {
+        var reward: Double
+        
+        // Primary outcome-based rewards
+        when (gameStatus) {
+            GameStatus.WHITE_WINS -> {
+                reward = if (movingColor == PieceColor.WHITE) {
+                    rewardConfig.winReward
+                } else {
+                    rewardConfig.lossReward
+                }
+                
+                // Apply game length normalization for wins/losses
+                if (rewardConfig.gameLengthNormalization) {
+                    val lengthFactor = 1.0 - (moveCount.toDouble() / rewardConfig.maxGameLength).coerceAtMost(0.5)
+                    reward *= lengthFactor
+                }
+            }
+            GameStatus.BLACK_WINS -> {
+                reward = if (movingColor == PieceColor.BLACK) {
+                    rewardConfig.winReward
+                } else {
+                    rewardConfig.lossReward
+                }
+                
+                // Apply game length normalization for wins/losses
+                if (rewardConfig.gameLengthNormalization) {
+                    val lengthFactor = 1.0 - (moveCount.toDouble() / rewardConfig.maxGameLength).coerceAtMost(0.5)
+                    reward *= lengthFactor
+                }
+            }
+            GameStatus.DRAW_STALEMATE, 
+            GameStatus.DRAW_INSUFFICIENT_MATERIAL,
+            GameStatus.DRAW_FIFTY_MOVE_RULE,
+            GameStatus.DRAW_REPETITION -> {
+                reward = rewardConfig.drawReward
+            }
+            else -> {
+                // Ongoing game - apply position-based reward shaping if enabled
+                reward = positionEvaluator.evaluatePosition(chessBoard, movingColor, rewardConfig)
+                
+                // Add small rewards for captures and checks
+                if (rewardConfig.enablePositionRewards) {
+                    if (isCapture(move)) {
+                        reward += 0.02 // Small bonus for captures
+                    }
+                    if (gameStateDetector.isInCheck(chessBoard, movingColor.opposite())) {
+                        reward += 0.01 // Small bonus for giving check
+                    }
+                }
+            }
+        }
+        
+        return reward
+    }
+    
+    /**
+     * Update game metrics after a move
+     */
+    private fun updateGameMetrics(move: Move) {
+        moveCount++
+        
+        // Check if move was a capture by comparing material values
+        val currentMaterialValue = calculateTotalMaterialValue()
+        if (currentMaterialValue < previousMaterialValue) {
+            captureCount++
+        }
+        
+        // Check if move gives check
+        if (gameStateDetector.isInCheck(chessBoard, chessBoard.getActiveColor())) {
+            checkCount++
+        }
+        
+        // Update material tracking
+        previousMaterialValue = currentMaterialValue
+    }
+    
+    /**
+     * Check if a move is a capture by comparing material values
+     */
+    private fun isCapture(move: Move): Boolean {
+        val currentMaterialValue = calculateTotalMaterialValue()
+        return currentMaterialValue < previousMaterialValue
+    }
+    
+    /**
+     * Calculate total material value on the board
+     */
+    private fun calculateTotalMaterialValue(): Int {
+        var totalValue = 0
+        for (rank in 0..7) {
+            for (file in 0..7) {
+                val piece = chessBoard.getPieceAt(Position(rank, file))
+                if (piece != null) {
+                    totalValue += ChessPositionEvaluator.PIECE_VALUES[piece.type] ?: 0
+                }
+            }
+        }
+        return totalValue
+    }
+    
+    /**
+     * Get comprehensive chess-specific metrics for the current game
+     */
+    fun getChessMetrics(): ChessMetrics {
+        val whiteMaterial = positionEvaluator.evaluateMaterial(chessBoard, PieceColor.WHITE)
+        val blackMaterial = positionEvaluator.evaluateMaterial(chessBoard, PieceColor.BLACK)
+        val totalMaterial = whiteMaterial + blackMaterial
+        
+        val whitePiecesInCenter = positionEvaluator.evaluatePieceActivity(chessBoard, PieceColor.WHITE)
+        val blackPiecesInCenter = positionEvaluator.evaluatePieceActivity(chessBoard, PieceColor.BLACK)
+        val totalPiecesInCenter = whitePiecesInCenter + blackPiecesInCenter
+        
+        val whiteDevelopment = positionEvaluator.evaluateDevelopment(chessBoard, PieceColor.WHITE)
+        val blackDevelopment = positionEvaluator.evaluateDevelopment(chessBoard, PieceColor.BLACK)
+        val totalDevelopment = whiteDevelopment + blackDevelopment
+        
+        val whiteKingSafety = positionEvaluator.evaluateKingSafety(chessBoard, PieceColor.WHITE)
+        val blackKingSafety = positionEvaluator.evaluateKingSafety(chessBoard, PieceColor.BLACK)
+        val averageKingSafety = (whiteKingSafety + blackKingSafety) / 2.0
+        
+        return ChessMetrics(
+            gameLength = moveCount,
+            totalMaterialValue = totalMaterial,
+            piecesInCenter = totalPiecesInCenter,
+            developedPieces = totalDevelopment,
+            kingSafetyScore = averageKingSafety,
+            moveCount = moveCount,
+            captureCount = captureCount,
+            checkCount = checkCount
+        )
+    }
+    
+    /**
+     * Get position evaluation for a specific color
+     */
+    fun getPositionEvaluation(color: PieceColor): Double {
+        return positionEvaluator.evaluatePosition(chessBoard, color, rewardConfig)
+    }
+    
     override fun getValidActions(state: DoubleArray): List<Int> {
-        // TODO: Implement valid action generation
-        return emptyList()
+        val legalMoves = legalMoveValidator.getAllLegalMoves(chessBoard, chessBoard.getActiveColor())
+        return actionEncoder.encodeValidMoves(legalMoves)
     }
     
     override fun isTerminal(state: DoubleArray): Boolean {
-        // TODO: Implement terminal state detection
-        return false
+        val gameStatus = gameStateDetector.getGameStatus(chessBoard, gameHistory)
+        return gameStatus.isGameOver
     }
     
-    override fun getStateSize(): Int = 775
+    override fun getStateSize(): Int = ChessStateEncoder.TOTAL_FEATURES
     
-    override fun getActionSize(): Int = 4096
+    override fun getActionSize(): Int = ChessActionEncoder.ACTION_SPACE_SIZE
+    
+    /**
+     * Get current chess board (for debugging/visualization)
+     */
+    fun getCurrentBoard(): ChessBoard = chessBoard.copy()
+    
+    /**
+     * Get action mask for current position
+     */
+    fun getActionMask(): DoubleArray {
+        val legalMoves = legalMoveValidator.getAllLegalMoves(chessBoard, chessBoard.getActiveColor())
+        return actionEncoder.createActionMask(legalMoves)
+    }
+    
+    /**
+     * Get current game status
+     */
+    fun getGameStatus(): GameStatus {
+        return gameStateDetector.getGameStatus(chessBoard, gameHistory)
+    }
+    
+    /**
+     * Load position from FEN string
+     */
+    fun loadFromFEN(fen: String): Boolean {
+        val newBoard = ChessBoard()
+        if (newBoard.fromFEN(fen)) {
+            chessBoard = newBoard
+            gameHistory.clear()
+            gameHistory.add(fen)
+            return true
+        }
+        return false
+    }
 }

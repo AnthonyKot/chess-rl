@@ -185,7 +185,7 @@ class GameVisualizer(private val game: PGNGame) {
         result.appendLine("=== Detailed Position Analysis ===")
         result.appendLine("Game: ${game.getSummary()}")
         result.appendLine("Position: ${currentMoveIndex}/${game.moves.size}")
-        result.appendLine("Progress: ${"%.1f".format(getProgress())}%")
+        result.appendLine("Progress: ${(getProgress() * 10).toInt() / 10.0}%")
         result.appendLine()
         
         if (currentMoveIndex > 0) {

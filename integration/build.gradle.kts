@@ -2,6 +2,10 @@ plugins {
     kotlin("multiplatform")
 }
 
+repositories {
+    mavenCentral()
+}
+
 kotlin {
     // Native target for the current platform
     val hostOs = System.getProperty("os.name")

@@ -67,7 +67,7 @@ class CircularClassificationShowcase {
         val progressPoints = listOf(0, 19, 39, 59, 79, 99) // Every 20 epochs
         for (i in progressPoints) {
             if (i < metrics.size) {
-                println("   Epoch ${String.format("%3d", i + 1)}: Loss = ${metrics[i].averageLoss.format(4)}")
+                println("   Epoch ${(i + 1).toString().padStart(3)}: Loss = ${metrics[i].averageLoss.format(4)}")
             }
         }
         

@@ -109,7 +109,7 @@
     - Create performance benchmarks and learning curve analysis
     - _Requirements: 2_
 
-- [ ] 6. Implement basic RL framework with toy problem validation
+- [x] 6. Implement basic RL framework with toy problem validation
   - [x] 6.1 Create core RL interfaces and data structures
     - Implement Environment, Agent, and Experience interfaces
     - Create basic exploration strategies (epsilon-greedy)
@@ -133,15 +133,15 @@
     - Write unit tests for RL algorithm components including batch processing
     - _Requirements: 5_
   
-  - [ ] 6.3 Validate RL framework with simple toy problems
+  - [x] 6.3 Validate RL framework with simple toy problems
     - Test on GridWorld or CartPole-like environment
     - Validate learning convergence and exploration/exploitation balance
     - Compare results against known RL benchmarks
     - Add comprehensive logging and debugging tools
     - _Requirements: 5_
 
-- [ ] 7. Refactor chess package to create RL-compatible API
-  - [ ] 7.1 Create chess environment interface for RL integration with concrete state/action encoding
+- [x] 7. Refactor chess package to create RL-compatible API
+  - [x] 7.1 Create chess environment interface for RL integration with concrete state/action encoding
     - Implement ChessEnvironment that conforms to RL Environment interface
     - **State encoding specification**: Define board planes → DoubleArray input format
       - Replace 775 placeholder with firm specification (e.g., 8x8x12 piece planes + game state features)
@@ -157,7 +157,7 @@
     - Write unit tests for state/action encoding, decoding, and terminal detection
     - _Requirements: 6, 7_
   
-  - [ ] 7.2 Add chess-specific reward functions and game outcome handling
+  - [x] 7.2 Add chess-specific reward functions and game outcome handling
     - **Outcome-based rewards**: Implement primary reward signal from game results
       - Win/loss/draw rewards with proper scaling (+1/-1/0 or similar)
       - Game length normalization to encourage efficient play
