@@ -6,7 +6,21 @@ repositories {
     mavenCentral()
 }
 
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+}
+
 kotlin {
+    // JVM target for performance comparison
+    jvm {
+        withJava()
+        testRuns["test"].executionTask.configure {
+            useJUnitPlatform()
+        }
+    }
+    
     // Native target for the current platform
     val hostOs = System.getProperty("os.name")
     val hostArch = System.getProperty("os.arch")
@@ -30,6 +44,12 @@ kotlin {
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
+            }
+        }
+        val jvmMain by getting
+        val jvmTest by getting {
+            dependencies {
+                implementation("org.junit.jupiter:junit-jupiter:5.8.2")
             }
         }
         val nativeMain by getting
