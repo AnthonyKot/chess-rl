@@ -22,7 +22,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                // No dependencies - RL framework should be independent
+                // Keep RL framework independent for now
             }
         }
         val commonTest by getting {
