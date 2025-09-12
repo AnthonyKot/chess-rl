@@ -86,7 +86,7 @@
     - Add interactive game browser for manual inspection of played games
     - _Requirements: 0_
 
-- [ ] 5. Complete neural network package with advanced training features
+- [x] 5. Complete neural network package with advanced training features
   - [x] 5.1 Implement advanced optimizers with proper batch handling
     - Add Adam and RMSprop optimizers with momentum and batch-wise parameter updates
     - Implement CrossEntropy and Huber loss functions with batch averaging
@@ -110,7 +110,7 @@
     - _Requirements: 2_
 
 - [ ] 6. Implement basic RL framework with toy problem validation
-  - [ ] 6.1 Create core RL interfaces and data structures
+  - [x] 6.1 Create core RL interfaces and data structures
     - Implement Environment, Agent, and Experience interfaces
     - Create basic exploration strategies (epsilon-greedy)
     - Add experience replay buffer with sampling

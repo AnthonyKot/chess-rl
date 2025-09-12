@@ -2,6 +2,10 @@ plugins {
     kotlin("multiplatform")
 }
 
+repositories {
+    mavenCentral()
+}
+
 kotlin {
     // Native target for the current platform
     val hostOs = System.getProperty("os.name")
@@ -18,7 +22,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation(project(":nn-package"))
+                // No dependencies - RL framework should be independent
             }
         }
         val commonTest by getting {
