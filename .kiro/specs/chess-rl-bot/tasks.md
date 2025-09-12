@@ -170,14 +170,14 @@
     - _Requirements: 6, 7_
 
 - [ ] 8. Integrate RL framework with neural network and chess API
-  - [ ] 8.1 Create chess RL agent using neural network
+  - [x] 8.1 Create chess RL agent using neural network
     - Implement ChessAgent that uses neural network for move selection
     - Integrate DQN algorithm with chess environment
     - Create training loop for chess-specific RL learning
     - Write integration tests for agent-environment interaction
     - _Requirements: 7_
   
-  - [ ] 8.2 Implement end-to-end training pipeline with efficient batching
+  - [x] 8.2 Implement end-to-end training pipeline with efficient batching
     - Create complete training pipeline from chess environment to neural network batch updates
     - Implement experience collection and batch formation for efficient RL training
     - Add comprehensive logging, metrics collection, and progress monitoring
