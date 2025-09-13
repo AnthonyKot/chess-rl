@@ -59,25 +59,25 @@ interface ChessAgent {
  */
 class ChessAgentAdapter(
     private val agent: com.chessrl.integration.ChessAgent
-) : ChessAgent {
+) {
     
-    override fun selectAction(state: DoubleArray, validActions: List<Int>): Int {
+    fun selectAction(state: DoubleArray, validActions: List<Int>): Int {
         return agent.selectAction(state, validActions)
     }
     
-    override fun learn(experience: Experience<DoubleArray, Int>) {
+    fun learn(experience: Experience<DoubleArray, Int>) {
         agent.learn(experience)
     }
     
-    override fun getQValues(state: DoubleArray, actions: List<Int>): Map<Int, Double> {
+    fun getQValues(state: DoubleArray, actions: List<Int>): Map<Int, Double> {
         return agent.getQValues(state, actions)
     }
     
-    override fun getActionProbabilities(state: DoubleArray, actions: List<Int>): Map<Int, Double> {
+    fun getActionProbabilities(state: DoubleArray, actions: List<Int>): Map<Int, Double> {
         return agent.getActionProbabilities(state, actions)
     }
     
-    override fun getTrainingMetrics(): RLMetrics {
+    fun getTrainingMetrics(): RLMetrics {
         val chessMetrics = agent.getTrainingMetrics()
         return RLMetrics(
             episode = chessMetrics.episodeCount,
@@ -90,31 +90,31 @@ class ChessAgentAdapter(
         )
     }
     
-    override fun forceUpdate() {
+    fun forceUpdate() {
         agent.forceUpdate()
     }
     
-    override fun save(path: String) {
+    fun save(path: String) {
         agent.save(path)
     }
     
-    override fun load(path: String) {
+    fun load(path: String) {
         agent.load(path)
     }
     
-    override fun reset() {
+    fun reset() {
         agent.reset()
     }
     
-    override fun setExplorationRate(rate: Double) {
+    fun setExplorationRate(rate: Double) {
         agent.setExplorationRate(rate)
     }
     
-    override fun completeEpisodeManually(reason: EpisodeTerminationReason) {
+    fun completeEpisodeManually(reason: EpisodeTerminationReason) {
         agent.completeEpisodeManually(reason)
     }
     
-    override fun getPolicyOutput(state: DoubleArray): DoubleArray {
+    fun getPolicyOutput(state: DoubleArray): DoubleArray {
         val validActions = (0 until ChessActionEncoder.ACTION_SPACE_SIZE).toList()
         val probabilities = agent.getActionProbabilities(state, validActions)
         return DoubleArray(ChessActionEncoder.ACTION_SPACE_SIZE) { action ->
@@ -122,7 +122,7 @@ class ChessAgentAdapter(
         }
     }
     
-    override fun getValueOutput(state: DoubleArray): DoubleArray {
+    fun getValueOutput(state: DoubleArray): DoubleArray {
         val validActions = (0 until ChessActionEncoder.ACTION_SPACE_SIZE).toList()
         val qValues = agent.getQValues(state, validActions)
         val maxQ = qValues.values.maxOrNull() ?: 0.0
@@ -149,25 +149,25 @@ data class RLMetrics(
  */
 class RealChessAgentAdapter(
     private val realAgent: RealChessAgent
-) : ChessAgent {
+) {
     
-    override fun selectAction(state: DoubleArray, validActions: List<Int>): Int {
+    fun selectAction(state: DoubleArray, validActions: List<Int>): Int {
         return realAgent.selectAction(state, validActions)
     }
     
-    override fun learn(experience: Experience<DoubleArray, Int>) {
+    fun learn(experience: Experience<DoubleArray, Int>) {
         realAgent.learn(experience)
     }
     
-    override fun getQValues(state: DoubleArray, actions: List<Int>): Map<Int, Double> {
+    fun getQValues(state: DoubleArray, actions: List<Int>): Map<Int, Double> {
         return realAgent.getQValues(state, actions)
     }
     
-    override fun getActionProbabilities(state: DoubleArray, actions: List<Int>): Map<Int, Double> {
+    fun getActionProbabilities(state: DoubleArray, actions: List<Int>): Map<Int, Double> {
         return realAgent.getActionProbabilities(state, actions)
     }
     
-    override fun getTrainingMetrics(): RLMetrics {
+    fun getTrainingMetrics(): RLMetrics {
         val metrics = realAgent.getTrainingMetrics()
         return RLMetrics(
             episode = 0, // Would need to be tracked
@@ -181,23 +181,23 @@ class RealChessAgentAdapter(
         )
     }
     
-    override fun forceUpdate() {
+    fun forceUpdate() {
         realAgent.forceUpdate()
     }
     
-    override fun save(path: String) {
+    fun save(path: String) {
         realAgent.save(path)
     }
     
-    override fun load(path: String) {
+    fun load(path: String) {
         realAgent.load(path)
     }
     
-    override fun reset() {
+    fun reset() {
         realAgent.reset()
     }
     
-    override fun setExplorationRate(rate: Double) {
+    fun setExplorationRate(rate: Double) {
         realAgent.setExplorationRate(rate)
     }
 }

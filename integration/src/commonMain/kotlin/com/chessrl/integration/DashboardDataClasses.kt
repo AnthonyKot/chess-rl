@@ -123,7 +123,7 @@ sealed class DashboardCommand {
 /**
  * Command execution record
  */
-data class DashboardCommand(
+data class DashboardCommandRecord(
     val type: String,
     val timestamp: Long,
     val input: String

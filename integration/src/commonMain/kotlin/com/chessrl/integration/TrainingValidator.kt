@@ -628,12 +628,7 @@ data class ConvergenceAnalysis(
 /**
  * Trend direction for metrics
  */
-enum class TrendDirection {
-    IMPROVING,
-    DECLINING,
-    STABLE,
-    UNKNOWN
-}
+// Using shared TrendDirection from SharedDataClasses.kt
 
 /**
  * Training issue detection result

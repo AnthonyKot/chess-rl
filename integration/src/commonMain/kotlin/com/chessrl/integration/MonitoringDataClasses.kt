@@ -237,9 +237,7 @@ data class ConvergenceAnalysis(
     val convergenceRate: Double = 0.0
 )
 
-enum class TrendDirection {
-    IMPROVING, DECLINING, STABLE, UNKNOWN
-}
+// Using shared TrendDirection from SharedDataClasses.kt
 
 /**
  * Training recommendation
@@ -258,26 +256,14 @@ enum class RecommendationType {
     PERFORMANCE, STABILITY, EXPLORATION, EFFICIENCY, QUALITY
 }
 
-enum class RecommendationPriority {
-    LOW, MEDIUM, HIGH, CRITICAL
-}
+// Using shared RecommendationPriority from SharedDataClasses.kt
 
 // Dashboard and monitoring interfaces
 
 /**
  * Real-time training dashboard
  */
-data class TrainingDashboard(
-    val sessionInfo: SessionInfo,
-    val currentStats: CurrentStatistics,
-    val recentTrends: TrendAnalysis,
-    val systemHealth: SystemHealth,
-    val activeIssues: List<ActiveIssue>,
-    val performanceMetrics: PerformanceMetrics,
-    val gameQualityMetrics: GameQualityMetrics,
-    val trainingEfficiency: TrainingEfficiency,
-    val lastUpdate: Long
-)
+// Using shared TrainingDashboard from SharedDataClasses.kt
 
 data class SessionInfo(
     val elapsedTime: Long,
@@ -321,21 +307,9 @@ data class ActiveIssue(
     val occurrences: Int
 )
 
-data class PerformanceMetrics(
-    val currentScore: Double,
-    val bestScore: Double,
-    val averageScore: Double,
-    val scoreVariance: Double,
-    val improvementRate: Double
-)
+// Using shared PerformanceMetrics from SharedDataClasses.kt
 
-data class GameQualityMetrics(
-    val averageQuality: Double,
-    val qualityTrend: Double,
-    val strategicDepth: Double,
-    val tacticalAccuracy: Double,
-    val totalGamesAnalyzed: Int
-)
+// Using shared GameQualityMetrics from SharedDataClasses.kt
 
 data class TrainingEfficiency(
     val gamesPerSecond: Double,

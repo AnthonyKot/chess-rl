@@ -861,9 +861,7 @@ enum class AnomalySeverity {
     LOW, MEDIUM, HIGH, CRITICAL
 }
 
-enum class TrendDirection {
-    IMPROVING, DECLINING, STABLE
-}
+// Using shared TrendDirection from SharedDataClasses.kt
 
 enum class ChangeType {
     IMPROVEMENT, DEGRADATION, SHIFT

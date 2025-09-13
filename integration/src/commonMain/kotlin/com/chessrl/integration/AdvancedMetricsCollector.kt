@@ -2,6 +2,7 @@ package com.chessrl.integration
 
 import com.chessrl.rl.*
 import kotlin.math.*
+import kotlin.random.Random
 
 /**
  * Advanced metrics collector for comprehensive training monitoring.
@@ -532,13 +533,7 @@ private data class TerminationAnalysis(
     val errorTerminationRate: Double
 )
 
-private data class PerformanceMetrics(
-    val winRate: Double,
-    val drawRate: Double,
-    val lossRate: Double,
-    val averageReward: Double,
-    val rewardVariance: Double
-)
+// Using shared PerformanceMetrics from SharedDataClasses.kt
 
 private data class TrainingMetrics(
     val batchUpdates: Int,
@@ -548,12 +543,7 @@ private data class TrainingMetrics(
     val gradientNorm: Double
 )
 
-private data class GameQualityMetrics(
-    val averageQuality: Double,
-    val moveAccuracy: Double,
-    val strategicDepth: Double,
-    val tacticalAccuracy: Double
-)
+// Using shared GameQualityMetrics from SharedDataClasses.kt
 
 private data class EfficiencyMetrics(
     val trainingEfficiency: Double,

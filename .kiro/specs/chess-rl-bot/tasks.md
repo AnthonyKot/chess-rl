@@ -287,8 +287,8 @@
     - Write tests for debugging tool reliability and accuracy
     - _Requirements: 9, 11_
 
-- [ ] 10. Create production training interface and system optimization
-  - [x] 10.1 Implement comprehensive training control and visualization interface
+- [x] 10. Create production training interface and system optimization
+  - [ ] 10.1 Implement comprehensive training control and visualization interface
     - **INTEGRATION ISSUE IDENTIFIED**: Current implementation has package integration gaps
     - **Self-Play System Integration**: The SelfPlayController needs proper integration for:
       - Real game generation between agents with proper state management
@@ -318,7 +318,7 @@
     - Create user experience documentation and training guides
     - _Requirements: 9, 10_
   
-  - [x] 10.2 Implement system optimization and performance tuning
+  - [ ] 10.2 Implement system optimization and performance tuning
     - **JVM training optimization**: Production performance improvements
       - Optimize neural network operations for sustained JVM training workloads
       - Memory management optimization for large-scale training (50K+ experiences)
@@ -343,9 +343,77 @@
     - Write performance tests and optimization validation suites
     - _Requirements: 9, 10_
 
-- [ ] 11. Final validation, optimization, and production deployment
+- [ ] 11. Integration Stabilization and Model Alignment
 
-  - [-] 11.0 Create comprehensive system documentation and deployment preparation
+  - [ ] 11.1 Unify self-play result model and outcome enums
+    - Standardize on `SelfPlaySystem`’s `SelfPlayGameResult` and `GameOutcome { WHITE_WINS, BLACK_WINS, DRAW, ONGOING }` across integration.
+    - Align `RealSelfPlayController` result types: rename `WHITE_WIN/BLACK_WIN` → `WHITE_WINS/BLACK_WINS`; add `terminationReason`, `gameLength`, `finalPosition`; or provide mapping helpers.
+    - Update analytics/monitoring modules (`AdvancedMetricsCollector`, `GameAnalyzer`, monitoring/reporting) to the unified model.
+    - Deliverable: All integration code compiles without enum/field mismatches; self-play analytics run against one coherent model.
+
+  - [ ] 11.2 Consolidate shared data classes and visibility
+    - Create single, public definitions for shared types: `PerformanceMetrics`, `PerformanceSnapshot`, `GameQualityMetrics`, `DashboardCommand`, `VisualizationType`, `ReportType`, `TrendDirection`, `CommandResult`, `GamePhaseAnalysis`, `StrategicAnalysis`, `OptimizationRecommendation`, `RecommendationPriority`.
+    - Remove duplicates, fix imports, and resolve private-in-file visibility issues.
+    - Deliverable: No redeclaration or visibility errors during `:integration:compileKotlinJvm`.
+
+  - [ ] 11.3 Replace final class inheritance with composition
+    - Stop extending `ChessAgent` (final); introduce an adapter that wraps an agent where needed.
+    - Remove all overrides of final methods; prefer pass-through composition.
+    - Deliverable: No “final cannot be inherited/overridden” compile errors.
+
+  - [ ] 11.4 Fix platform time API and utility gaps
+    - Ensure exactly one `expect fun getCurrentTimeMillis()` in `commonMain` and one `actual` per platform (`jvmMain`, `nativeMain`). Remove conflicting declarations.
+    - Add a shared `Random.nextGaussian()` extension (Box–Muller) or replace with `nextDouble()` scaling; add `import kotlin.random.Random` where required.
+    - Normalize numeric types in optimizers (e.g., Long vs Int) and remove invalid named args.
+    - Deliverable: `:integration:compileKotlinJvm` succeeds; `:integration:jvmTest --tests "*SystemOptimizationBasicTest*"` passes.
+
+- [ ] 12. Stabilization Enhancements and Operational Readiness
+
+  - [ ] 12.1 Determinism & Seeding [IMPORTANT][fast]
+    - Centralize a run seed (config/CLI) and propagate to all stochastic components: neural network initialization, replay sampling, exploration strategies, and any random data generation.
+    - Log the seed in checkpoints and run summaries; provide a deterministic test mode for CI.
+    - Deliverables: deterministic runs with fixed seed; seed recorded in checkpoint metadata and training reports.
+
+  - [ ] 12.2 Logging & Metrics Standardization [IMPROVEMENT][fast]
+    - Adopt a lightweight logger and standardize metric names/units across pipeline/self-play/algorithms.
+    - Add optional CSV/JSON emission for metrics to enable dashboards and offline analysis.
+    - Deliverables: consistent logs, machine-readable metrics files, short guide for consumption.
+
+  - [ ] 12.3 Benchmark Standardization [IMPROVEMENT][fast]
+    - Pin JVM flags and warmup iterations; record hardware/JDK/Gradle metadata with results.
+    - Make benchmark outputs reproducible and comparable between runs; include random seeds.
+    - Deliverables: updated scripts, metadata in results, documented procedure.
+
+  - [ ] 12.4 Real Metrics in Pipeline (replace simulated) [IMPORTANT][medium]
+    - Return actual loss/entropy/gradient norm from algorithm/NN via the batch train API; remove synthetic metrics in pipeline and self-play.
+    - Update reports/dashboards to display real training signals.
+    - Deliverables: accurate training metrics wired end-to-end; validation on toy tasks.
+
+  - [ ] 12.5 Serialization/Checkpointing (JVM minimum) [IMPORTANT][medium]
+    - Implement save/load for `FeedforwardNetwork` (config + weights; optimizer state optional initially).
+    - Integrate with training checkpoints to resume runs; include seed, config snapshot, and basic metrics in checkpoint metadata.
+    - Deliverables: save→load roundtrip test; resume training without divergence.
+
+  - [ ] 12.6 Config Management [IMPROVEMENT][fast]
+    - Add a simple JSON/YAML config loader with CLI/env overrides; log resolved configuration.
+    - Deliverables: default config file, loader, and example override usage.
+
+  - [ ] 12.7 API Cleanup Around Buffers [IMPROVEMENT][fast]
+    - Remove duplicate experience buffers (agent vs algorithm); make algorithm the single source of truth.
+    - Deliverables: simplified data flow, reduced memory footprint, updated tests.
+
+  - [ ] 12.8 Safety Checks & Assertions [IMPROVEMENT][fast]
+    - Strengthen `require/check` on tensor dimensions, masks, and reward ranges; fail fast with clear messages.
+    - Deliverables: clearer runtime errors for edge cases; unit tests for validation paths.
+
+  - [ ] 12.9 Baseline Heuristic Opponent [ADDITION][medium]
+    - Implement a simple heuristic opponent (material + mobility + basic king safety) for evaluation games.
+    - Wire evaluation into self-play/evaluation phase to track progress vs baseline separate from self-play.
+    - Deliverables: baseline W/D/L metrics in evaluation reports; documentation on baseline usage.
+
+- [ ] 13. Final validation, optimization, and production deployment
+
+  - [-] 13.0 Create comprehensive system documentation and deployment preparation
       - **Complete system documentation**: Production-ready documentation suite
         - Comprehensive architecture documentation with implementation details
         - Training process documentation with step-by-step guides and best practices
@@ -368,7 +436,7 @@
         - Community contribution guidelines and development process documentation
       - Create comprehensive user manuals and developer guides
       - Write documentation validation tests and accuracy verification
-  - [ ] 11.1 Execute comprehensive system validation and testing
+  - [ ] 13.1 Execute comprehensive system validation and testing
     - **Large-scale training validation**: Production-scale testing
       - Execute full training runs with multiple configurations and parameter sets
       - Validate system stability during extended training sessions (1000+ episodes)
@@ -393,7 +461,7 @@
     - Document system capabilities, limitations, and performance characteristics
     - _Requirements: All_
   
-  - [ ] 11.2 Prepare production deployment and operational procedures
+  - [ ] 13.2 Prepare production deployment and operational procedures
     - **Production deployment preparation**: Deployment-ready system configuration
       - Create deployment scripts and automated installation procedures
       - Implement configuration management with environment-specific settings

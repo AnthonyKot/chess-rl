@@ -9,10 +9,4 @@ package com.chessrl.integration
  */
 operator fun String.times(n: Int): String = this.repeat(n)
 
-/**
- * Get current time in milliseconds (simplified for Kotlin/Native)
- */
-fun getCurrentTimeMillis(): Long {
-    // Simplified time function for Kotlin/Native compatibility
-    return 0L // In practice, would use platform-specific time
-}
+// Using platform-specific getCurrentTimeMillis from PlatformTime.kt

@@ -295,3 +295,37 @@ Open Questions
 - JVM-only training acceptable short-term? If so, we can ship serialization and concurrency sooner for JVM, and plan Native later.
 - Promotion encoding: Do you want full promotion action space now, or keep queen-only default and revisit later?
 - Baseline opponent: Okay to add a simple heuristic engine in `chess-engine` for evaluation?
+
+## Status Reality Check — Optimization Modules
+
+Scope: integration performance/optimization stack (PerformanceOptimizer.kt, NativeOptimizer.kt, HyperparameterOptimizer.kt, PerformanceMonitor.kt, SystemOptimizationCoordinator.kt, docs/tests).
+
+What exists
+- Files/classes present: JVMTrainingOptimizer, TrainingMemoryManager, OptimizedBatchProcessor, ConcurrentTrainingManager; NativeDeploymentOptimizer, NativeInferenceOptimizer, NativeMemoryOptimizer, NativeGameplayOptimizer; HyperparameterOptimizer + SearchSpace/Evaluator/ABTester; PerformanceMonitor + MetricsCollector/SystemProfiler/ResourceMonitor/PerformanceBenchmarkSuite; SystemOptimizationCoordinator; docs and tests.
+- Tests exercise these APIs with simulated data; docs outline intended usage.
+
+Gaps and risks
+- Not wired to real training: None of these modules are invoked from `ChessTrainingPipeline`, `SelfPlayController`/`SelfPlaySystem`, or RL algorithms.
+- Simulated metrics/benchmarks: Most measurements use random inputs and fixed formulas; do not reflect actual NN forward/backward, replay sampling, or chess-engine move-gen.
+- Concurrency is simulated with threads; real self-play remains sequential; no backpressure/structured concurrency.
+- Core learning is incomplete (see items #1/#2/#7/#8/#9): without real optimizer steps/PG loss/target sync/masking, optimizations can’t show true impact.
+
+Actions to make it real
+- Wiring [medium]:
+  - Call `PerformanceMonitor.collectPerformanceSnapshot()` at key points in `ChessTrainingPipeline` (episode loop, batch training), in self-play iteration boundaries, and before/after policy updates.
+  - Integrate `SystemOptimizationCoordinator` to produce periodic reports during long runs.
+- Instrumentation [medium]:
+  - Replace simulated benchmarks with timers around real code paths: `FeedforwardNetwork.forward/backward/trainBatch`, replay `sample`, `ChessBoard.getAllValidMoves`, environment `step`.
+  - Record GC and allocation stats where available (JVM), and batch/episode throughput.
+- Memory/pooling [medium]:
+  - Use `ArrayPool` or a lighter pool in replay buffers and batch construction to reduce allocations; measure deltas with the monitor.
+- Concurrency [hard]:
+  - Implement coroutine-based self-play with bounded channels and a trainer coroutine; capture throughput/latency in the monitor; remove thread simulations.
+- Validation [medium]:
+  - Turn `PerformanceBenchmarkSuite` into reproducible micro/macro benchmarks against the real pipeline; store results per run for regression checks.
+
+Acceptance criteria
+- Monitor collects real throughput/latency/memory snapshots during training; reports show trends and regressions.
+- Benchmarks run against actual NN/replay/engine paths; repeated runs show consistent deltas with changes.
+- Memory allocation/GC reduced after pooling; measured by monitor and confirmed by allocation counters.
+- Self-play concurrency increases experience generation rate with bounded resource usage (no deadlocks/leaks).

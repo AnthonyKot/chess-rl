@@ -588,20 +588,9 @@ class PerformanceBenchmarkSuite {
 }
 
 // Data classes for performance monitoring
-data class PerformanceSnapshot(
-    val timestamp: Long,
-    val metrics: PerformanceMetrics,
-    val profiling: ProfilingData,
-    val resources: ResourceUsage
-)
+// Using shared PerformanceSnapshot from SharedDataClasses.kt
 
-data class PerformanceMetrics(
-    val throughput: Double,
-    val averageLatency: Double,
-    val totalOperations: Long,
-    val errorRate: Double,
-    val queueDepth: Int
-)
+// Using shared PerformanceMetrics from SharedDataClasses.kt
 
 data class ProfilingData(
     val hotspots: List<PerformanceHotspot>,
