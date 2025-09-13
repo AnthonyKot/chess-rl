@@ -1,8 +1,22 @@
 # Chess RL Bot – Architecture & Improvement Notes
 
+Decisions (current milestone)
+- Focus: Prioritize Policy Gradient / Actor-Critic work before DQN.
+- API: Extend `rl.NeuralNetwork` with a batch `trainBatch(inputs, targets)` method and implement it by delegating to `nn`’s `FeedforwardNetwork.trainBatch` via `ChessNeuralNetwork`.
+- Experience: Extend `rl.Experience` with optional `nextActionMask: DoubleArray?` and `fen: String?` metadata populated during self-play/step.
+- Platform: JVM-only training path is acceptable short-term (serialization, concurrency on JVM first).
+- Promotions: Less important for now; always promote to queen (defer richer encoding).
+- Evaluation: Add a simple heuristic opponent for baseline evaluation.
+
+High-Priority PG/AC Tasks (before DQN)
+- Batch train API on `rl.NeuralNetwork` and wiring through `ChessNeuralNetwork` and PG algorithm.
+- Proper PG loss with masked log-prob objective using advantages; remove simulated metrics and report real loss/entropy/grad-norm.
+- Checkpointing (save/load) on JVM to resume PG training; include seed + config snapshot.
+- Extend `Experience` with `nextActionMask` and `fen` to support masked loss and better debugging.
+
 Ordered proposals by importance, with package tags (nn, rl, chess, integration), optional class refs, and complexity.
 
-1) Weight updates not applied [CRUCIAL] [medium]
+1) Weight updates not applied / Batch train API to RL NN [CRUCIAL] [medium]
 - Packages: nn, rl, integration
 - Refs: `rl-framework/RLAlgorithms.kt::DQNAlgorithm.updatePolicy`, `nn-package/NeuralNetwork.kt::FeedforwardNetwork`, `integration/ChessAgent.kt::ChessNeuralNetwork`
 - Issue: DQN calls `forward/backward` but never performs optimizer updates. `FeedforwardNetwork` updates weights only via `trainBatch`/`optimizer.updateWeights`, not via `backward` alone. Net effect: no learning.
@@ -207,7 +221,7 @@ Ordered proposals by importance, with package tags (nn, rl, chess, integration),
 - Fix: Validate JVM vs Native numerical parity on small nets; guard via tests to catch regressions.
 - Tests: Output deltas within tolerance.
 
-32) Output head compute reduction [ADDITION] [hard]
+32) Output head compute reduction [IMPROVEMENT] [hard]
 - Packages: nn, integration
 - Issue: 4096 head costly; many invalid actions each step.
 - Fix: Explore masked softmax/training that only computes gradients for valid indices; or factorized head (from,to) with promotion subhead; careful with loss/selection.
@@ -251,10 +265,10 @@ Ordered proposals by importance, with package tags (nn, rl, chess, integration),
 - Packages: scripts
 - Fix: Provide presets for training vs eval (e.g., G1 vs ZGC, heap size, `-XX:+AlwaysPreTouch`).
 
-41) Promotion handling defaulting [IMPROVEMENT] [fast]
+41) Promotion handling defaulting [LESS IMPORTANT][DEFERRED] [fast]
 - Packages: integration, chess
 - Refs: `ChessEnvironment.findMatchingMove`
-- Fix: Make default promotion piece configurable (currently queen); log when mismatched; use mask to include all promotions when possible.
+- Decision: Always promote to queen (already implemented). Defer richer action encoding for promotions until core PG/AC + metrics + checkpoints are complete.
 
 42) Move selection hot path avoidance of maps [PERF] [fast]
 - Packages: integration
@@ -281,4 +295,3 @@ Open Questions
 - JVM-only training acceptable short-term? If so, we can ship serialization and concurrency sooner for JVM, and plan Native later.
 - Promotion encoding: Do you want full promotion action space now, or keep queen-only default and revisit later?
 - Baseline opponent: Okay to add a simple heuristic engine in `chess-engine` for evaluation?
-

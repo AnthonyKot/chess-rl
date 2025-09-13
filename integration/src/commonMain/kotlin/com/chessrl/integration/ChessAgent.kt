@@ -357,7 +357,7 @@ data class ChessAgentMetrics(
  * Chess-specific neural network wrapper that adapts the NN interface for RL
  */
 class ChessNeuralNetwork(
-    private val network: FeedforwardNetwork
+    private val network: com.chessrl.nn.FeedforwardNetwork
 ) : com.chessrl.rl.NeuralNetwork {
     
     override fun forward(input: DoubleArray): DoubleArray {
@@ -383,7 +383,7 @@ class ChessNeuralNetwork(
     /**
      * Get the underlying network for advanced operations
      */
-    fun getNetwork(): FeedforwardNetwork = network
+    fun getNetwork(): com.chessrl.nn.FeedforwardNetwork = network
 }
 
 /**
@@ -466,25 +466,25 @@ object ChessAgentFactory {
         learningRate: Double
     ): ChessNeuralNetwork {
         
-        // Create network architecture
-        val layers = mutableListOf<Layer>()
+        // Create network architecture using the actual neural network package
+        val layers = mutableListOf<com.chessrl.nn.Layer>()
         
         // Input layer to first hidden layer
         var currentInputSize = inputSize
         for (hiddenSize in hiddenLayers) {
-            layers.add(DenseLayer(currentInputSize, hiddenSize, ReLUActivation()))
+            layers.add(com.chessrl.nn.DenseLayer(currentInputSize, hiddenSize, com.chessrl.nn.ReLUActivation()))
             currentInputSize = hiddenSize
         }
         
         // Final layer (output layer)
-        layers.add(DenseLayer(currentInputSize, outputSize, LinearActivation()))
+        layers.add(com.chessrl.nn.DenseLayer(currentInputSize, outputSize, com.chessrl.nn.LinearActivation()))
         
-        // Create network
-        val network = FeedforwardNetwork(
+        // Create network using the actual FeedforwardNetwork from nn package
+        val network = com.chessrl.nn.FeedforwardNetwork(
             _layers = layers,
-            lossFunction = HuberLoss(delta = 1.0), // Robust to outliers
-            optimizer = AdamOptimizer(learningRate = learningRate),
-            regularization = L2Regularization(lambda = 0.001)
+            lossFunction = com.chessrl.nn.HuberLoss(delta = 1.0), // Robust to outliers
+            optimizer = com.chessrl.nn.AdamOptimizer(learningRate = learningRate),
+            regularization = com.chessrl.nn.L2Regularization(lambda = 0.001)
         )
         
         return ChessNeuralNetwork(network)

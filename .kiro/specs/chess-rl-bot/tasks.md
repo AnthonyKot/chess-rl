@@ -288,7 +288,17 @@
     - _Requirements: 9, 11_
 
 - [ ] 10. Create production training interface and system optimization
-  - [-] 10.1 Implement comprehensive training control and visualization interface
+  - [x] 10.1 Implement comprehensive training control and visualization interface
+    - **INTEGRATION ISSUE IDENTIFIED**: Current implementation has package integration gaps
+    - **Self-Play System Integration**: The SelfPlayController needs proper integration for:
+      - Real game generation between agents with proper state management
+      - Experience collection and storage with the training pipeline
+      - Actual training iteration loops connecting self-play to neural network updates
+    - **Required Integration Improvements**:
+      - Connect SelfPlayController to actual ChessAgent instances for real gameplay
+      - Implement proper experience flow from self-play games to ExperienceReplay buffer
+      - Create training iteration loops that alternate between self-play and network training
+      - Integrate real neural network training with collected self-play experiences
     - **Advanced training control interface**: Production-ready training management
       - Comprehensive CLI with training lifecycle management (start/pause/resume/stop/restart)
       - Real-time configuration adjustment with validation and rollback capabilities
