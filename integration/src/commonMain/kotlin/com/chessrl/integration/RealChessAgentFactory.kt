@@ -167,6 +167,193 @@ object RealChessAgentFactory {
             targetNetwork = null
         )
     }
+    
+    /**
+     * Create a seeded DQN agent with deterministic neural network initialization
+     */
+    fun createSeededDQNAgent(
+        inputSize: Int = 776,
+        outputSize: Int = 4096,
+        hiddenLayers: List<Int> = listOf(512, 256, 128),
+        learningRate: Double = 0.001,
+        explorationRate: Double = 0.1,
+        batchSize: Int = 32,
+        maxBufferSize: Int = 10000,
+        neuralNetworkRandom: kotlin.random.Random,
+        explorationRandom: kotlin.random.Random,
+        replayBufferRandom: kotlin.random.Random,
+        weightInitType: String = "he"
+    ): RealChessAgent {
+        
+        // Create main Q-network with seeded initialization
+        val qNetworkLayers = mutableListOf<Layer>()
+        
+        var currentInputSize = inputSize
+        for (hiddenSize in hiddenLayers) {
+            qNetworkLayers.add(
+                DenseLayer(
+                    inputSize = currentInputSize,
+                    outputSize = hiddenSize,
+                    activation = ReLUActivation(),
+                    random = neuralNetworkRandom,
+                    weightInitType = weightInitType
+                )
+            )
+            currentInputSize = hiddenSize
+        }
+        
+        // Output layer
+        qNetworkLayers.add(
+            DenseLayer(
+                inputSize = currentInputSize,
+                outputSize = outputSize,
+                activation = LinearActivation(),
+                random = neuralNetworkRandom,
+                weightInitType = weightInitType
+            )
+        )
+        
+        val qNetwork = FeedforwardNetwork(
+            _layers = qNetworkLayers,
+            lossFunction = HuberLoss(delta = 1.0),
+            optimizer = AdamOptimizer(learningRate = learningRate),
+            regularization = L2Regularization(lambda = 0.001)
+        )
+        
+        // Create target network with same seeded initialization
+        val targetNetworkLayers = mutableListOf<Layer>()
+        
+        currentInputSize = inputSize
+        for (hiddenSize in hiddenLayers) {
+            targetNetworkLayers.add(
+                DenseLayer(
+                    inputSize = currentInputSize,
+                    outputSize = hiddenSize,
+                    activation = ReLUActivation(),
+                    random = neuralNetworkRandom,
+                    weightInitType = weightInitType
+                )
+            )
+            currentInputSize = hiddenSize
+        }
+        
+        targetNetworkLayers.add(
+            DenseLayer(
+                inputSize = currentInputSize,
+                outputSize = outputSize,
+                activation = LinearActivation(),
+                random = neuralNetworkRandom,
+                weightInitType = weightInitType
+            )
+        )
+        
+        val targetNetwork = FeedforwardNetwork(
+            _layers = targetNetworkLayers,
+            lossFunction = HuberLoss(delta = 1.0),
+            optimizer = AdamOptimizer(learningRate = learningRate),
+            regularization = L2Regularization(lambda = 0.001)
+        )
+        
+        // Create seeded experience replay buffer
+        val experienceReplay = SeededCircularExperienceBuffer<DoubleArray, Int>(
+            maxSize = maxBufferSize,
+            random = replayBufferRandom
+        )
+        
+        // Create DQN algorithm
+        val dqnAlgorithm = DQNAlgorithm(
+            qNetwork = RealNeuralNetworkWrapper(qNetwork),
+            targetNetwork = RealNeuralNetworkWrapper(targetNetwork),
+            experienceReplay = experienceReplay,
+            gamma = 0.99,
+            targetUpdateFrequency = 100,
+            batchSize = batchSize
+        )
+        
+        // Create seeded exploration strategy
+        val explorationStrategy = SeededEpsilonGreedyStrategy<Int>(
+            epsilon = explorationRate,
+            random = explorationRandom
+        )
+        
+        return RealChessAgent(
+            algorithm = dqnAlgorithm,
+            explorationStrategy = explorationStrategy,
+            qNetwork = qNetwork,
+            targetNetwork = targetNetwork
+        )
+    }
+    
+    /**
+     * Create a seeded Policy Gradient agent with deterministic neural network initialization
+     */
+    fun createSeededPolicyGradientAgent(
+        inputSize: Int = 776,
+        outputSize: Int = 4096,
+        hiddenLayers: List<Int> = listOf(512, 256, 128),
+        learningRate: Double = 0.001,
+        temperature: Double = 1.0,
+        batchSize: Int = 32,
+        neuralNetworkRandom: kotlin.random.Random,
+        explorationRandom: kotlin.random.Random,
+        weightInitType: String = "he"
+    ): RealChessAgent {
+        
+        // Create seeded policy network
+        val policyNetworkLayers = mutableListOf<Layer>()
+        
+        var currentInputSize = inputSize
+        for (hiddenSize in hiddenLayers) {
+            policyNetworkLayers.add(
+                DenseLayer(
+                    inputSize = currentInputSize,
+                    outputSize = hiddenSize,
+                    activation = ReLUActivation(),
+                    random = neuralNetworkRandom,
+                    weightInitType = weightInitType
+                )
+            )
+            currentInputSize = hiddenSize
+        }
+        
+        // Output layer with softmax-friendly linear activation
+        policyNetworkLayers.add(
+            DenseLayer(
+                inputSize = currentInputSize,
+                outputSize = outputSize,
+                activation = LinearActivation(),
+                random = neuralNetworkRandom,
+                weightInitType = weightInitType
+            )
+        )
+        
+        val policyNetwork = FeedforwardNetwork(
+            _layers = policyNetworkLayers,
+            lossFunction = CrossEntropyLoss(),
+            optimizer = AdamOptimizer(learningRate = learningRate),
+            regularization = L2Regularization(lambda = 0.001)
+        )
+        
+        // Create policy gradient algorithm
+        val pgAlgorithm = PolicyGradientAlgorithm(
+            policyNetwork = RealNeuralNetworkWrapper(policyNetwork),
+            valueNetwork = null, // No baseline for simplicity
+            gamma = 0.99
+        )
+        
+        // Create seeded exploration strategy
+        val explorationStrategy = SeededBoltzmannStrategy<Int>(
+            temperature = temperature,
+            random = explorationRandom
+        )
+        
+        return RealChessAgent(
+            algorithm = pgAlgorithm,
+            explorationStrategy = explorationStrategy,
+            qNetwork = policyNetwork,
+            targetNetwork = null
+        )
+    }
 }
 
 /**

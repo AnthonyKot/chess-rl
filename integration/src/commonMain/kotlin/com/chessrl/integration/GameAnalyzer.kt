@@ -3,6 +3,7 @@ package com.chessrl.integration
 import com.chessrl.rl.*
 import com.chessrl.chess.*
 import kotlin.math.*
+import kotlin.random.Random
 
 /**
  * Advanced game analyzer for comprehensive game quality assessment and learning insights.
@@ -356,7 +357,7 @@ class GameAnalyzer(
         )
     }
     
-    private fun extractLearningInsights(gameResult: SelfPlayGameResult): LearningInsightsData {
+    private fun computeLearningInsightsData(gameResult: SelfPlayGameResult): LearningInsightsData {
         // Simplified learning insights calculation
         val learningValue = calculateLearningValue(gameResult)
         val noveltyScore = calculateNoveltyScore(gameResult)

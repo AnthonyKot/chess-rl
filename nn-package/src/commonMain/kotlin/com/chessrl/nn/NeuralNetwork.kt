@@ -94,12 +94,23 @@ class DenseLayer(
     override val inputSize: Int,
     override val outputSize: Int,
     private val activation: ActivationFunction,
-    private val random: Random = Random.Default
+    private val random: Random = Random.Default,
+    private val weightInitType: String = "he"
 ) : Layer {
     
     // Weights matrix: [outputSize x inputSize]
     private val weights: Array<DoubleArray> = Array(outputSize) { 
-        DoubleArray(inputSize) { random.nextGaussian() * sqrt(2.0 / inputSize) } // He initialization
+        DoubleArray(inputSize) { 
+            when (weightInitType.lowercase()) {
+                "he" -> random.nextGaussian() * sqrt(2.0 / inputSize)
+                "xavier" -> random.nextGaussian() * sqrt(1.0 / inputSize)
+                "uniform" -> {
+                    val bound = sqrt(6.0 / inputSize)
+                    random.nextDouble(-bound, bound)
+                }
+                else -> random.nextGaussian() * sqrt(2.0 / inputSize) // Default to He
+            }
+        }
     }
     
     // Bias vector: [outputSize]

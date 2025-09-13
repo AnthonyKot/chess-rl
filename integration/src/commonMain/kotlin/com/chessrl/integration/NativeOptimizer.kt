@@ -217,9 +217,9 @@ class NativeMemoryOptimizer {
     
     private fun estimateMemoryUsage(): Long {
         // Estimate memory usage for chess RL system
-        val neuralNetworkMemory = 776 * 512 * 8 + 512 * 4096 * 8 // Weights in bytes
-        val chessEngineMemory = 64 * 8 + 1000 * 100 // Board + move history
-        val experienceBufferMemory = 50000 * (776 + 4096 + 16) * 8 // Experience replay
+        val neuralNetworkMemory = 776L * 512L * 8L + 512L * 4096L * 8L // Weights in bytes
+        val chessEngineMemory = 64L * 8L + 1000L * 100L // Board + move history
+        val experienceBufferMemory = 50_000L * (776L + 4096L + 16L) * 8L // Experience replay
         
         return neuralNetworkMemory + chessEngineMemory + experienceBufferMemory
     }

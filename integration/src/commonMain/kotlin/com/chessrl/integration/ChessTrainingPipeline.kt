@@ -1,14 +1,10 @@
 package com.chessrl.integration
 
 import com.chessrl.rl.*
-import com.chessrl.nn.*
-import kotlin.math.*
-import kotlin.random.Random
 
 /**
- * End-to-end training pipeline for chess RL with efficient batching
- * This class orchestrates the complete training process from experience collection
- * to neural network updates with comprehensive monitoring and checkpointing.
+ * Training pipeline that integrates chess agents with the RL training framework
+ * This bridges the gap between self-play experience collection and neural network training
  */
 class ChessTrainingPipeline(
     private val agent: ChessAgent,
@@ -16,149 +12,33 @@ class ChessTrainingPipeline(
     private val config: TrainingPipelineConfig = TrainingPipelineConfig()
 ) {
     
-    // Training state
-    private var currentEpisode = 0
-    private var totalSteps = 0
-    private var bestPerformance = Double.NEGATIVE_INFINITY
-    
-    // Experience collection
     private val experienceBuffer = mutableListOf<Experience<DoubleArray, Int>>()
-    private val episodeBuffer = mutableListOf<Experience<DoubleArray, Int>>()
-    
-    // Metrics and monitoring
-    private val trainingHistory = mutableListOf<TrainingEpisodeMetrics>()
-    private val batchMetrics = mutableListOf<BatchTrainingMetrics>()
-    private var lastCheckpointEpisode = 0
-    
-    // Performance tracking
-    private val recentPerformance = mutableListOf<Double>()
-    private val performanceWindow = 100
+    private var episodeCount = 0
+    private var totalReward = 0.0
+    private val trainingMetrics = mutableListOf<TrainingEpisodeMetrics>()
     
     /**
-     * Run the complete training pipeline
+     * Run a single training episode
      */
-    fun train(totalEpisodes: Int): TrainingResults {
-        println("🚀 Starting Chess RL Training Pipeline")
-        println("Configuration: ${config}")
-        println("Target Episodes: $totalEpisodes")
-        println("=" * 60)
-        
+    fun runEpisode(): TrainingEpisodeResult {
         val startTime = getCurrentTimeMillis()
         
-        try {
-            // Initialize training
-            initializeTraining()
-            
-            // Main training loop
-            for (episode in 1..totalEpisodes) {
-                currentEpisode = episode
-                
-                // Run single episode with experience collection
-                val episodeMetrics = runTrainingEpisode()
-                trainingHistory.add(episodeMetrics)
-                
-                // Perform batch training if we have enough experiences
-                if (shouldPerformBatchTraining()) {
-                    val batchResults = performBatchTraining()
-                    batchMetrics.add(batchResults)
-                }
-                
-                // Update performance tracking
-                updatePerformanceTracking(episodeMetrics)
-                
-                // Progress reporting
-                if (episode % config.progressReportInterval == 0) {
-                    reportProgress(episode, totalEpisodes)
-                }
-                
-                // Checkpointing
-                if (shouldCreateCheckpoint(episode)) {
-                    createCheckpoint(episode)
-                }
-                
-                // Early stopping check
-                if (shouldStopEarly()) {
-                    println("🛑 Early stopping triggered at episode $episode")
-                    break
-                }
-            }
-            
-            val endTime = getCurrentTimeMillis()
-            val totalDuration = endTime - startTime
-            
-            // Final checkpoint and results
-            createFinalCheckpoint()
-            
-            return TrainingResults(
-                totalEpisodes = currentEpisode,
-                totalSteps = totalSteps,
-                trainingDuration = totalDuration,
-                bestPerformance = bestPerformance,
-                episodeHistory = trainingHistory.toList(),
-                batchHistory = batchMetrics.toList(),
-                finalMetrics = calculateFinalMetrics()
-            )
-            
-        } catch (e: Exception) {
-            println("❌ Training failed: ${e.message}")
-            e.printStackTrace()
-            throw e
-        }
-    }
-    
-    /**
-     * Initialize training state and components
-     */
-    private fun initializeTraining() {
-        println("🔧 Initializing training pipeline...")
-        
-        // Reset agent and environment
-        agent.reset()
-        environment.reset()
-        
-        // Clear buffers and metrics
-        experienceBuffer.clear()
-        episodeBuffer.clear()
-        trainingHistory.clear()
-        batchMetrics.clear()
-        recentPerformance.clear()
-        
-        // Reset counters
-        currentEpisode = 0
-        totalSteps = 0
-        bestPerformance = Double.NEGATIVE_INFINITY
-        lastCheckpointEpisode = 0
-        
-        println("✅ Training pipeline initialized")
-    }
-    
-    /**
-     * Run a single training episode with experience collection
-     */
-    private fun runTrainingEpisode(): TrainingEpisodeMetrics {
-        val episodeStartTime = getCurrentTimeMillis()
-        
-        // Reset environment for new episode
+        // Reset environment
         var state = environment.reset()
-        episodeBuffer.clear()
-        
         var episodeReward = 0.0
         var stepCount = 0
-        var gameResult = "ongoing"
+        val episodeExperiences = mutableListOf<Experience<DoubleArray, Int>>()
         
-        // Episode loop
+        // Run episode
         while (!environment.isTerminal(state) && stepCount < config.maxStepsPerEpisode) {
             // Get valid actions
             val validActions = environment.getValidActions(state)
-            if (validActions.isEmpty()) {
-                gameResult = "no_moves"
-                break
-            }
+            if (validActions.isEmpty()) break
             
             // Agent selects action
             val action = agent.selectAction(state, validActions)
             
-            // Take step in environment
+            // Take step
             val stepResult = environment.step(action)
             
             // Create experience
@@ -170,489 +50,248 @@ class ChessTrainingPipeline(
                 done = stepResult.done
             )
             
-            // Add to episode buffer
-            episodeBuffer.add(experience)
+            // Add to buffers
+            episodeExperiences.add(experience)
+            experienceBuffer.add(experience)
             
-            // Update episode metrics
+            // Learn from experience
+            agent.learn(experience)
+            
+            // Update state and metrics
+            state = stepResult.nextState
             episodeReward += stepResult.reward
             stepCount++
-            totalSteps++
             
-            // Update state
-            state = stepResult.nextState
-            
-            if (stepResult.done) {
-                gameResult = stepResult.info["game_status"]?.toString() ?: "completed"
-                break
-            }
+            if (stepResult.done) break
         }
         
-        // Signal episode completion to agent
-        if (gameResult == "completed" || gameResult.contains("mate") || gameResult.contains("draw")) {
-            // Natural game termination
-            agent.completeEpisodeManually(EpisodeTerminationReason.GAME_ENDED)
-        } else {
-            // Step limit or other termination
-            agent.completeEpisodeManually(EpisodeTerminationReason.STEP_LIMIT)
+        // Batch training if enough experiences
+        if (experienceBuffer.size >= config.batchSize && 
+            episodeCount % config.batchTrainingFrequency == 0) {
+            performBatchTraining()
         }
         
-        // Add episode experiences to main buffer
-        experienceBuffer.addAll(episodeBuffer)
-        
-        // Trim buffer if it exceeds maximum size
+        // Clean up experience buffer if too large
         if (experienceBuffer.size > config.maxBufferSize) {
             val excessCount = experienceBuffer.size - config.maxBufferSize
             repeat(excessCount) {
-                experienceBuffer.removeAt(0)
+                experienceBuffer.removeAt(0) // Remove oldest
             }
         }
         
-        val episodeEndTime = getCurrentTimeMillis()
-        val episodeDuration = episodeEndTime - episodeStartTime
+        episodeCount++
+        totalReward += episodeReward
         
-        // Get chess-specific metrics
-        val chessMetrics = environment.getChessMetrics()
+        val endTime = getCurrentTimeMillis()
+        val episodeDuration = endTime - startTime
         
-        return TrainingEpisodeMetrics(
-            episode = currentEpisode,
+        val episodeMetrics = TrainingEpisodeMetrics(
+            episode = episodeCount,
             reward = episodeReward,
             steps = stepCount,
-            gameResult = gameResult,
             duration = episodeDuration,
-            bufferSize = experienceBuffer.size,
-            explorationRate = agent.getTrainingMetrics().explorationRate,
-            chessMetrics = chessMetrics
+            averageReward = totalReward / episodeCount,
+            agentMetrics = agent.getTrainingMetrics()
+        )
+        
+        trainingMetrics.add(episodeMetrics)
+        
+        // Progress reporting
+        if (episodeCount % config.progressReportInterval == 0) {
+            reportProgress()
+        }
+        
+        return TrainingEpisodeResult(
+            episode = episodeCount,
+            reward = episodeReward,
+            steps = stepCount,
+            duration = episodeDuration,
+            experiences = episodeExperiences,
+            metrics = episodeMetrics
         )
     }
     
     /**
-     * Check if we should perform batch training
+     * Run multiple training episodes
      */
-    private fun shouldPerformBatchTraining(): Boolean {
-        return experienceBuffer.size >= config.batchSize && 
-               currentEpisode % config.batchTrainingFrequency == 0
-    }
-    
-    /**
-     * Perform batch training with collected experiences
-     */
-    private fun performBatchTraining(): BatchTrainingMetrics {
-        val batchStartTime = getCurrentTimeMillis()
+    fun runTraining(numEpisodes: Int): TrainingResults {
+        val startTime = getCurrentTimeMillis()
+        val episodeResults = mutableListOf<TrainingEpisodeResult>()
         
-        println("🧠 Performing batch training (Episode $currentEpisode, Buffer: ${experienceBuffer.size})")
+        println("🚀 Starting training pipeline: $numEpisodes episodes")
         
-        // Sample batch from experience buffer
-        val batchExperiences = sampleTrainingBatch()
-        
-        // Perform multiple training updates for efficiency
-        val updateResults = mutableListOf<PolicyUpdateResult>()
-        var totalLoss = 0.0
-        
-        for (updateStep in 1..config.updatesPerBatch) {
+        repeat(numEpisodes) { episode ->
             try {
-                // Get agent's RL algorithm and perform update
-                val updateResult = performPolicyUpdate(batchExperiences)
-                updateResults.add(updateResult)
-                totalLoss += updateResult.loss
-                
-                // Validate update
-                validatePolicyUpdate(updateResult)
-                
+                val result = runEpisode()
+                episodeResults.add(result)
             } catch (e: Exception) {
-                println("⚠️ Policy update failed at step $updateStep: ${e.message}")
-                break
+                println("⚠️ Episode ${episode + 1} failed: ${e.message}")
             }
         }
         
-        val batchEndTime = getCurrentTimeMillis()
-        val batchDuration = batchEndTime - batchStartTime
+        val endTime = getCurrentTimeMillis()
+        val totalDuration = endTime - startTime
         
-        // Calculate batch statistics
-        val avgLoss = if (updateResults.isNotEmpty()) totalLoss / updateResults.size else 0.0
-        val avgGradientNorm = updateResults.map { it.gradientNorm }.average()
-        val avgPolicyEntropy = updateResults.map { it.policyEntropy }.average()
+        println("✅ Training completed: $numEpisodes episodes in ${totalDuration}ms")
         
-        return BatchTrainingMetrics(
-            episode = currentEpisode,
-            batchSize = batchExperiences.size,
-            updatesPerformed = updateResults.size,
-            averageLoss = avgLoss,
-            averageGradientNorm = avgGradientNorm,
-            averagePolicyEntropy = avgPolicyEntropy,
-            duration = batchDuration,
-            bufferUtilization = experienceBuffer.size.toDouble() / config.maxBufferSize
+        return TrainingResults(
+            totalEpisodes = episodeResults.size,
+            totalDuration = totalDuration,
+            episodeResults = episodeResults,
+            finalMetrics = calculateFinalMetrics(),
+            agentConfig = agent.getConfig()
         )
     }
     
     /**
-     * Sample a training batch from the experience buffer
+     * Perform batch training on collected experiences
      */
-    private fun sampleTrainingBatch(): List<Experience<DoubleArray, Int>> {
-        val actualBatchSize = minOf(config.batchSize, experienceBuffer.size)
-        
-        return when (config.samplingStrategy) {
-            SamplingStrategy.UNIFORM -> {
-                experienceBuffer.shuffled().take(actualBatchSize)
-            }
+    private fun performBatchTraining() {
+        // Sample experiences based on strategy
+        val batch = when (config.samplingStrategy) {
             SamplingStrategy.RECENT -> {
-                experienceBuffer.takeLast(actualBatchSize)
+                experienceBuffer.takeLast(config.batchSize)
+            }
+            SamplingStrategy.RANDOM -> {
+                experienceBuffer.shuffled().take(config.batchSize)
             }
             SamplingStrategy.MIXED -> {
-                val recentCount = (actualBatchSize * 0.7).toInt()
-                val randomCount = actualBatchSize - recentCount
-                
-                val recentExperiences = experienceBuffer.takeLast(recentCount)
-                val randomExperiences = experienceBuffer.dropLast(recentCount)
-                    .shuffled().take(randomCount)
-                
-                recentExperiences + randomExperiences
+                val recentCount = config.batchSize / 2
+                val randomCount = config.batchSize - recentCount
+                val recent = experienceBuffer.takeLast(recentCount)
+                val random = experienceBuffer.dropLast(recentCount).shuffled().take(randomCount)
+                recent + random
             }
         }
-    }
-    
-    /**
-     * Perform policy update using the agent's RL algorithm
-     */
-    private fun performPolicyUpdate(experiences: List<Experience<DoubleArray, Int>>): PolicyUpdateResult {
-        // Use the agent's internal learning mechanism
-        // This is a simplified approach - in practice, we'd access the algorithm directly
         
-        // Create a temporary experience for the agent to learn from
-        // The agent will handle batching internally
-        experiences.forEach { experience ->
+        // Train agent on batch
+        batch.forEach { experience ->
             agent.learn(experience)
         }
         
-        // Force an update to get metrics
+        // Force policy update
         agent.forceUpdate()
-        
-        // Get actual metrics from the agent's training
-        val agentMetrics = agent.getTrainingMetrics()
-        
-        // Calculate actual loss and gradient metrics
-        // For now, we'll use simplified but realistic metrics based on training progress
-        val baseLoss = 1.0 / (1.0 + currentEpisode * 0.01) // Decreasing loss over time
-        val baseGradientNorm = 2.0 * kotlin.math.exp(-currentEpisode * 0.001) // Decreasing gradient norm
-        val baseEntropy = 1.5 + 0.5 * kotlin.math.sin(currentEpisode * 0.1) // Oscillating entropy
-        
-        return PolicyUpdateResult(
-            loss = baseLoss + Random.nextDouble(-0.1, 0.1),
-            gradientNorm = baseGradientNorm + Random.nextDouble(-0.2, 0.2),
-            policyEntropy = baseEntropy + Random.nextDouble(-0.1, 0.1)
-        )
-    }
-    
-    /**
-     * Validate policy update results
-     */
-    private fun validatePolicyUpdate(updateResult: PolicyUpdateResult) {
-        // Check for numerical issues
-        if (updateResult.loss.isNaN() || updateResult.loss.isInfinite()) {
-            throw IllegalStateException("Invalid loss value: ${updateResult.loss}")
-        }
-        
-        if (updateResult.gradientNorm.isNaN() || updateResult.gradientNorm.isInfinite()) {
-            throw IllegalStateException("Invalid gradient norm: ${updateResult.gradientNorm}")
-        }
-        
-        // Warn about potential issues
-        if (updateResult.gradientNorm > config.gradientClipThreshold) {
-            println("⚠️ Large gradient norm: ${updateResult.gradientNorm}")
-        }
-        
-        if (updateResult.policyEntropy < config.minPolicyEntropy) {
-            println("⚠️ Low policy entropy: ${updateResult.policyEntropy}")
-        }
-    }
-    
-    /**
-     * Update performance tracking
-     */
-    private fun updatePerformanceTracking(episodeMetrics: TrainingEpisodeMetrics) {
-        recentPerformance.add(episodeMetrics.reward)
-        
-        // Maintain window size
-        if (recentPerformance.size > performanceWindow) {
-            recentPerformance.removeAt(0)
-        }
-        
-        // Update best performance
-        if (episodeMetrics.reward > bestPerformance) {
-            bestPerformance = episodeMetrics.reward
-            println("🏆 New best performance: ${bestPerformance} (Episode $currentEpisode)")
-        }
     }
     
     /**
      * Report training progress
      */
-    private fun reportProgress(episode: Int, totalEpisodes: Int) {
-        val progress = (episode.toDouble() / totalEpisodes * 100).toInt()
-        val recentAvgReward = if (recentPerformance.isNotEmpty()) {
-            recentPerformance.average()
-        } else {
-            0.0
-        }
+    private fun reportProgress() {
+        val recentMetrics = trainingMetrics.takeLast(config.progressReportInterval)
+        val avgReward = recentMetrics.map { it.reward }.average()
+        val avgSteps = recentMetrics.map { it.steps }.average()
+        val avgDuration = recentMetrics.map { it.duration }.average()
         
-        val overallAvgReward = if (trainingHistory.isNotEmpty()) {
-            trainingHistory.map { it.reward }.average()
-        } else {
-            0.0
-        }
-        
-        val avgGameLength = if (trainingHistory.isNotEmpty()) {
-            trainingHistory.map { it.steps }.average()
-        } else {
-            0.0
-        }
-        
-        println("\n📊 Training Progress - Episode $episode/$totalEpisodes ($progress%)")
-        println("   Recent Avg Reward: ${recentAvgReward}")
-        println("   Overall Avg Reward: ${overallAvgReward}")
-        println("   Best Performance: ${bestPerformance}")
-        println("   Avg Game Length: ${avgGameLength} steps")
+        println("📊 Training Progress - Episode $episodeCount:")
+        println("   Recent Avg Reward: $avgReward")
+        println("   Recent Avg Steps: $avgSteps")
+        println("   Recent Avg Duration: ${avgDuration}ms")
         println("   Experience Buffer: ${experienceBuffer.size}/${config.maxBufferSize}")
-        println("   Batch Updates: ${batchMetrics.size}")
-        
-        // Show recent batch metrics if available
-        if (batchMetrics.isNotEmpty()) {
-            val recentBatch = batchMetrics.last()
-            println("   Last Batch Loss: ${recentBatch.averageLoss}")
-            println("   Policy Entropy: ${recentBatch.averagePolicyEntropy}")
-        }
-    }
-    
-    /**
-     * Check if we should create a checkpoint
-     */
-    private fun shouldCreateCheckpoint(episode: Int): Boolean {
-        return episode % config.checkpointInterval == 0 || 
-               episode - lastCheckpointEpisode >= config.checkpointInterval
-    }
-    
-    /**
-     * Create training checkpoint
-     */
-    private fun createCheckpoint(episode: Int) {
-        try {
-            val checkpointPath = "${config.checkpointDir}/checkpoint_episode_${episode}"
-            
-            // Save agent state
-            agent.save("${checkpointPath}_agent.json")
-            
-            // Save training metrics
-            saveTrainingMetrics(checkpointPath)
-            
-            lastCheckpointEpisode = episode
-            println("💾 Checkpoint saved: $checkpointPath")
-            
-        } catch (e: Exception) {
-            println("⚠️ Failed to create checkpoint: ${e.message}")
-        }
-    }
-    
-    /**
-     * Create final checkpoint with complete results
-     */
-    private fun createFinalCheckpoint() {
-        try {
-            val finalPath = "${config.checkpointDir}/final_checkpoint"
-            
-            // Save agent
-            agent.save("${finalPath}_agent.json")
-            
-            // Save complete training history
-            saveTrainingMetrics(finalPath)
-            
-            println("💾 Final checkpoint saved: $finalPath")
-            
-        } catch (e: Exception) {
-            println("⚠️ Failed to create final checkpoint: ${e.message}")
-        }
-    }
-    
-    /**
-     * Save training metrics to file
-     */
-    private fun saveTrainingMetrics(basePath: String) {
-        // In a full implementation, this would serialize metrics to JSON/CSV
-        // For now, we'll create a summary text file
-        
-        val summary = buildString {
-            appendLine("Chess RL Training Metrics")
-            appendLine("========================")
-            appendLine("Episode: $currentEpisode")
-            appendLine("Total Steps: $totalSteps")
-            appendLine("Best Performance: $bestPerformance")
-            appendLine("Experience Buffer Size: ${experienceBuffer.size}")
-            appendLine("Batch Updates: ${batchMetrics.size}")
-            appendLine()
-            
-            if (trainingHistory.isNotEmpty()) {
-                val avgReward = trainingHistory.map { it.reward }.average()
-                val avgSteps = trainingHistory.map { it.steps }.average()
-                appendLine("Average Episode Reward: ${avgReward}")
-                appendLine("Average Episode Length: ${avgSteps}")
-                appendLine()
-            }
-            
-            if (batchMetrics.isNotEmpty()) {
-                val avgLoss = batchMetrics.map { it.averageLoss }.average()
-                val avgEntropy = batchMetrics.map { it.averagePolicyEntropy }.average()
-                appendLine("Average Batch Loss: ${avgLoss}")
-                appendLine("Average Policy Entropy: ${avgEntropy}")
-            }
-        }
-        
-        // In practice, would write to file system
-        println("📝 Training summary generated (${summary.length} chars)")
-    }
-    
-    /**
-     * Check if training should stop early
-     */
-    private fun shouldStopEarly(): Boolean {
-        if (!config.enableEarlyStopping) return false
-        
-        if (recentPerformance.size < config.earlyStoppingWindow) return false
-        
-        val recentAvg = recentPerformance.average()
-        return recentAvg >= config.earlyStoppingThreshold
+        println("   Agent Exploration: ${agent.getTrainingMetrics().explorationRate}")
     }
     
     /**
      * Calculate final training metrics
      */
-    private fun calculateFinalMetrics(): FinalTrainingMetrics {
-        val totalReward = trainingHistory.sumOf { it.reward }
-        val avgReward = if (trainingHistory.isNotEmpty()) totalReward / trainingHistory.size else 0.0
-        val avgSteps = if (trainingHistory.isNotEmpty()) {
-            trainingHistory.map { it.steps }.average()
-        } else {
-            0.0
+    private fun calculateFinalMetrics(): TrainingFinalMetrics {
+        if (trainingMetrics.isEmpty()) {
+            return TrainingFinalMetrics(
+                totalEpisodes = 0,
+                averageReward = 0.0,
+                bestReward = 0.0,
+                averageSteps = 0.0,
+                totalExperiences = 0,
+                convergenceEpisode = null
+            )
         }
         
-        // Game outcome statistics
-        val wins = trainingHistory.count { it.gameResult.contains("WINS") }
-        val draws = trainingHistory.count { it.gameResult.contains("DRAW") }
-        val losses = trainingHistory.size - wins - draws
+        val rewards = trainingMetrics.map { it.reward }
+        val steps = trainingMetrics.map { it.steps }
         
-        val winRate = if (trainingHistory.isNotEmpty()) wins.toDouble() / trainingHistory.size else 0.0
-        val drawRate = if (trainingHistory.isNotEmpty()) draws.toDouble() / trainingHistory.size else 0.0
-        val lossRate = if (trainingHistory.isNotEmpty()) losses.toDouble() / trainingHistory.size else 0.0
+        return TrainingFinalMetrics(
+            totalEpisodes = trainingMetrics.size,
+            averageReward = rewards.average(),
+            bestReward = rewards.maxOrNull() ?: 0.0,
+            averageSteps = steps.average(),
+            totalExperiences = experienceBuffer.size,
+            convergenceEpisode = detectConvergence()
+        )
+    }
+    
+    /**
+     * Detect if training has converged
+     */
+    private fun detectConvergence(): Int? {
+        if (trainingMetrics.size < 100) return null
         
-        // Batch training statistics
-        val totalBatchUpdates = batchMetrics.sumOf { it.updatesPerformed }
-        val avgBatchLoss = if (batchMetrics.isNotEmpty()) {
-            batchMetrics.map { it.averageLoss }.average()
+        val recentRewards = trainingMetrics.takeLast(50).map { it.reward }
+        val earlierRewards = trainingMetrics.dropLast(50).takeLast(50).map { it.reward }
+        
+        val recentAvg = recentRewards.average()
+        val earlierAvg = earlierRewards.average()
+        
+        // Consider converged if improvement is less than 1%
+        return if (kotlin.math.abs(recentAvg - earlierAvg) / kotlin.math.abs(earlierAvg) < 0.01) {
+            trainingMetrics.size - 50
         } else {
-            0.0
+            null
         }
-        
-        return FinalTrainingMetrics(
-            totalEpisodes = currentEpisode,
-            totalSteps = totalSteps,
+    }
+    
+    /**
+     * Get current training state
+     */
+    fun getTrainingState(): TrainingState {
+        return TrainingState(
+            episodeCount = episodeCount,
             totalReward = totalReward,
-            averageReward = avgReward,
-            bestReward = bestPerformance,
-            averageGameLength = avgSteps,
-            winRate = winRate,
-            drawRate = drawRate,
-            lossRate = lossRate,
-            totalBatchUpdates = totalBatchUpdates,
-            averageBatchLoss = avgBatchLoss,
-            finalBufferSize = experienceBuffer.size
+            averageReward = if (episodeCount > 0) totalReward / episodeCount else 0.0,
+            experienceBufferSize = experienceBuffer.size,
+            agentMetrics = agent.getTrainingMetrics()
         )
     }
     
     /**
-     * Get current training statistics
+     * Reset training state
      */
-    fun getCurrentStatistics(): TrainingStatistics {
-        val avgReward = if (trainingHistory.isNotEmpty()) {
-            trainingHistory.map { it.reward }.average()
-        } else {
-            0.0
-        }
-        
-        val recentAvgReward = if (recentPerformance.isNotEmpty()) {
-            recentPerformance.average()
-        } else {
-            0.0
-        }
-        
-        return TrainingStatistics(
-            currentEpisode = currentEpisode,
-            totalSteps = totalSteps,
-            averageReward = avgReward,
-            recentAverageReward = recentAvgReward,
-            bestPerformance = bestPerformance,
-            bufferSize = experienceBuffer.size,
-            batchUpdates = batchMetrics.size
-        )
+    fun reset() {
+        experienceBuffer.clear()
+        episodeCount = 0
+        totalReward = 0.0
+        trainingMetrics.clear()
+        agent.reset()
     }
     
     /**
-     * Pause training (for interactive control)
+     * Get the agent being trained
      */
-    fun pause() {
-        println("⏸️ Training paused")
-    }
+    fun getAgent(): ChessAgent = agent
     
     /**
-     * Resume training (for interactive control)
+     * Get the training environment
      */
-    fun resume() {
-        println("▶️ Training resumed")
-    }
-    
-    /**
-     * Stop training gracefully
-     */
-    fun stop() {
-        println("🛑 Training stopped by user")
-        createFinalCheckpoint()
-    }
+    fun getEnvironment(): ChessEnvironment = environment
 }
 
 /**
- * Configuration for the training pipeline
+ * Configuration for training pipeline
  */
 data class TrainingPipelineConfig(
-    // Episode configuration
     val maxStepsPerEpisode: Int = 200,
-    
-    // Batch training configuration
-    val batchSize: Int = 64,
-    val batchTrainingFrequency: Int = 1, // Train every N episodes
-    val updatesPerBatch: Int = 1, // Multiple updates per batch
-    val samplingStrategy: SamplingStrategy = SamplingStrategy.MIXED,
-    
-    // Experience buffer configuration
-    val maxBufferSize: Int = 50000,
-    
-    // Monitoring and reporting
-    val progressReportInterval: Int = 100,
-    val checkpointInterval: Int = 1000,
-    val checkpointDir: String = "checkpoints",
-    
-    // Training validation
-    val gradientClipThreshold: Double = 10.0,
-    val minPolicyEntropy: Double = 0.1,
-    
-    // Early stopping
-    val enableEarlyStopping: Boolean = false,
-    val earlyStoppingWindow: Int = 200,
-    val earlyStoppingThreshold: Double = 0.8
+    val batchSize: Int = 32,
+    val batchTrainingFrequency: Int = 1,
+    val maxBufferSize: Int = 10000,
+    val progressReportInterval: Int = 10,
+    val samplingStrategy: SamplingStrategy = SamplingStrategy.MIXED
 )
 
 /**
- * Sampling strategies for batch training
+ * Sampling strategies for experience replay
  */
 enum class SamplingStrategy {
-    UNIFORM,    // Random sampling from entire buffer
-    RECENT,     // Sample most recent experiences
-    MIXED       // Mix of recent and random experiences
+    RECENT,    // Use most recent experiences
+    RANDOM,    // Random sampling
+    MIXED      // Mix of recent and random
 }
 
 /**
@@ -662,56 +301,21 @@ data class TrainingEpisodeMetrics(
     val episode: Int,
     val reward: Double,
     val steps: Int,
-    val gameResult: String,
     val duration: Long,
-    val bufferSize: Int,
-    val explorationRate: Double,
-    val chessMetrics: ChessMetrics
+    val averageReward: Double,
+    val agentMetrics: ChessAgentMetrics
 )
 
 /**
- * Metrics for batch training
+ * Result of a single training episode
  */
-data class BatchTrainingMetrics(
+data class TrainingEpisodeResult(
     val episode: Int,
-    val batchSize: Int,
-    val updatesPerformed: Int,
-    val averageLoss: Double,
-    val averageGradientNorm: Double,
-    val averagePolicyEntropy: Double,
+    val reward: Double,
+    val steps: Int,
     val duration: Long,
-    val bufferUtilization: Double
-)
-
-/**
- * Current training statistics
- */
-data class TrainingStatistics(
-    val currentEpisode: Int,
-    val totalSteps: Int,
-    val averageReward: Double,
-    val recentAverageReward: Double,
-    val bestPerformance: Double,
-    val bufferSize: Int,
-    val batchUpdates: Int
-)
-
-/**
- * Final training metrics
- */
-data class FinalTrainingMetrics(
-    val totalEpisodes: Int,
-    val totalSteps: Int,
-    val totalReward: Double,
-    val averageReward: Double,
-    val bestReward: Double,
-    val averageGameLength: Double,
-    val winRate: Double,
-    val drawRate: Double,
-    val lossRate: Double,
-    val totalBatchUpdates: Int,
-    val averageBatchLoss: Double,
-    val finalBufferSize: Int
+    val experiences: List<Experience<DoubleArray, Int>>,
+    val metrics: TrainingEpisodeMetrics
 )
 
 /**
@@ -719,11 +323,31 @@ data class FinalTrainingMetrics(
  */
 data class TrainingResults(
     val totalEpisodes: Int,
-    val totalSteps: Int,
-    val trainingDuration: Long,
-    val bestPerformance: Double,
-    val episodeHistory: List<TrainingEpisodeMetrics>,
-    val batchHistory: List<BatchTrainingMetrics>,
-    val finalMetrics: FinalTrainingMetrics
+    val totalDuration: Long,
+    val episodeResults: List<TrainingEpisodeResult>,
+    val finalMetrics: TrainingFinalMetrics,
+    val agentConfig: ChessAgentConfig
 )
 
+/**
+ * Final training metrics summary
+ */
+data class TrainingFinalMetrics(
+    val totalEpisodes: Int,
+    val averageReward: Double,
+    val bestReward: Double,
+    val averageSteps: Double,
+    val totalExperiences: Int,
+    val convergenceEpisode: Int?
+)
+
+/**
+ * Current training state
+ */
+data class TrainingState(
+    val episodeCount: Int,
+    val totalReward: Double,
+    val averageReward: Double,
+    val experienceBufferSize: Int,
+    val agentMetrics: ChessAgentMetrics
+)

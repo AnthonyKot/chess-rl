@@ -153,10 +153,9 @@ class AdvancedMetricsCollector(
         
         gameResults.forEach { result ->
             when (result.terminationReason) {
-                "CHECKMATE", "STALEMATE", "DRAW" -> naturalTerminations++
-                "STEP_LIMIT" -> stepLimitTerminations++
-                "MANUAL" -> manualTerminations++
-                else -> errorTerminations++
+                EpisodeTerminationReason.GAME_ENDED -> naturalTerminations++
+                EpisodeTerminationReason.STEP_LIMIT -> stepLimitTerminations++
+                EpisodeTerminationReason.MANUAL -> manualTerminations++
             }
         }
         

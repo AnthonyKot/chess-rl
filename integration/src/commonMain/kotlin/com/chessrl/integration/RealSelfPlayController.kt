@@ -15,7 +15,7 @@ class RealSelfPlayController(
     
     private var isRunning = false
     private var currentSession: SelfPlaySession? = null
-    private val gameResults = mutableListOf<GameResult>()
+    private val gameResults = mutableListOf<SelfPlayGameResult>()
     private val experienceBuffer = com.chessrl.rl.CircularExperienceBuffer<DoubleArray, Int>(maxSize = config.maxExperiences)
     
     // Chess components
@@ -132,23 +132,21 @@ class RealSelfPlayController(
      */
     private fun generateSelfPlayGames(numGames: Int): List<SelfPlayGameResult> {
         val games = mutableListOf<SelfPlayGameResult>()
-        
         repeat(numGames) { gameIndex ->
-            val gameResult = playGame(gameIndex)
-            val selfPlayResult = gameResult.toSelfPlayGameResult()
-            games.add(selfPlayResult)
-            gameResults.add(gameResult)
+            val result = playGame(gameIndex)
+            games.add(result)
+            gameResults.add(result)
         }
-        
         return games
     }
     
     /**
      * Play a single game between the agents
      */
-    private fun playGame(gameIndex: Int): GameResult {
+    private fun playGame(gameIndex: Int): SelfPlayGameResult {
         val game = ChessGame()
         val moves = mutableListOf<GameMove>()
+        val experiences = mutableListOf<Experience<DoubleArray, Int>>()
         var moveCount = 0
         val maxMoves = 200 // Prevent infinite games
         
@@ -195,6 +193,7 @@ class RealSelfPlayController(
                     nextState = stepResult.nextState,
                     done = stepResult.done
                 )
+                experiences.add(experience)
                 currentAgent.learn(experience)
                 
                 currentState = stepResult.nextState
@@ -218,6 +217,7 @@ class RealSelfPlayController(
                     nextState = stepResult.nextState,
                     done = stepResult.done
                 )
+                experiences.add(experience)
                 currentAgent.learn(experience)
                 
                 currentState = stepResult.nextState
@@ -249,13 +249,14 @@ class RealSelfPlayController(
             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" // Starting position as fallback
         }
         
-        return GameResult(
+        return SelfPlayGameResult(
             gameId = gameIndex,
-            moves = moves,
-            outcome = outcome,
-            moveCount = moveCount,
-            duration = 0L, // Would need to track actual duration
+            gameLength = moveCount,
+            gameOutcome = outcome,
             terminationReason = terminationReason,
+            gameDuration = 0L,
+            experiences = experiences,
+            chessMetrics = chessEnvironment.getChessMetrics(),
             finalPosition = finalPosition
         )
     }
@@ -267,27 +268,8 @@ class RealSelfPlayController(
         var experiencesAdded = 0
         
         for (game in games) {
-            // Add all experiences from the game
-            for (experience in game.experiences) {
-                experienceBuffer.add(experience)
-                experiencesAdded++
-            }
-            
-            // Mark final experience as done if not already
-            if (game.experiences.isNotEmpty()) {
-                val finalExperience = game.experiences.last()
-                if (!finalExperience.done) {
-                    val updatedFinalExperience = Experience(
-                        state = finalExperience.state,
-                        action = finalExperience.action,
-                        reward = calculateFinalReward(game.gameOutcome),
-                        nextState = finalExperience.nextState,
-                        done = true
-                    )
-                    experienceBuffer.add(updatedFinalExperience)
-                    experiencesAdded++
-                }
-            }
+            game.experiences.forEach { experienceBuffer.add(it) }
+            experiencesAdded += game.experiences.size
         }
         
         return experiencesAdded
@@ -336,7 +318,7 @@ class RealSelfPlayController(
         if (gameResults.size < 100) return false
         
         val recentGames = gameResults.takeLast(50)
-        val winRate = recentGames.count { it.outcome != GameOutcome.DRAW }.toDouble() / recentGames.size
+        val winRate = recentGames.count { it.gameOutcome != GameOutcome.DRAW }.toDouble() / recentGames.size
         
         // Stop if we're seeing too many draws (might indicate convergence)
         return winRate < 0.1
@@ -370,11 +352,11 @@ class RealSelfPlayController(
         return if (session != null) {
             val recentGames = gameResults.takeLast(50)
             val winRate = if (recentGames.isNotEmpty()) {
-                recentGames.count { it.outcome != GameOutcome.DRAW }.toDouble() / recentGames.size
+                recentGames.count { it.gameOutcome != GameOutcome.DRAW }.toDouble() / recentGames.size
             } else 0.0
             
             val avgGameLength = if (recentGames.isNotEmpty()) {
-                recentGames.map { it.moveCount }.average()
+                recentGames.map { it.gameLength }.average()
             } else 0.0
             
             SelfPlayMetrics(
@@ -472,52 +454,4 @@ data class GameMove(
     val nextState: DoubleArray
 )
 
-/**
- * Result of a completed game - aligned with unified SelfPlayGameResult model
- */
-data class GameResult(
-    val gameId: Int,
-    val moves: List<GameMove>,
-    val outcome: GameOutcome,
-    val moveCount: Int,
-    val duration: Long,
-    // Additional fields to align with SelfPlayGameResult
-    val terminationReason: EpisodeTerminationReason = EpisodeTerminationReason.GAME_ENDED,
-    val finalPosition: String = ""
-) {
-    /**
-     * Convert to unified SelfPlayGameResult model
-     */
-    fun toSelfPlayGameResult(chessMetrics: ChessMetrics = ChessMetrics(
-        gameLength = moveCount,
-        totalMaterialValue = 0, // Would need to calculate from final position
-        piecesInCenter = 0, // Would need to calculate from final position
-        developedPieces = 0, // Would need to calculate from final position
-        kingSafetyScore = 0.0, // Would need to calculate from final position
-        moveCount = moveCount,
-        captureCount = 0, // Would need to track during game
-        checkCount = 0 // Would need to track during game
-    )): SelfPlayGameResult {
-        val experiences = moves.map { move ->
-            Experience(
-                state = move.state,
-                action = move.action,
-                reward = move.reward,
-                nextState = move.nextState,
-                done = false
-            )
-        }
-        
-        return SelfPlayGameResult(
-            gameId = gameId,
-            gameLength = moveCount,
-            gameOutcome = outcome,
-            terminationReason = terminationReason,
-            gameDuration = duration,
-            experiences = experiences,
-            chessMetrics = chessMetrics,
-            finalPosition = finalPosition
-        )
-    }
-}
-
+// Legacy GameResult removed; controller now emits SelfPlayGameResult directly.

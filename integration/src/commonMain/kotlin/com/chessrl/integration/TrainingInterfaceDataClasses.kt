@@ -352,11 +352,7 @@ data class ConfigurationSnapshot(
 /**
  * Configuration validation result
  */
-data class ConfigurationValidationResult(
-    val isValid: Boolean,
-    val errors: List<String>,
-    val warnings: List<String>
-)
+// Note: Use ConfigurationValidationResult from TrainingConfiguration.kt
 
 // Command classes
 
@@ -497,84 +493,17 @@ class ChessStateEncoder {
 /**
  * Chess action encoder for converting between moves and action indices
  */
-class ChessActionEncoder {
-    companion object {
-        const val ACTION_SPACE_SIZE = 4096
-    }
-    
-    fun encodeMove(move: Move): Int {
-        // Simplified encoding - would implement full move encoding
-        return move.from.rank * 64 + move.from.file * 8 + move.to.rank + move.to.file
-    }
-    
-    fun decodeAction(actionIndex: Int): Move {
-        // Simplified decoding - would implement full action decoding
-        val fromRank = actionIndex / 64
-        val remainder = actionIndex % 64
-        val fromFile = remainder / 8
-        val toRank = remainder % 8
-        val toFile = actionIndex % 8
-        
-        return Move(
-            from = Position(fromRank.coerceIn(0, 7), fromFile.coerceIn(0, 7)),
-            to = Position(toRank.coerceIn(0, 7), toFile.coerceIn(0, 7))
-        )
-    }
-}
+// Note: Use ChessActionEncoder from ChessEnvironment.kt
 
 /**
  * Chess agent factory for creating agents with different configurations
  */
-object ChessAgentFactory {
-    fun createDQNAgent(
-        hiddenLayers: List<Int>,
-        learningRate: Double,
-        explorationRate: Double,
-        config: ChessAgentConfig? = null
-    ): ChessAgent {
-        // Create real DQN agent using actual neural networks
-        val realAgent = RealChessAgentFactory.createRealDQNAgent(
-            inputSize = ChessStateEncoder.TOTAL_FEATURES,
-            outputSize = ChessActionEncoder.ACTION_SPACE_SIZE,
-            hiddenLayers = hiddenLayers,
-            learningRate = learningRate,
-            explorationRate = explorationRate,
-            batchSize = config?.batchSize ?: 32,
-            maxBufferSize = config?.maxBufferSize ?: 10000
-        )
-        
-        return RealChessAgentAdapter(realAgent)
-    }
-    
-    fun createPolicyGradientAgent(
-        hiddenLayers: List<Int>,
-        learningRate: Double,
-        temperature: Double,
-        config: ChessAgentConfig? = null
-    ): ChessAgent {
-        // Create real Policy Gradient agent using actual neural networks
-        val realAgent = RealChessAgentFactory.createRealPolicyGradientAgent(
-            inputSize = ChessStateEncoder.TOTAL_FEATURES,
-            outputSize = ChessActionEncoder.ACTION_SPACE_SIZE,
-            hiddenLayers = hiddenLayers,
-            learningRate = learningRate,
-            temperature = temperature,
-            batchSize = config?.batchSize ?: 32
-        )
-        
-        return RealChessAgentAdapter(realAgent)
-    }
-}
+// Note: Use ChessAgentFactory in ChessAgentFactory.kt
 
 /**
  * Chess agent configuration
  */
-data class ChessAgentConfig(
-    val batchSize: Int = 64,
-    val maxBufferSize: Int = 50000,
-    val targetUpdateFrequency: Int = 100,
-    val enableDoubleQ: Boolean = true
-)
+// Note: Use ChessAgentConfig from ChessAgent.kt
 
 // Extension functions for chess operations
 
@@ -620,7 +549,4 @@ fun ChessEnvironment.makeMove(move: Move): MoveResult {
 /**
  * Move execution result
  */
-data class MoveResult(
-    val success: Boolean,
-    val error: String?
-)
+// Note: Use MoveResult from chess-engine
