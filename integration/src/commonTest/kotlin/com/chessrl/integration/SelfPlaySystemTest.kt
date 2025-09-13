@@ -1,6 +1,7 @@
 package com.chessrl.integration
 
 import kotlin.test.*
+import kotlin.math.abs
 
 /**
  * Tests for the self-play training system
@@ -129,15 +130,15 @@ class SelfPlaySystemTest {
         assertTrue(qualityAnalysis.averageGameLength > 0, "Should have average game length")
         assertTrue(qualityAnalysis.gameCompletionRate >= 0.0 && qualityAnalysis.gameCompletionRate <= 1.0, 
                   "Completion rate should be valid")
-        assertTrue(qualityAnalysis.moveVariety >= 0.0, "Move variety should be non-negative")
-        assertTrue(qualityAnalysis.tacticalComplexity >= 0.0, "Tactical complexity should be non-negative")
+        assertTrue(qualityAnalysis.legalMoveRate >= 0.0, "Legal move rate should be non-negative")
+        assertTrue(qualityAnalysis.qualityScore >= 0.0, "Quality score should be non-negative")
         
         println("✅ Game quality analysis verified")
         println("   Total Games: ${qualityAnalysis.totalGames}")
         println("   Avg Game Length: ${qualityAnalysis.averageGameLength}")
         println("   Completion Rate: ${(qualityAnalysis.gameCompletionRate * 100)}%")
-        println("   Move Variety: ${qualityAnalysis.moveVariety}")
-        println("   Tactical Complexity: ${qualityAnalysis.tacticalComplexity}")
+        println("   Legal Move Rate: ${qualityAnalysis.legalMoveRate}")
+        println("   Quality Score: ${qualityAnalysis.qualityScore}")
     }
     
     @Test

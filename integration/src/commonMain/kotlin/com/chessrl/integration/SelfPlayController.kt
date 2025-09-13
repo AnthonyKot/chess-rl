@@ -1,5 +1,6 @@
 package com.chessrl.integration
 
+import com.chessrl.chess.PieceColor
 import com.chessrl.rl.*
 import com.chessrl.nn.*
 import kotlin.math.*
@@ -365,11 +366,11 @@ class SelfPlayController(
      * Calculate overall quality score
      */
     private fun calculateOverallQuality(
-        gameQuality: GameQualityAnalysis,
+        gameQuality: SelfPlayGameQualityAnalysis,
         trainingEfficiency: Double,
         learningProgress: Double
     ): Double {
-        val gameScore = (gameQuality.gameCompletionRate + gameQuality.moveVariety + gameQuality.tacticalComplexity) / 3.0
+        val gameScore = (gameQuality.gameCompletionRate + gameQuality.legalMoveRate + gameQuality.qualityScore) / 3.0
         return (gameScore + trainingEfficiency + learningProgress) / 3.0
     }
 }
@@ -447,7 +448,7 @@ data class SelfPlayMove(
  * Self-play training quality analysis
  */
 data class SelfPlayQualityAnalysis(
-    val gameQuality: GameQualityAnalysis,
+    val gameQuality: SelfPlayGameQualityAnalysis,
     val trainingEfficiency: Double,
     val learningProgress: Double,
     val overallQualityScore: Double
