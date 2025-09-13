@@ -2,13 +2,18 @@
 
 ## Introduction
 
-This feature implements a simplified reinforcement learning algorithm that enables a bot to learn chess through self-play. The system will be built using Kotlin with native image compilation support and consists of three modular components:
+This feature implements a production-ready reinforcement learning system that enables a bot to learn chess through self-play. The system is built using Kotlin Multiplatform with JVM optimization for training performance and consists of four modular components:
 
-1. **RL Microframework**: A reusable reinforcement learning framework
-2. **Chess Implementation**: A chess game engine with API that could be extended for human play
-3. **Neural Network Package**: A custom neural network library suitable for training and integration with the RL framework
+1. **Neural Network Package**: A comprehensive neural network library with advanced training features
+2. **Chess Engine**: A complete chess game implementation with full rule support
+3. **RL Framework**: A flexible reinforcement learning framework supporting multiple algorithms
+4. **Integration Layer**: A chess-specific RL integration with comprehensive training pipeline
 
-The system will use basic RL techniques to train an agent that can play chess against itself, gradually improving its gameplay through experience and learning from wins, losses, and draws.
+The system uses advanced RL techniques (DQN, Policy Gradient) to train agents through self-play, with sophisticated training validation, debugging tools, and performance monitoring. Based on implementation experience, the system prioritizes JVM performance for training workloads while maintaining native compilation capability for deployment scenarios.
+
+## Updated Requirements Based on Implementation Experience
+
+*Requirements have been refined based on Tasks 1-8 implementation experience to address real-world complexity and reduce project completion risks.*
 
 ## Requirements
 
@@ -119,28 +124,69 @@ The system will use basic RL techniques to train an agent that can play chess ag
 5. WHEN learning occurs THEN it SHALL use game outcomes to provide rewards for RL training
 6. IF integration issues arise THEN they SHALL be resolved with clear component interfaces
 
-### Requirement 8 - Self-Play and Training System (Complexity: Complex - May Need Human Help)
+### Requirement 8 - Advanced Self-Play Training System (Complexity: Very Complex - Requires Sophisticated Implementation)
 
-**User Story:** As a developer, I want to implement self-play training where the bot plays against itself, so that it can generate training data and improve through experience.
-
-#### Acceptance Criteria
-
-1. WHEN self-play begins THEN the system SHALL alternate moves between agent instances
-2. WHEN games are played THEN it SHALL collect complete game histories for training
-3. WHEN training occurs THEN it SHALL use self-play data to improve the neural network
-4. WHEN multiple games are completed THEN it SHALL accumulate experience and show learning progress
-5. WHEN the system runs THEN it SHALL balance exploration and exploitation during training
-6. IF training stalls or diverges THEN it SHALL provide diagnostic information and recovery mechanisms
-
-### Requirement 9 - Training Interface and Monitoring (Complexity: Simple - Coding Agent)
-
-**User Story:** As a developer, I want a simple interface to control training and monitor progress, so that I can run experiments and track learning effectiveness.
+**User Story:** As a developer, I want to implement a comprehensive self-play training system with advanced experience collection, batch processing, and training validation, so that the bot can efficiently learn chess through large-scale self-play with robust monitoring and debugging capabilities.
 
 #### Acceptance Criteria
 
-1. WHEN the interface starts THEN it SHALL provide controls to begin, pause, and stop training
-2. WHEN training runs THEN it SHALL display real-time metrics like win rates, game lengths, and learning progress
-3. WHEN parameters are adjusted THEN it SHALL validate and apply configuration changes
-4. WHEN training completes THEN it SHALL save agent states and neural network weights
-5. WHEN the system is built THEN it SHALL support native image compilation for optimal performance
-6. IF errors occur THEN it SHALL provide clear messages and recovery options
+1. WHEN self-play training begins THEN the system SHALL support concurrent game generation with configurable parallelism
+2. WHEN games are played THEN it SHALL collect experiences with detailed episode tracking (natural termination vs step limits vs manual)
+3. WHEN experience collection occurs THEN it SHALL implement multiple sampling strategies (uniform, recent, mixed) for diverse training data
+4. WHEN batch training occurs THEN it SHALL optimize for 32-128 batch sizes with efficient memory management for 50K+ experiences
+5. WHEN training progresses THEN it SHALL provide comprehensive metrics including win/loss/draw rates, game quality, and convergence indicators
+6. WHEN training validation occurs THEN it SHALL detect and diagnose training issues (exploding gradients, policy collapse, insufficient exploration)
+7. WHEN checkpointing occurs THEN it SHALL save training state, model weights, and performance history with recovery capabilities
+8. WHEN training encounters issues THEN it SHALL provide automated recovery mechanisms and detailed diagnostic information
+9. IF memory limits are approached THEN it SHALL implement efficient buffer management with configurable cleanup strategies
+10. IF training performance degrades THEN it SHALL support hyperparameter adjustment and training strategy modification
+
+### Requirement 9 - Production Training Interface and Monitoring (Complexity: Moderate - Requires Comprehensive Implementation)
+
+**User Story:** As a developer, I want a comprehensive training interface with advanced monitoring, debugging tools, and interactive analysis capabilities, so that I can efficiently manage large-scale training experiments and analyze agent performance.
+
+#### Acceptance Criteria
+
+1. WHEN the interface starts THEN it SHALL provide comprehensive training control (start, pause, resume, stop, restart) with training state persistence
+2. WHEN training runs THEN it SHALL display real-time metrics including episode termination analysis, training efficiency, and performance trends
+3. WHEN monitoring occurs THEN it SHALL provide interactive game analysis with move-by-move evaluation and position assessment
+4. WHEN debugging is needed THEN it SHALL offer manual validation tools for inspecting agent decision-making and neural network outputs
+5. WHEN parameters are adjusted THEN it SHALL support live configuration updates with validation and rollback capabilities
+6. WHEN training analysis occurs THEN it SHALL provide learning curve visualization, convergence analysis, and performance comparison tools
+7. WHEN training completes THEN it SHALL generate comprehensive reports with training statistics, model performance, and recommendations
+8. WHEN the system is deployed THEN it SHALL support both JVM (training) and native (deployment) compilation targets with performance optimization
+9. IF training issues occur THEN it SHALL provide automated diagnosis, suggested fixes, and manual intervention capabilities
+10. IF performance optimization is needed THEN it SHALL provide profiling tools and resource utilization monitoring
+
+### Requirement 10 - Performance and Scalability (Complexity: Moderate - Implementation Experience Required)
+
+**User Story:** As a developer, I want the system to handle large-scale training efficiently with clear performance characteristics, so that I can train effective chess agents within reasonable time and resource constraints.
+
+#### Acceptance Criteria
+
+1. WHEN training performance is measured THEN the system SHALL achieve 5-8x faster training on JVM compared to native compilation
+2. WHEN batch processing occurs THEN it SHALL efficiently handle 32-128 batch sizes with optimized memory usage (100-500MB typical)
+3. WHEN experience collection occurs THEN it SHALL maintain throughput of 5-7 episodes per second in test configurations
+4. WHEN large-scale training occurs THEN it SHALL support experience buffers of 50K+ experiences with efficient circular buffer management
+5. WHEN memory management occurs THEN it SHALL implement configurable cleanup strategies and prevent memory leaks during long training sessions
+6. WHEN training scales up THEN it SHALL support concurrent self-play games with configurable parallelism levels
+7. WHEN performance monitoring occurs THEN it SHALL provide detailed metrics on training speed, memory usage, and resource utilization
+8. IF performance degrades THEN it SHALL provide diagnostic tools and optimization recommendations
+9. IF resource limits are approached THEN it SHALL implement graceful degradation and resource management strategies
+
+### Requirement 11 - Training Validation and Debugging (Complexity: Complex - Requires Domain Expertise)
+
+**User Story:** As a developer, I want comprehensive training validation and debugging tools, so that I can ensure training quality, diagnose issues, and optimize agent performance effectively.
+
+#### Acceptance Criteria
+
+1. WHEN training validation occurs THEN it SHALL detect common RL training issues (exploding/vanishing gradients, policy collapse, value overestimation)
+2. WHEN policy updates occur THEN it SHALL validate gradient norms, policy entropy, and learning progress with configurable thresholds
+3. WHEN chess-specific validation occurs THEN it SHALL analyze game quality, move diversity, position evaluation accuracy, and strategic understanding
+4. WHEN convergence analysis occurs THEN it SHALL detect training stagnation, oscillation, and divergence with automated recommendations
+5. WHEN debugging tools are used THEN they SHALL provide neural network output visualization, move probability analysis, and position evaluation display
+6. WHEN manual validation occurs THEN it SHALL support interactive game inspection, agent vs human play, and position-specific analysis
+7. WHEN training issues are detected THEN it SHALL provide automated diagnosis, suggested parameter adjustments, and recovery strategies
+8. WHEN training quality assessment occurs THEN it SHALL compare agent performance against baseline metrics and historical performance
+9. IF training fails to converge THEN it SHALL provide detailed analysis of potential causes and recommended interventions
+10. IF agent performance degrades THEN it SHALL support rollback to previous model states and incremental retraining strategies

@@ -187,6 +187,15 @@ class ChessTrainingPipeline(
             }
         }
         
+        // Signal episode completion to agent
+        if (gameResult == "completed" || gameResult.contains("mate") || gameResult.contains("draw")) {
+            // Natural game termination
+            agent.completeEpisodeManually(EpisodeTerminationReason.GAME_ENDED)
+        } else {
+            // Step limit or other termination
+            agent.completeEpisodeManually(EpisodeTerminationReason.STEP_LIMIT)
+        }
+        
         // Add episode experiences to main buffer
         experienceBuffer.addAll(episodeBuffer)
         

@@ -32,6 +32,7 @@ class ChessAgentIntegrationTest {
             var episodeReward = 0.0
             var stepCount = 0
             val maxSteps = 20 // Short episodes for testing
+            var episodeEnded = false
             
             while (!environment.isTerminal(state) && stepCount < maxSteps) {
                 val validActions = environment.getValidActions(state)
@@ -54,17 +55,34 @@ class ChessAgentIntegrationTest {
                 episodeReward += stepResult.reward
                 stepCount++
                 
-                if (stepResult.done) break
+                if (stepResult.done) {
+                    episodeEnded = true
+                    break
+                }
+            }
+            
+            // If episode didn't end naturally, complete it manually
+            if (!episodeEnded) {
+                agent.completeEpisodeManually()
             }
             
             totalReward += episodeReward
-            println("Episode $episode: Reward=$episodeReward, Steps=$stepCount")
+            println("Episode $episode: Reward=$episodeReward, Steps=$stepCount, Ended=${if (episodeEnded) "naturally" else "step limit"}")
         }
         
         // Verify agent has learned something
         val metrics = agent.getTrainingMetrics()
-        assertTrue(metrics.episodeCount >= episodes, "Agent should have completed episodes")
-        assertTrue(metrics.experienceBufferSize > 0, "Agent should have collected experiences")
+        assertTrue(metrics.episodeCount >= episodes, "Agent should have completed $episodes episodes, but completed ${metrics.episodeCount}")
+        assertTrue(metrics.experienceBufferSize > 0, "Agent should have collected experiences, but buffer size is ${metrics.experienceBufferSize}")
+        
+        // Print detailed metrics
+        println("📊 Training Metrics:")
+        println("  Episodes completed: ${metrics.episodeCount}")
+        println("  - Game ended: ${metrics.gameEndedEpisodes}")
+        println("  - Step limit: ${metrics.stepLimitEpisodes}")
+        println("  - Manual: ${metrics.manualEpisodes}")
+        println("  Experience buffer: ${metrics.experienceBufferSize}")
+        println("  Average reward: ${metrics.averageReward}")
         
         println("✅ Complete pipeline test passed")
     }

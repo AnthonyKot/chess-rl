@@ -26,6 +26,11 @@ class ChessAgent(
     private var episodeReward = 0.0
     private var episodeLength = 0
     
+    // Episode termination tracking
+    private var gameEndedEpisodes = 0
+    private var stepLimitEpisodes = 0
+    private var manualEpisodes = 0
+    
     // Performance tracking
     private val recentPerformance = mutableListOf<Double>()
     private var bestPerformance = Double.NEGATIVE_INFINITY
@@ -72,9 +77,18 @@ class ChessAgent(
             performPolicyUpdate()
             
             if (experience.done) {
-                completeEpisode()
+                completeEpisode(EpisodeTerminationReason.GAME_ENDED)
             }
         }
+    }
+    
+    /**
+     * Complete episode manually (e.g., when hitting step limits)
+     */
+    fun completeEpisodeManually(reason: EpisodeTerminationReason = EpisodeTerminationReason.STEP_LIMIT) {
+        // Always complete episode when called manually, even if no steps recorded
+        // This handles cases where external systems (like training pipelines) manage episodes
+        completeEpisode(reason)
     }
     
     /**
@@ -111,9 +125,16 @@ class ChessAgent(
     /**
      * Complete episode and update metrics
      */
-    private fun completeEpisode() {
+    private fun completeEpisode(reason: EpisodeTerminationReason) {
         episodeCount++
         totalReward += episodeReward
+        
+        // Track termination reason
+        when (reason) {
+            EpisodeTerminationReason.GAME_ENDED -> gameEndedEpisodes++
+            EpisodeTerminationReason.STEP_LIMIT -> stepLimitEpisodes++
+            EpisodeTerminationReason.MANUAL -> manualEpisodes++
+        }
         
         // Track recent performance
         recentPerformance.add(episodeReward)
@@ -200,7 +221,10 @@ class ChessAgent(
             bestPerformance = bestPerformance,
             explorationRate = explorationStrategy.getExplorationRate(),
             experienceBufferSize = experienceBuffer.size,
-            episodeLength = episodeLength
+            episodeLength = episodeLength,
+            gameEndedEpisodes = gameEndedEpisodes,
+            stepLimitEpisodes = stepLimitEpisodes,
+            manualEpisodes = manualEpisodes
         )
     }
     
@@ -213,6 +237,9 @@ class ChessAgent(
         totalReward = 0.0
         episodeReward = 0.0
         episodeLength = 0
+        gameEndedEpisodes = 0
+        stepLimitEpisodes = 0
+        manualEpisodes = 0
         recentPerformance.clear()
         bestPerformance = Double.NEGATIVE_INFINITY
     }
@@ -302,6 +329,15 @@ data class ChessAgentConfig(
 )
 
 /**
+ * Episode termination reasons for better tracking
+ */
+enum class EpisodeTerminationReason {
+    GAME_ENDED,     // Natural chess game termination (checkmate, stalemate, draw)
+    STEP_LIMIT,     // Episode ended due to maximum steps reached
+    MANUAL          // Manually terminated episode
+}
+
+/**
  * Training metrics for chess agent
  */
 data class ChessAgentMetrics(
@@ -311,7 +347,10 @@ data class ChessAgentMetrics(
     val bestPerformance: Double,
     val explorationRate: Double,
     val experienceBufferSize: Int,
-    val episodeLength: Int
+    val episodeLength: Int,
+    val gameEndedEpisodes: Int = 0,
+    val stepLimitEpisodes: Int = 0,
+    val manualEpisodes: Int = 0
 )
 
 /**
