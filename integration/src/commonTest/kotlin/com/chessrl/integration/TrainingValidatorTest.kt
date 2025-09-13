@@ -131,7 +131,7 @@ class TrainingValidatorTest {
         val analysis = validator.analyzeConvergence(shortHistory, windowSize = 5)
         
         // Assert
-        assertEquals(ConvergenceStatus.INSUFFICIENT_DATA, analysis.status)
+        assertEquals(com.chessrl.rl.ConvergenceStatus.INSUFFICIENT_DATA, analysis.status)
         assertEquals(0.0, analysis.confidence)
         assertTrue(analysis.recommendations.any { it.contains("Need at least") })
     }
@@ -151,7 +151,7 @@ class TrainingValidatorTest {
         val analysis = validator.analyzeConvergence(improvingHistory, windowSize = 10)
         
         // Assert
-        assertEquals(ConvergenceStatus.IMPROVING, analysis.status)
+        assertEquals(com.chessrl.rl.ConvergenceStatus.IMPROVING, analysis.status)
         assertEquals(TrendDirection.IMPROVING, analysis.trendDirection)
         assertTrue(analysis.rewardTrend > 0, "Reward trend should be positive")
         assertTrue(analysis.lossTrend < 0, "Loss trend should be negative")
@@ -172,7 +172,7 @@ class TrainingValidatorTest {
         val analysis = validator.analyzeConvergence(stagnantHistory, windowSize = 10)
         
         // Assert
-        assertEquals(ConvergenceStatus.STAGNANT, analysis.status)
+        assertEquals(com.chessrl.rl.ConvergenceStatus.STAGNANT, analysis.status)
         assertTrue(analysis.stabilityScore > 0.5, "Should have high stability")
         assertTrue(analysis.recommendations.any { it.contains("stagnated") })
     }

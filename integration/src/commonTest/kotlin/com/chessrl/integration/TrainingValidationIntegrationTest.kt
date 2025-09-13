@@ -147,8 +147,8 @@ class TrainingValidationIntegrationTest {
         
         // Assert - should show progression from unstable to converged
         assertTrue(earlyAnalysis.stabilityScore < 0.5, "Early training should be unstable")
-        assertEquals(ConvergenceStatus.IMPROVING, improvingAnalysis.status)
-        assertEquals(ConvergenceStatus.CONVERGED, convergedAnalysis.status)
+        assertEquals(com.chessrl.rl.ConvergenceStatus.IMPROVING, improvingAnalysis.status)
+        assertEquals(com.chessrl.rl.ConvergenceStatus.CONVERGED, convergedAnalysis.status)
         
         assertEquals(ConvergenceIssue.NORMAL_CONVERGENCE, debugAnalysis.issue)
         assertTrue(debugAnalysis.recommendations.any { it.contains("converging normally") })

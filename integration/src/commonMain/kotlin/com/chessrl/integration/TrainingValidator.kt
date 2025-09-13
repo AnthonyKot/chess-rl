@@ -81,7 +81,7 @@ class TrainingValidator(
         
         if (trainingHistory.size < windowSize) {
             return ConvergenceAnalysis(
-                status = ConvergenceStatus.INSUFFICIENT_DATA,
+                status = com.chessrl.rl.ConvergenceStatus.INSUFFICIENT_DATA,
                 confidence = 0.0,
                 trendDirection = TrendDirection.UNKNOWN,
                 stabilityScore = 0.0,
@@ -435,16 +435,16 @@ class TrainingValidator(
         lossTrend: Double,
         rewardStability: Double,
         lossStability: Double
-    ): ConvergenceStatus {
+    ): com.chessrl.rl.ConvergenceStatus {
         val isStable = rewardStability > config.stabilityThreshold && lossStability > config.stabilityThreshold
         val isImproving = rewardTrend > config.improvementThreshold
         val isLossDecreasing = lossTrend < -config.improvementThreshold
         
         return when {
-            isStable && (isImproving || isLossDecreasing) -> ConvergenceStatus.CONVERGED
-            isImproving || isLossDecreasing -> ConvergenceStatus.IMPROVING
-            isStable -> ConvergenceStatus.CONVERGED
-            else -> ConvergenceStatus.STAGNANT
+            isStable && (isImproving || isLossDecreasing) -> com.chessrl.rl.ConvergenceStatus.CONVERGED
+            isImproving || isLossDecreasing -> com.chessrl.rl.ConvergenceStatus.IMPROVING
+            isStable -> com.chessrl.rl.ConvergenceStatus.CONVERGED
+            else -> com.chessrl.rl.ConvergenceStatus.STAGNANT
         }
     }
     
@@ -461,7 +461,7 @@ class TrainingValidator(
     }
     
     private fun generateConvergenceRecommendations(
-        status: ConvergenceStatus,
+        status: com.chessrl.rl.ConvergenceStatus,
         rewardTrend: Double,
         lossTrend: Double,
         stabilityScore: Double
@@ -469,19 +469,19 @@ class TrainingValidator(
         val recommendations = mutableListOf<String>()
         
         when (status) {
-            ConvergenceStatus.CONVERGED -> {
+            com.chessrl.rl.ConvergenceStatus.CONVERGED -> {
                 recommendations.add("Training appears to have converged")
                 if (stabilityScore < 0.8) {
                     recommendations.add("Consider reducing learning rate for better stability")
                 }
             }
-            ConvergenceStatus.IMPROVING -> {
+            com.chessrl.rl.ConvergenceStatus.IMPROVING -> {
                 recommendations.add("Training is progressing well, continue current settings")
                 if (rewardTrend < 0.01) {
                     recommendations.add("Progress is slow, consider increasing learning rate")
                 }
             }
-            ConvergenceStatus.STAGNANT -> {
+            com.chessrl.rl.ConvergenceStatus.STAGNANT -> {
                 recommendations.add("Training has stagnated")
                 recommendations.add("Consider increasing exploration rate")
                 recommendations.add("Try different learning rate or network architecture")
@@ -489,7 +489,7 @@ class TrainingValidator(
                     recommendations.add("Loss is increasing, reduce learning rate")
                 }
             }
-            ConvergenceStatus.INSUFFICIENT_DATA -> {
+            com.chessrl.rl.ConvergenceStatus.INSUFFICIENT_DATA -> {
                 recommendations.add("Continue training to gather more data")
             }
         }
@@ -614,7 +614,7 @@ enum class IssueSeverity {
  * Convergence analysis result
  */
 data class ConvergenceAnalysis(
-    val status: ConvergenceStatus,
+    val status: com.chessrl.rl.ConvergenceStatus,
     val confidence: Double,
     val trendDirection: TrendDirection,
     val stabilityScore: Double,

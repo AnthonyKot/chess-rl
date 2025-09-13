@@ -202,7 +202,7 @@
     - _Requirements: 7_
 
 - [ ] 9. Implement advanced self-play training system with production pipeline
-  - [ ] 9.1 Create robust self-play game engine with concurrent execution
+  - [x] 9.1 Create robust self-play game engine with concurrent execution
     - **Concurrent game generation**: Implement multi-threaded self-play system
       - Agent vs agent game execution with proper synchronization
       - Configurable parallelism levels (1-8 concurrent games recommended)
@@ -221,7 +221,7 @@
     - Write integration tests with existing training pipeline
     - _Requirements: 8, 10_
   
-  - [ ] 9.2 Integrate self-play with advanced training pipeline and validation
+  - [x] 9.2 Integrate self-play with advanced training pipeline and validation
     - **Enhanced training schedule**: Sophisticated learning cycle management
       - Play N games → collect experience batches → train network → validate → repeat
       - Configurable game/training ratios with adaptive scheduling

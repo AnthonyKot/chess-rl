@@ -1,268 +1,473 @@
 package com.chessrl.integration
 
+import com.chessrl.rl.*
 import kotlin.test.*
-import kotlin.math.abs
 
 /**
- * Tests for the self-play training system
+ * Comprehensive unit tests for the SelfPlaySystem
  */
 class SelfPlaySystemTest {
     
-    private lateinit var agent: ChessAgent
-    private lateinit var environment: ChessEnvironment
-    private lateinit var selfPlaySystem: SelfPlaySystem
+    @Test
+    fun testSelfPlaySystemInitialization() {
+        println("🧪 Testing SelfPlaySystem initialization...")
+        
+        val config = SelfPlayConfig(
+            maxConcurrentGames = 2,
+            maxStepsPerGame = 50,
+            maxExperienceBufferSize = 1000
+        )
+        
+        val selfPlaySystem = SelfPlaySystem(config)
+        assertNotNull(selfPlaySystem, "SelfPlaySystem should be created successfully")
+        
+        val initialStats = selfPlaySystem.getCurrentStatistics()
+        assertEquals(0, initialStats.totalGamesCompleted, "Initial games completed should be 0")
+        assertEquals(0, initialStats.totalExperiencesCollected, "Initial experiences should be 0")
+        assertEquals(0, initialStats.activeGames, "Initial active games should be 0")
+        
+        println("✅ SelfPlaySystem initialization test passed")
+    }
     
-    @BeforeTest
-    fun setup() {
-        // Create test agent
-        agent = ChessAgentFactory.createDQNAgent(
-            hiddenLayers = listOf(32, 16), // Small network for testing
+    @Test
+    fun testSingleSelfPlayGame() {
+        println("🧪 Testing single self-play game execution...")
+        
+        // Create agents
+        val whiteAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(16, 8),
             learningRate = 0.01,
-            explorationRate = 0.2,
-            config = ChessAgentConfig(
-                batchSize = 8,
-                maxBufferSize = 100
-            )
+            explorationRate = 0.3
         )
         
-        // Create test environment
-        environment = ChessEnvironment(
-            rewardConfig = ChessRewardConfig(
-                winReward = 1.0,
-                lossReward = -1.0,
-                drawReward = 0.0
-            )
+        val blackAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(16, 8),
+            learningRate = 0.01,
+            explorationRate = 0.3
         )
         
-        // Create self-play system
-        selfPlaySystem = SelfPlaySystem(
-            agent = agent,
-            environment = environment,
-            config = SelfPlayConfig(
-                maxMovesPerGame = 50, // Short games for testing
-                trainingFrequency = 3, // Train every 3 games
-                minExperiencesForTraining = 10,
-                trainingBatchSize = 8,
-                updatesPerTraining = 2,
-                maxExperienceBufferSize = 200,
-                progressReportInterval = 5,
-                checkpointInterval = 10
-            )
+        val config = SelfPlayConfig(
+            maxConcurrentGames = 1,
+            maxStepsPerGame = 20, // Short game for testing
+            progressReportInterval = 1
         )
-    }
-    
-    @Test
-    fun testSelfPlaySystemCreation() {
-        println("Testing self-play system creation...")
         
-        assertNotNull(selfPlaySystem, "Self-play system should be created")
+        val selfPlaySystem = SelfPlaySystem(config)
         
-        println("✅ Self-play system creation verified")
-    }
-    
-    @Test
-    fun testSelfPlayTrainingExecution() {
-        println("Testing self-play training execution...")
-        
-        // Run a small self-play training session
-        val results = selfPlaySystem.runSelfPlayTraining(totalGames = 5)
+        // Run single game
+        val results = selfPlaySystem.runSelfPlayGames(whiteAgent, blackAgent, numGames = 1)
         
         // Verify results
-        assertNotNull(results, "Self-play results should not be null")
-        assertTrue(results.totalGames > 0, "Should have played some games")
-        assertTrue(results.totalMoves > 0, "Should have made some moves")
-        assertTrue(results.experienceCount >= 0, "Should have collected experiences")
-        assertTrue(results.trainingDuration > 0, "Training should take some time")
+        assertEquals(1, results.totalGames, "Should complete exactly 1 game")
+        assertTrue(results.totalExperiences > 0, "Should collect some experiences")
+        assertTrue(results.totalDuration > 0, "Should take some time")
+        assertEquals(1, results.gameResults.size, "Should have 1 game result")
         
-        // Verify game results
-        assertTrue(results.gameResults.isNotEmpty(), "Should have game results")
+        val gameResult = results.gameResults.first()
+        assertTrue(gameResult.gameLength > 0, "Game should have some moves")
+        assertTrue(gameResult.experiences.isNotEmpty(), "Game should have experiences")
+        assertNotNull(gameResult.chessMetrics, "Game should have chess metrics")
         
-        // Verify final statistics
-        val stats = results.finalStatistics
-        assertTrue(stats.gamesPlayed > 0, "Should have played games")
-        assertTrue(stats.totalMoves > 0, "Should have total moves")
-        assertTrue(stats.winRate >= 0.0 && stats.winRate <= 1.0, "Win rate should be valid")
-        assertTrue(stats.drawRate >= 0.0 && stats.drawRate <= 1.0, "Draw rate should be valid")
+        println("📊 Game Result:")
+        println("  Game Length: ${gameResult.gameLength} moves")
+        println("  Experiences: ${gameResult.experiences.size}")
+        println("  Outcome: ${gameResult.gameOutcome}")
+        println("  Termination: ${gameResult.terminationReason}")
         
-        println("✅ Self-play training execution verified")
-        println("   Games Played: ${results.totalGames}")
-        println("   Total Moves: ${results.totalMoves}")
-        println("   Experiences: ${results.experienceCount}")
-        println("   Win Rate: ${(stats.winRate * 100)}%")
+        println("✅ Single self-play game test passed")
     }
     
     @Test
-    fun testSelfPlayProgressTracking() {
-        println("Testing self-play progress tracking...")
+    fun testMultipleSelfPlayGames() {
+        println("🧪 Testing multiple self-play games...")
         
-        // Get initial progress
-        val initialProgress = selfPlaySystem.getCurrentProgress()
-        assertEquals(0, initialProgress.gamesCompleted, "Should start with 0 games")
-        assertEquals(0, initialProgress.movesPlayed, "Should start with 0 moves")
+        val whiteAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(16, 8),
+            learningRate = 0.01,
+            explorationRate = 0.2
+        )
         
-        // Run some games
-        selfPlaySystem.runSelfPlayTraining(totalGames = 3)
+        val blackAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(16, 8),
+            learningRate = 0.01,
+            explorationRate = 0.2
+        )
         
-        // Check progress after training
-        val finalProgress = selfPlaySystem.getCurrentProgress()
-        assertTrue(finalProgress.gamesCompleted > 0, "Should have completed games")
-        assertTrue(finalProgress.movesPlayed > 0, "Should have played moves")
-        assertTrue(finalProgress.experiencesCollected >= 0, "Should have collected experiences")
-        
-        println("✅ Self-play progress tracking verified")
-        println("   Games Completed: ${finalProgress.gamesCompleted}")
-        println("   Moves Played: ${finalProgress.movesPlayed}")
-        println("   Experiences: ${finalProgress.experiencesCollected}")
-    }
-    
-    @Test
-    fun testGameQualityAnalysis() {
-        println("Testing game quality analysis...")
-        
-        // Run some games first
-        selfPlaySystem.runSelfPlayTraining(totalGames = 5)
-        
-        // Analyze game quality
-        val qualityAnalysis = selfPlaySystem.analyzeGameQuality()
-        
-        // Verify analysis results
-        assertTrue(qualityAnalysis.totalGames > 0, "Should have analyzed games")
-        assertTrue(qualityAnalysis.averageGameLength > 0, "Should have average game length")
-        assertTrue(qualityAnalysis.gameCompletionRate >= 0.0 && qualityAnalysis.gameCompletionRate <= 1.0, 
-                  "Completion rate should be valid")
-        assertTrue(qualityAnalysis.legalMoveRate >= 0.0, "Legal move rate should be non-negative")
-        assertTrue(qualityAnalysis.qualityScore >= 0.0, "Quality score should be non-negative")
-        
-        println("✅ Game quality analysis verified")
-        println("   Total Games: ${qualityAnalysis.totalGames}")
-        println("   Avg Game Length: ${qualityAnalysis.averageGameLength}")
-        println("   Completion Rate: ${(qualityAnalysis.gameCompletionRate * 100)}%")
-        println("   Legal Move Rate: ${qualityAnalysis.legalMoveRate}")
-        println("   Quality Score: ${qualityAnalysis.qualityScore}")
-    }
-    
-    @Test
-    fun testSelfPlayConfiguration() {
-        println("Testing self-play configuration...")
-        
-        // Test with different configuration
-        val customConfig = SelfPlayConfig(
-            maxMovesPerGame = 30,
-            trainingFrequency = 2,
-            minExperiencesForTraining = 5,
-            trainingBatchSize = 4,
-            updatesPerTraining = 1,
+        val config = SelfPlayConfig(
+            maxConcurrentGames = 2,
+            maxStepsPerGame = 15,
             progressReportInterval = 2
         )
         
-        val customSelfPlay = SelfPlaySystem(agent, environment, customConfig)
+        val selfPlaySystem = SelfPlaySystem(config)
         
-        // Run training with custom config
-        val results = customSelfPlay.runSelfPlayTraining(totalGames = 3)
+        // Run multiple games
+        val numGames = 3
+        val results = selfPlaySystem.runSelfPlayGames(whiteAgent, blackAgent, numGames)
         
         // Verify results
-        assertNotNull(results, "Custom self-play should work")
-        assertTrue(results.totalGames > 0, "Should have played games")
+        assertEquals(numGames, results.totalGames, "Should complete all requested games")
+        assertEquals(numGames, results.gameResults.size, "Should have result for each game")
+        assertTrue(results.totalExperiences > 0, "Should collect experiences from all games")
         
-        println("✅ Self-play configuration verified")
-        println("   Custom config games: ${results.totalGames}")
+        // Verify game outcomes are tracked
+        val totalOutcomes = results.gameOutcomes.values.sum()
+        assertEquals(numGames, totalOutcomes, "All games should be accounted for in outcomes")
+        
+        // Verify experience quality metrics
+        val qualityMetrics = results.experienceQualityMetrics
+        assertTrue(qualityMetrics.averageQualityScore >= 0.0, "Quality score should be non-negative")
+        assertTrue(qualityMetrics.averageQualityScore <= 1.0, "Quality score should not exceed 1.0")
+        
+        val totalQualityExperiences = qualityMetrics.highQualityExperiences + 
+                                     qualityMetrics.mediumQualityExperiences + 
+                                     qualityMetrics.lowQualityExperiences
+        assertEquals(results.totalExperiences, totalQualityExperiences, 
+                    "All experiences should be categorized by quality")
+        
+        println("📊 Multiple Games Results:")
+        println("  Total Games: ${results.totalGames}")
+        println("  Total Experiences: ${results.totalExperiences}")
+        println("  Average Game Length: ${results.averageGameLength}")
+        println("  Game Outcomes: ${results.gameOutcomes}")
+        println("  Quality Metrics: ${qualityMetrics}")
+        
+        println("✅ Multiple self-play games test passed")
     }
     
     @Test
-    fun testExperienceCollection() {
-        println("Testing experience collection...")
+    fun testExperienceEnhancement() {
+        println("🧪 Testing experience enhancement and metadata...")
         
-        // Run training and check experience collection
-        val results = selfPlaySystem.runSelfPlayTraining(totalGames = 4)
+        val whiteAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(8, 4),
+            learningRate = 0.01,
+            explorationRate = 0.1
+        )
         
-        // Verify experience collection
-        assertTrue(results.experienceCount >= 0, "Should have collected experiences")
+        val blackAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(8, 4),
+            learningRate = 0.01,
+            explorationRate = 0.1
+        )
         
-        // Check that experiences are being used for training
-        val progress = selfPlaySystem.getCurrentProgress()
-        assertTrue(progress.experiencesCollected >= 0, "Should track experiences")
+        val selfPlaySystem = SelfPlaySystem(
+            SelfPlayConfig(
+                maxConcurrentGames = 1,
+                maxStepsPerGame = 10,
+                maxExperienceBufferSize = 500
+            )
+        )
         
-        println("✅ Experience collection verified")
-        println("   Total Experiences: ${results.experienceCount}")
-        println("   Tracked Experiences: ${progress.experiencesCollected}")
+        val results = selfPlaySystem.runSelfPlayGames(whiteAgent, blackAgent, numGames = 1)
+        
+        // Verify enhanced experiences
+        assertTrue(results.experiences.isNotEmpty(), "Should have enhanced experiences")
+        
+        val firstExperience = results.experiences.first()
+        
+        // Verify core experience data
+        assertNotNull(firstExperience.state, "Experience should have state")
+        assertTrue(firstExperience.action >= 0, "Experience should have valid action")
+        assertNotNull(firstExperience.nextState, "Experience should have next state")
+        
+        // Verify enhanced metadata
+        assertTrue(firstExperience.gameId > 0, "Experience should have game ID")
+        assertTrue(firstExperience.moveNumber > 0, "Experience should have move number")
+        assertNotNull(firstExperience.playerColor, "Experience should have player color")
+        assertNotNull(firstExperience.gameOutcome, "Experience should have game outcome")
+        assertNotNull(firstExperience.terminationReason, "Experience should have termination reason")
+        
+        // Verify quality metrics
+        assertTrue(firstExperience.qualityScore >= 0.0, "Quality score should be non-negative")
+        assertTrue(firstExperience.qualityScore <= 1.0, "Quality score should not exceed 1.0")
+        
+        // Verify game phase classification
+        val hasEarlyGame = results.experiences.any { it.isEarlyGame }
+        val hasMidGame = results.experiences.any { it.isMidGame }
+        val hasEndGame = results.experiences.any { it.isEndGame }
+        
+        // At least one phase should be represented
+        assertTrue(hasEarlyGame || hasMidGame || hasEndGame, "Should classify game phases")
+        
+        // Verify chess metrics
+        assertNotNull(firstExperience.chessMetrics, "Experience should have chess metrics")
+        
+        // Test conversion to basic experience
+        val basicExperience = firstExperience.toBasicExperience()
+        assertEquals(firstExperience.state, basicExperience.state, "State should match")
+        assertEquals(firstExperience.action, basicExperience.action, "Action should match")
+        assertEquals(firstExperience.reward, basicExperience.reward, "Reward should match")
+        assertEquals(firstExperience.nextState, basicExperience.nextState, "Next state should match")
+        assertEquals(firstExperience.done, basicExperience.done, "Done flag should match")
+        
+        println("📊 Experience Enhancement Results:")
+        println("  Total Enhanced Experiences: ${results.experiences.size}")
+        println("  First Experience Quality: ${firstExperience.qualityScore}")
+        println("  Game Phases - Early: $hasEarlyGame, Mid: $hasMidGame, End: $hasEndGame")
+        println("  Player Colors: ${results.experiences.map { it.playerColor }.distinct()}")
+        
+        println("✅ Experience enhancement test passed")
     }
     
     @Test
-    fun testSelfPlayGameGeneration() {
-        println("Testing self-play game generation...")
+    fun testExperienceBufferManagement() {
+        println("🧪 Testing experience buffer management and cleanup...")
         
-        // Run a single game worth of training
-        val results = selfPlaySystem.runSelfPlayTraining(totalGames = 1)
+        val whiteAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(8, 4),
+            learningRate = 0.01,
+            explorationRate = 0.1
+        )
         
-        // Verify game was generated
-        assertTrue(results.gameResults.isNotEmpty(), "Should have game results")
+        val blackAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(8, 4),
+            learningRate = 0.01,
+            explorationRate = 0.1
+        )
         
-        val gameResult = results.gameResults.first()
-        assertTrue(gameResult.moveCount > 0, "Game should have moves")
-        assertTrue(gameResult.duration > 0, "Game should take time")
-        assertTrue(gameResult.experiences.isNotEmpty(), "Game should have experiences")
+        // Test with small buffer to trigger cleanup
+        val config = SelfPlayConfig(
+            maxConcurrentGames = 1,
+            maxStepsPerGame = 20,
+            maxExperienceBufferSize = 30, // Small buffer to test cleanup
+            experienceCleanupStrategy = ExperienceCleanupStrategy.OLDEST_FIRST
+        )
         
-        // Verify game outcome is valid
-        val validOutcomes = setOf("WHITE_WINS", "BLACK_WINS", "DRAW_STALEMATE", 
-                                 "DRAW_INSUFFICIENT_MATERIAL", "DRAW_FIFTY_MOVE_RULE", 
-                                 "DRAW_REPETITION", "ongoing", "no_moves", "completed")
-        assertTrue(gameResult.outcome in validOutcomes || gameResult.outcome.contains("WINS") || 
-                  gameResult.outcome.contains("DRAW"), "Game outcome should be valid: ${gameResult.outcome}")
+        val selfPlaySystem = SelfPlaySystem(config)
         
-        println("✅ Self-play game generation verified")
-        println("   Game Moves: ${gameResult.moveCount}")
-        println("   Game Outcome: ${gameResult.outcome}")
-        println("   Game Experiences: ${gameResult.experiences.size}")
+        // Run enough games to exceed buffer size
+        val results = selfPlaySystem.runSelfPlayGames(whiteAgent, blackAgent, numGames = 3)
+        
+        // Verify buffer size is managed
+        assertTrue(results.experiences.size <= config.maxExperienceBufferSize, 
+                  "Experience buffer should not exceed maximum size")
+        
+        // Verify we still collected experiences
+        assertTrue(results.experiences.isNotEmpty(), "Should still have experiences after cleanup")
+        
+        // Test different cleanup strategies
+        val strategies = listOf(
+            ExperienceCleanupStrategy.OLDEST_FIRST,
+            ExperienceCleanupStrategy.LOWEST_QUALITY,
+            ExperienceCleanupStrategy.RANDOM
+        )
+        
+        for (strategy in strategies) {
+            val testConfig = config.copy(experienceCleanupStrategy = strategy)
+            val testSystem = SelfPlaySystem(testConfig)
+            
+            val testResults = testSystem.runSelfPlayGames(whiteAgent, blackAgent, numGames = 2)
+            
+            assertTrue(testResults.experiences.size <= testConfig.maxExperienceBufferSize,
+                      "Buffer should be managed with strategy: $strategy")
+        }
+        
+        println("📊 Buffer Management Results:")
+        println("  Final Buffer Size: ${results.experiences.size}")
+        println("  Max Buffer Size: ${config.maxExperienceBufferSize}")
+        println("  Total Experiences Generated: ${results.totalExperiences}")
+        
+        println("✅ Experience buffer management test passed")
     }
     
     @Test
-    fun testTrainingIntegration() {
-        println("Testing training integration...")
+    fun testConcurrentGameExecution() {
+        println("🧪 Testing concurrent game execution simulation...")
         
-        // Get initial agent metrics
-        val initialMetrics = agent.getTrainingMetrics()
+        val whiteAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(16, 8),
+            learningRate = 0.01,
+            explorationRate = 0.2
+        )
         
-        // Run self-play training
-        val results = selfPlaySystem.runSelfPlayTraining(totalGames = 6) // Enough to trigger training
+        val blackAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(16, 8),
+            learningRate = 0.01,
+            explorationRate = 0.2
+        )
         
-        // Get final agent metrics
-        val finalMetrics = agent.getTrainingMetrics()
+        // Test different concurrency levels
+        val concurrencyLevels = listOf(1, 2, 4)
         
-        // Verify training occurred
-        assertTrue(results.experienceCount > 0, "Should have collected experiences")
+        for (concurrency in concurrencyLevels) {
+            val config = SelfPlayConfig(
+                maxConcurrentGames = concurrency,
+                maxStepsPerGame = 15,
+                progressReportInterval = 5
+            )
+            
+            val selfPlaySystem = SelfPlaySystem(config)
+            val startTime = getCurrentTimeMillis()
+            
+            val results = selfPlaySystem.runSelfPlayGames(whiteAgent, blackAgent, numGames = 4)
+            
+            val endTime = getCurrentTimeMillis()
+            val duration = endTime - startTime
+            
+            // Verify results
+            assertEquals(4, results.totalGames, "Should complete all games with concurrency $concurrency")
+            assertTrue(results.totalExperiences > 0, "Should collect experiences")
+            
+            println("📊 Concurrency $concurrency Results:")
+            println("  Games: ${results.totalGames}")
+            println("  Duration: ${duration}ms")
+            println("  Experiences: ${results.totalExperiences}")
+        }
         
-        // Agent should have learned from experiences
-        assertTrue(finalMetrics.episodeCount >= initialMetrics.episodeCount, 
-                  "Agent should have processed episodes")
-        
-        println("✅ Training integration verified")
-        println("   Initial Episodes: ${initialMetrics.episodeCount}")
-        println("   Final Episodes: ${finalMetrics.episodeCount}")
-        println("   Experiences Used: ${results.experienceCount}")
+        println("✅ Concurrent game execution test passed")
     }
     
     @Test
-    fun testSelfPlayStatistics() {
-        println("Testing self-play statistics...")
+    fun testGameOutcomeTracking() {
+        println("🧪 Testing game outcome tracking...")
         
-        // Run training
-        val results = selfPlaySystem.runSelfPlayTraining(totalGames = 5)
+        val whiteAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(8, 4),
+            learningRate = 0.01,
+            explorationRate = 0.1
+        )
         
-        // Verify statistics are reasonable
-        val stats = results.finalStatistics
+        val blackAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(8, 4),
+            learningRate = 0.01,
+            explorationRate = 0.1
+        )
         
-        // Basic sanity checks
-        assertEquals(results.totalGames, stats.gamesPlayed, "Games played should match")
-        assertTrue(stats.averageGameLength > 0, "Average game length should be positive")
-        assertTrue(stats.averageGameDuration > 0, "Average game duration should be positive")
+        val selfPlaySystem = SelfPlaySystem(
+            SelfPlayConfig(
+                maxConcurrentGames = 1,
+                maxStepsPerGame = 25
+            )
+        )
         
-        // Rates should sum to approximately 1.0 (allowing for rounding)
-        val totalRate = stats.winRate + stats.drawRate + (1.0 - stats.winRate - stats.drawRate)
-        assertTrue(abs(totalRate - 1.0) < 0.01, "Win/draw/loss rates should sum to 1.0")
+        val results = selfPlaySystem.runSelfPlayGames(whiteAgent, blackAgent, numGames = 3)
         
-        println("✅ Self-play statistics verified")
-        println("   Win Rate: ${(stats.winRate * 100)}%")
-        println("   Draw Rate: ${(stats.drawRate * 100)}%")
-        println("   Loss Rate: ${((1.0 - stats.winRate - stats.drawRate) * 100)}%")
+        // Verify outcome tracking
+        assertNotNull(results.gameOutcomes, "Should track game outcomes")
+        
+        val totalTrackedGames = results.gameOutcomes.values.sum()
+        assertEquals(results.totalGames, totalTrackedGames, "All games should be tracked")
+        
+        // Verify each game has an outcome
+        for (gameResult in results.gameResults) {
+            assertNotNull(gameResult.gameOutcome, "Each game should have an outcome")
+            assertNotNull(gameResult.terminationReason, "Each game should have termination reason")
+            
+            // Verify outcome is valid
+            assertTrue(
+                gameResult.gameOutcome in listOf(
+                    GameOutcome.WHITE_WINS, 
+                    GameOutcome.BLACK_WINS, 
+                    GameOutcome.DRAW, 
+                    GameOutcome.ONGOING
+                ),
+                "Game outcome should be valid"
+            )
+        }
+        
+        // Verify statistics consistency
+        val stats = selfPlaySystem.getCurrentStatistics()
+        assertEquals(results.totalGames, stats.totalGamesCompleted, "Statistics should match results")
+        assertEquals(results.totalExperiences, stats.totalExperiencesCollected, "Experience count should match")
+        
+        println("📊 Outcome Tracking Results:")
+        println("  Game Outcomes: ${results.gameOutcomes}")
+        println("  Total Games: ${results.totalGames}")
+        println("  Average Game Length: ${results.averageGameLength}")
+        
+        println("✅ Game outcome tracking test passed")
+    }
+    
+    @Test
+    fun testSelfPlaySystemStop() {
+        println("🧪 Testing self-play system stop functionality...")
+        
+        val whiteAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(8, 4),
+            learningRate = 0.01,
+            explorationRate = 0.1
+        )
+        
+        val blackAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(8, 4),
+            learningRate = 0.01,
+            explorationRate = 0.1
+        )
+        
+        val selfPlaySystem = SelfPlaySystem(
+            SelfPlayConfig(
+                maxConcurrentGames = 1,
+                maxStepsPerGame = 50
+            )
+        )
+        
+        // Test stop functionality (in real implementation would test actual stopping)
+        selfPlaySystem.stop()
+        
+        // Verify system can still be used after stop
+        val results = selfPlaySystem.runSelfPlayGames(whiteAgent, blackAgent, numGames = 1)
+        assertEquals(1, results.totalGames, "System should work after stop")
+        
+        println("✅ Self-play system stop test passed")
+    }
+    
+    @Test
+    fun testExperienceQualityCalculation() {
+        println("🧪 Testing experience quality calculation...")
+        
+        val whiteAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(8, 4),
+            learningRate = 0.01,
+            explorationRate = 0.1
+        )
+        
+        val blackAgent = ChessAgentFactory.createDQNAgent(
+            hiddenLayers = listOf(8, 4),
+            learningRate = 0.01,
+            explorationRate = 0.1
+        )
+        
+        val selfPlaySystem = SelfPlaySystem(
+            SelfPlayConfig(
+                maxConcurrentGames = 1,
+                maxStepsPerGame = 20
+            )
+        )
+        
+        val results = selfPlaySystem.runSelfPlayGames(whiteAgent, blackAgent, numGames = 2)
+        
+        // Verify quality metrics
+        val qualityMetrics = results.experienceQualityMetrics
+        
+        assertTrue(qualityMetrics.averageQualityScore >= 0.0, "Average quality should be non-negative")
+        assertTrue(qualityMetrics.averageQualityScore <= 1.0, "Average quality should not exceed 1.0")
+        
+        val totalCategorized = qualityMetrics.highQualityExperiences + 
+                              qualityMetrics.mediumQualityExperiences + 
+                              qualityMetrics.lowQualityExperiences
+        assertEquals(results.totalExperiences, totalCategorized, "All experiences should be categorized")
+        
+        val totalByOutcome = qualityMetrics.experiencesFromWins + 
+                            qualityMetrics.experiencesFromDraws + 
+                            qualityMetrics.experiencesFromIncomplete
+        assertEquals(results.totalExperiences, totalByOutcome, "All experiences should be categorized by outcome")
+        
+        // Verify individual experience quality scores
+        for (experience in results.experiences) {
+            assertTrue(experience.qualityScore >= 0.0, "Individual quality score should be non-negative")
+            assertTrue(experience.qualityScore <= 1.0, "Individual quality score should not exceed 1.0")
+        }
+        
+        println("📊 Quality Calculation Results:")
+        println("  Average Quality Score: ${qualityMetrics.averageQualityScore}")
+        println("  High Quality: ${qualityMetrics.highQualityExperiences}")
+        println("  Medium Quality: ${qualityMetrics.mediumQualityExperiences}")
+        println("  Low Quality: ${qualityMetrics.lowQualityExperiences}")
+        println("  From Wins: ${qualityMetrics.experiencesFromWins}")
+        println("  From Draws: ${qualityMetrics.experiencesFromDraws}")
+        println("  From Incomplete: ${qualityMetrics.experiencesFromIncomplete}")
+        
+        println("✅ Experience quality calculation test passed")
     }
 }
