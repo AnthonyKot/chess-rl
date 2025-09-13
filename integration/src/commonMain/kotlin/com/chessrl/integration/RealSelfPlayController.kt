@@ -10,7 +10,7 @@ import kotlin.math.pow
  * This addresses the integration gaps identified in task 10.1
  */
 class RealSelfPlayController(
-    private val config: SelfPlayConfig = SelfPlayConfig()
+    private val config: RealSelfPlayConfig = RealSelfPlayConfig()
 ) {
     
     private var isRunning = false
@@ -130,12 +130,13 @@ class RealSelfPlayController(
     /**
      * Generate self-play games between agents
      */
-    private fun generateSelfPlayGames(numGames: Int): List<GameResult> {
-        val games = mutableListOf<GameResult>()
+    private fun generateSelfPlayGames(numGames: Int): List<SelfPlayGameResult> {
+        val games = mutableListOf<SelfPlayGameResult>()
         
         repeat(numGames) { gameIndex ->
             val gameResult = playGame(gameIndex)
-            games.add(gameResult)
+            val selfPlayResult = gameResult.toSelfPlayGameResult()
+            games.add(selfPlayResult)
             gameResults.add(gameResult)
         }
         
@@ -230,14 +231,22 @@ class RealSelfPlayController(
             moveCount++
         }
         
-        // Determine game outcome
+        // Determine game outcome and termination reason
         val currentBoard = game.getCurrentBoard()
-        val outcome = when {
-            currentBoard.isCheckmate(PieceColor.WHITE) -> GameOutcome.BLACK_WIN
-            currentBoard.isCheckmate(PieceColor.BLACK) -> GameOutcome.WHITE_WIN
-            currentBoard.isStalemate(PieceColor.WHITE) || currentBoard.isStalemate(PieceColor.BLACK) -> GameOutcome.DRAW
-            moveCount >= maxMoves -> GameOutcome.DRAW
-            else -> GameOutcome.DRAW
+        val (outcome, terminationReason) = when {
+            currentBoard.isCheckmate(PieceColor.WHITE) -> GameOutcome.BLACK_WINS to EpisodeTerminationReason.GAME_ENDED
+            currentBoard.isCheckmate(PieceColor.BLACK) -> GameOutcome.WHITE_WINS to EpisodeTerminationReason.GAME_ENDED
+            currentBoard.isStalemate(PieceColor.WHITE) || currentBoard.isStalemate(PieceColor.BLACK) -> GameOutcome.DRAW to EpisodeTerminationReason.GAME_ENDED
+            moveCount >= maxMoves -> GameOutcome.DRAW to EpisodeTerminationReason.STEP_LIMIT
+            else -> GameOutcome.DRAW to EpisodeTerminationReason.GAME_ENDED
+        }
+        
+        // Get final position
+        val finalPosition = try {
+            currentBoard.toFEN()
+        } catch (e: Exception) {
+            // Fallback if toFEN() is not available
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" // Starting position as fallback
         }
         
         return GameResult(
@@ -245,41 +254,39 @@ class RealSelfPlayController(
             moves = moves,
             outcome = outcome,
             moveCount = moveCount,
-            duration = 0L // Would need to track actual duration
+            duration = 0L, // Would need to track actual duration
+            terminationReason = terminationReason,
+            finalPosition = finalPosition
         )
     }
     
     /**
      * Collect experiences from completed games
      */
-    private fun collectExperiences(games: List<GameResult>): Int {
+    private fun collectExperiences(games: List<SelfPlayGameResult>): Int {
         var experiencesAdded = 0
         
         for (game in games) {
-            for (move in game.moves) {
-                val experience = Experience(
-                    state = move.state,
-                    action = move.action,
-                    reward = move.reward,
-                    nextState = move.nextState,
-                    done = false // Will be set to true for final move
-                )
+            // Add all experiences from the game
+            for (experience in game.experiences) {
                 experienceBuffer.add(experience)
                 experiencesAdded++
             }
             
-            // Mark final experience as done
-            if (game.moves.isNotEmpty()) {
-                val finalMove = game.moves.last()
-                val finalExperience = Experience(
-                    state = finalMove.state,
-                    action = finalMove.action,
-                    reward = calculateFinalReward(game.outcome),
-                    nextState = finalMove.nextState,
-                    done = true
-                )
-                experienceBuffer.add(finalExperience)
-                experiencesAdded++
+            // Mark final experience as done if not already
+            if (game.experiences.isNotEmpty()) {
+                val finalExperience = game.experiences.last()
+                if (!finalExperience.done) {
+                    val updatedFinalExperience = Experience(
+                        state = finalExperience.state,
+                        action = finalExperience.action,
+                        reward = calculateFinalReward(game.gameOutcome),
+                        nextState = finalExperience.nextState,
+                        done = true
+                    )
+                    experienceBuffer.add(updatedFinalExperience)
+                    experiencesAdded++
+                }
             }
         }
         
@@ -340,9 +347,10 @@ class RealSelfPlayController(
      */
     private fun calculateFinalReward(outcome: GameOutcome): Double {
         return when (outcome) {
-            GameOutcome.WHITE_WIN -> 1.0
-            GameOutcome.BLACK_WIN -> -1.0
+            GameOutcome.WHITE_WINS -> 1.0
+            GameOutcome.BLACK_WINS -> -1.0
             GameOutcome.DRAW -> 0.0
+            GameOutcome.ONGOING -> 0.0
         }
     }
     
@@ -395,9 +403,9 @@ class RealSelfPlayController(
 }
 
 /**
- * Configuration for self-play training
+ * Configuration for real self-play controller training
  */
-data class SelfPlayConfig(
+data class RealSelfPlayConfig(
     val hiddenLayers: List<Int> = listOf(512, 256, 128),
     val learningRate: Double = 0.001,
     val explorationRate: Double = 0.1,
@@ -465,21 +473,51 @@ data class GameMove(
 )
 
 /**
- * Result of a completed game
+ * Result of a completed game - aligned with unified SelfPlayGameResult model
  */
 data class GameResult(
     val gameId: Int,
     val moves: List<GameMove>,
     val outcome: GameOutcome,
     val moveCount: Int,
-    val duration: Long
-)
-
-/**
- * Game outcome enumeration
- */
-enum class GameOutcome {
-    WHITE_WIN,
-    BLACK_WIN,
-    DRAW
+    val duration: Long,
+    // Additional fields to align with SelfPlayGameResult
+    val terminationReason: EpisodeTerminationReason = EpisodeTerminationReason.GAME_ENDED,
+    val finalPosition: String = ""
+) {
+    /**
+     * Convert to unified SelfPlayGameResult model
+     */
+    fun toSelfPlayGameResult(chessMetrics: ChessMetrics = ChessMetrics(
+        gameLength = moveCount,
+        totalMaterialValue = 0, // Would need to calculate from final position
+        piecesInCenter = 0, // Would need to calculate from final position
+        developedPieces = 0, // Would need to calculate from final position
+        kingSafetyScore = 0.0, // Would need to calculate from final position
+        moveCount = moveCount,
+        captureCount = 0, // Would need to track during game
+        checkCount = 0 // Would need to track during game
+    )): SelfPlayGameResult {
+        val experiences = moves.map { move ->
+            Experience(
+                state = move.state,
+                action = move.action,
+                reward = move.reward,
+                nextState = move.nextState,
+                done = false
+            )
+        }
+        
+        return SelfPlayGameResult(
+            gameId = gameId,
+            gameLength = moveCount,
+            gameOutcome = outcome,
+            terminationReason = terminationReason,
+            gameDuration = duration,
+            experiences = experiences,
+            chessMetrics = chessMetrics,
+            finalPosition = finalPosition
+        )
+    }
 }
+

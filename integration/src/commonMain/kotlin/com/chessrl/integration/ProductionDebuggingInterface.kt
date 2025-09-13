@@ -844,13 +844,7 @@ data class TacticalAnalysis(
     val tacticalThemes: List<String>
 )
 
-data class StrategicAnalysis(
-    val pawnStructure: PawnStructureAnalysis,
-    val pieceActivity: PieceActivityAnalysis,
-    val kingSafety: KingSafetyAnalysis,
-    val centerControl: CenterControlAnalysis,
-    val strategicThemes: List<String>
-)
+// StrategicAnalysis is now defined in SharedDataClasses.kt
 
 data class PawnStructureAnalysis(
     val score: Double,
@@ -935,12 +929,7 @@ data class SystemPerformanceAnalysis(
     val bottlenecks: List<String>
 )
 
-data class OptimizationRecommendation(
-    val type: OptimizationType,
-    val priority: RecommendationPriority,
-    val description: String,
-    val actions: List<String>
-)
+// OptimizationRecommendation is now defined in SharedDataClasses.kt
 
 data class SystemMetrics(
     val cpuUtilization: Double,
@@ -949,6 +938,4 @@ data class SystemMetrics(
     val throughput: Double
 )
 
-enum class RecommendationPriority {
-    LOW, MEDIUM, HIGH, CRITICAL
-}
+// RecommendationPriority is now defined in SharedDataClasses.kt

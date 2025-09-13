@@ -687,20 +687,10 @@ enum class BottleneckSeverity {
     LOW, MEDIUM, HIGH, CRITICAL
 }
 
-data class OptimizationRecommendation(
-    val category: OptimizationCategory,
-    val priority: RecommendationPriority,
-    val description: String,
-    val expectedImprovement: String,
-    val implementationEffort: ImplementationEffort
-)
+// OptimizationRecommendation and RecommendationPriority are now defined in SharedDataClasses.kt
 
 enum class OptimizationCategory {
     MEMORY, COMPUTATION, PARALLELIZATION, CACHING, ARCHITECTURE
-}
-
-enum class RecommendationPriority {
-    LOW, MEDIUM, HIGH, CRITICAL
 }
 
 enum class ImplementationEffort {

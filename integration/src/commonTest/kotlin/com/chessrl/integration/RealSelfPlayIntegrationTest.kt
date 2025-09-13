@@ -125,14 +125,14 @@ class RealSelfPlayIntegrationTest {
         val gameResult = GameResult(
             gameId = 1,
             moves = listOf(gameMove),
-            outcome = GameOutcome.WHITE_WIN,
+            outcome = GameOutcome.WHITE_WINS,
             moveCount = 1,
             duration = 1000L
         )
         
         assertNotNull(gameResult)
         assertEquals(1, gameResult.gameId)
-        assertEquals(GameOutcome.WHITE_WIN, gameResult.outcome)
+        assertEquals(GameOutcome.WHITE_WINS, gameResult.outcome)
         assertEquals(1, gameResult.moves.size)
     }
     
@@ -166,9 +166,10 @@ class RealSelfPlayIntegrationTest {
     @Test
     fun testGameOutcomeEnum() {
         val outcomes = GameOutcome.values()
-        assertEquals(3, outcomes.size)
-        assertTrue(GameOutcome.WHITE_WIN in outcomes)
-        assertTrue(GameOutcome.BLACK_WIN in outcomes)
+        assertEquals(4, outcomes.size)
+        assertTrue(GameOutcome.WHITE_WINS in outcomes)
+        assertTrue(GameOutcome.BLACK_WINS in outcomes)
         assertTrue(GameOutcome.DRAW in outcomes)
+        assertTrue(GameOutcome.ONGOING in outcomes)
     }
 }

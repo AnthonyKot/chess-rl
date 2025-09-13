@@ -38,7 +38,7 @@ class GameAnalyzer(
     /**
      * Analyze a single game with comprehensive metrics
      */
-    fun analyzeGame(gameResult: GameResult): AnalyzedGame {
+    fun analyzeGame(gameResult: SelfPlayGameResult): AnalyzedGame {
         val gameId = generateGameId(gameResult)
         
         // Basic game metrics
@@ -130,7 +130,7 @@ class GameAnalyzer(
     /**
      * Analyze moves in a game with detailed evaluation
      */
-    fun analyzeMoves(gameResult: GameResult): List<DetailedMoveAnalysis> {
+    fun analyzeMoves(gameResult: SelfPlayGameResult): List<DetailedMoveAnalysis> {
         val moveAnalyses = mutableListOf<DetailedMoveAnalysis>()
         
         // Analyze each move in the game
@@ -201,7 +201,7 @@ class GameAnalyzer(
     /**
      * Assess overall game quality
      */
-    fun assessGameQuality(gameResult: GameResult): GameQualityAssessment {
+    fun assessGameQuality(gameResult: SelfPlayGameResult): GameQualityAssessment {
         // Calculate various quality metrics
         val moveQuality = calculateMoveQuality(gameResult)
         val phaseQuality = calculatePhaseQuality(gameResult)
@@ -246,7 +246,7 @@ class GameAnalyzer(
     /**
      * Extract learning insights from a game
      */
-    fun extractLearningInsights(gameResult: GameResult): List<LearningInsight> {
+    fun extractLearningInsights(gameResult: SelfPlayGameResult): List<LearningInsight> {
         val insights = mutableListOf<LearningInsight>()
         
         // Tactical insights
@@ -319,7 +319,7 @@ class GameAnalyzer(
     
     // Private analysis methods
     
-    private fun extractBasicMetrics(gameResult: GameResult): BasicGameMetrics {
+    private fun extractBasicMetrics(gameResult: SelfPlayGameResult): BasicGameMetrics {
         return BasicGameMetrics(
             gameLength = gameResult.gameLength,
             gameOutcome = gameResult.gameOutcome,
@@ -327,7 +327,7 @@ class GameAnalyzer(
         )
     }
     
-    private fun analyzeGamePhases(gameResult: GameResult): GamePhaseAnalysis {
+    private fun analyzeGamePhases(gameResult: SelfPlayGameResult): GamePhaseAnalysis {
         val gameLength = gameResult.gameLength
         
         // Simplified phase analysis based on game length
@@ -343,7 +343,7 @@ class GameAnalyzer(
         )
     }
     
-    private fun analyzeDecisionMaking(gameResult: GameResult): DecisionMakingAnalysis {
+    private fun analyzeDecisionMaking(gameResult: SelfPlayGameResult): DecisionMakingAnalysis {
         // Simplified decision making analysis
         val averageDecisionTime = 1.0 + Random.nextDouble() * 2.0 // 1-3 seconds
         val decisionConfidence = 0.6 + Random.nextDouble() * 0.4 // 60-100%
@@ -356,7 +356,7 @@ class GameAnalyzer(
         )
     }
     
-    private fun extractLearningInsights(gameResult: GameResult): LearningInsightsData {
+    private fun extractLearningInsights(gameResult: SelfPlayGameResult): LearningInsightsData {
         // Simplified learning insights calculation
         val learningValue = calculateLearningValue(gameResult)
         val noveltyScore = calculateNoveltyScore(gameResult)
@@ -369,7 +369,7 @@ class GameAnalyzer(
         )
     }
     
-    private fun calculateLearningValue(gameResult: GameResult): Double {
+    private fun calculateLearningValue(gameResult: SelfPlayGameResult): Double {
         // Higher learning value for games with interesting positions and outcomes
         val lengthFactor = minOf(gameResult.gameLength / 50.0, 1.0)
         val outcomeFactor = when (gameResult.gameOutcome) {
@@ -380,18 +380,18 @@ class GameAnalyzer(
         return (lengthFactor + outcomeFactor) / 2.0
     }
     
-    private fun calculateNoveltyScore(gameResult: GameResult): Double {
+    private fun calculateNoveltyScore(gameResult: SelfPlayGameResult): Double {
         // Simplified novelty calculation
         return 0.3 + Random.nextDouble() * 0.7
     }
     
-    private fun calculateDifficultyLevel(gameResult: GameResult): Double {
+    private fun calculateDifficultyLevel(gameResult: SelfPlayGameResult): Double {
         // Difficulty based on game length and complexity
         val lengthFactor = minOf(gameResult.gameLength / 100.0, 1.0)
         return 0.2 + lengthFactor * 0.8
     }
     
-    private fun calculatePhaseQuality(gameResult: GameResult, startMove: Int, endMove: Int): Double {
+    private fun calculatePhaseQuality(gameResult: SelfPlayGameResult, startMove: Int, endMove: Int): Double {
         if (startMove >= endMove) return 0.5
         
         // Simplified phase quality calculation
@@ -440,7 +440,7 @@ class GameAnalyzer(
         )
     }
     
-    private fun analyzeSingleMove(gameResult: GameResult, moveNumber: Int): DetailedMoveAnalysis {
+    private fun analyzeSingleMove(gameResult: SelfPlayGameResult, moveNumber: Int): DetailedMoveAnalysis {
         val move = "move_${moveNumber}" // Simplified
         
         return DetailedMoveAnalysis(
@@ -467,7 +467,7 @@ class GameAnalyzer(
         )
     }
     
-    private fun identifyCriticalPositions(gameResult: GameResult): List<CriticalPosition> {
+    private fun identifyCriticalPositions(gameResult: SelfPlayGameResult): List<CriticalPosition> {
         val criticalPositions = mutableListOf<CriticalPosition>()
         
         // Identify 3-5 critical positions in the game
@@ -491,7 +491,7 @@ class GameAnalyzer(
         return criticalPositions
     }
     
-    private fun calculateMoveQuality(gameResult: GameResult): Double {
+    private fun calculateMoveQuality(gameResult: SelfPlayGameResult): Double {
         // Simplified move quality based on game outcome and length
         val outcomeScore = when (gameResult.gameOutcome) {
             GameOutcome.WHITE_WINS, GameOutcome.BLACK_WINS -> 0.8
@@ -508,19 +508,19 @@ class GameAnalyzer(
         return (outcomeScore + lengthScore) / 2.0
     }
     
-    private fun calculatePhaseQuality(gameResult: GameResult): Double {
+    private fun calculatePhaseQuality(gameResult: SelfPlayGameResult): Double {
         return 0.6 + Random.nextDouble() * 0.4
     }
     
-    private fun calculateDecisionQuality(gameResult: GameResult): Double {
+    private fun calculateDecisionQuality(gameResult: SelfPlayGameResult): Double {
         return 0.5 + Random.nextDouble() * 0.5
     }
     
-    private fun calculateExecutionQuality(gameResult: GameResult): Double {
+    private fun calculateExecutionQuality(gameResult: SelfPlayGameResult): Double {
         return 0.6 + Random.nextDouble() * 0.4
     }
     
-    private fun calculateLearningPotential(gameResult: GameResult): Double {
+    private fun calculateLearningPotential(gameResult: SelfPlayGameResult): Double {
         return calculateLearningValue(gameResult)
     }
     
@@ -570,7 +570,7 @@ class GameAnalyzer(
     
     // Insight extraction methods
     
-    private fun extractTacticalInsights(gameResult: GameResult): List<LearningInsight> {
+    private fun extractTacticalInsights(gameResult: SelfPlayGameResult): List<LearningInsight> {
         val insights = mutableListOf<LearningInsight>()
         
         if (gameResult.gameLength > 30) {
@@ -586,7 +586,7 @@ class GameAnalyzer(
         return insights
     }
     
-    private fun extractStrategicInsights(gameResult: GameResult): List<LearningInsight> {
+    private fun extractStrategicInsights(gameResult: SelfPlayGameResult): List<LearningInsight> {
         val insights = mutableListOf<LearningInsight>()
         
         insights.add(LearningInsight(
@@ -600,7 +600,7 @@ class GameAnalyzer(
         return insights
     }
     
-    private fun extractEndgameInsights(gameResult: GameResult): List<LearningInsight> {
+    private fun extractEndgameInsights(gameResult: SelfPlayGameResult): List<LearningInsight> {
         val insights = mutableListOf<LearningInsight>()
         
         if (gameResult.gameLength > 50) {
@@ -616,7 +616,7 @@ class GameAnalyzer(
         return insights
     }
     
-    private fun extractDecisionInsights(gameResult: GameResult): List<LearningInsight> {
+    private fun extractDecisionInsights(gameResult: SelfPlayGameResult): List<LearningInsight> {
         val insights = mutableListOf<LearningInsight>()
         
         insights.add(LearningInsight(
@@ -667,7 +667,7 @@ class GameAnalyzer(
         return values.map { (it - mean).pow(2) }.average()
     }
     
-    private fun generateGameId(gameResult: GameResult): String {
+    private fun generateGameId(gameResult: SelfPlayGameResult): String {
         return "game_${getCurrentTimeMillis()}_${gameResult.hashCode()}"
     }
 }
@@ -698,11 +698,7 @@ private data class BasicGameMetrics(
     val finalPosition: String
 )
 
-private data class GamePhaseAnalysis(
-    val openingQuality: Double,
-    val middlegameQuality: Double,
-    val endgameQuality: Double
-)
+// GamePhaseAnalysis is now defined in SharedDataClasses.kt
 
 private data class DecisionMakingAnalysis(
     val averageDecisionTime: Double,

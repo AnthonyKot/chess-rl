@@ -1,5 +1,8 @@
 package com.chessrl.integration
 
+import com.chessrl.rl.*
+import com.chessrl.chess.*
+
 /**
  * Demo showing the integration improvements for task 10.1
  * This demonstrates real game generation, experience collection, and training iteration loops
@@ -17,7 +20,7 @@ object SelfPlayIntegrationDemo {
         return try {
             // Step 1: Create real self-play controller
             println("1. Creating Real Self-Play Controller...")
-            val config = SelfPlayConfig(
+            val config = RealSelfPlayConfig(
                 hiddenLayers = listOf(64, 32, 16),
                 learningRate = 0.001,
                 explorationRate = 0.1,
@@ -86,25 +89,39 @@ object SelfPlayIntegrationDemo {
             
             // Step 6: Test experience collection structures
             println("6. Testing Experience Collection Structures...")
-            val gameMove = GameMove(
-                move = Move(Position(1, 4), Position(3, 4)),
+            val experience = Experience(
                 state = DoubleArray(10) { it * 0.1 },
                 action = 42,
                 reward = 0.5,
-                nextState = DoubleArray(10) { (it + 1) * 0.1 }
+                nextState = DoubleArray(10) { (it + 1) * 0.1 },
+                done = false
             )
             
-            val gameResult = GameResult(
+            val gameResult = SelfPlayGameResult(
                 gameId = 1,
-                moves = listOf(gameMove),
-                outcome = GameOutcome.WHITE_WIN,
-                moveCount = 1,
-                duration = 1000L
+                gameLength = 1,
+                gameOutcome = GameOutcome.WHITE_WINS,
+                terminationReason = EpisodeTerminationReason.GAME_ENDED,
+                gameDuration = 1000L,
+                experiences = listOf(experience),
+                chessMetrics = ChessMetrics(
+                    gameLength = 1,
+                    totalMaterialValue = 78, // Standard starting material
+                    piecesInCenter = 0,
+                    developedPieces = 0,
+                    kingSafetyScore = 1.0,
+                    moveCount = 1,
+                    captureCount = 0,
+                    checkCount = 0
+                ),
+                finalPosition = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
             )
             println("   ✓ Game result structures working")
             println("     - Game ID: ${gameResult.gameId}")
-            println("     - Outcome: ${gameResult.outcome}")
-            println("     - Moves: ${gameResult.moves.size}")
+            println("     - Outcome: ${gameResult.gameOutcome}")
+            println("     - Experiences: ${gameResult.experiences.size}")
+            println("     - Termination: ${gameResult.terminationReason}")
+            println("     - Final Position: ${gameResult.finalPosition.take(20)}...")
             
             println()
             println("=== Integration Demo Complete ===")

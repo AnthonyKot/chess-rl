@@ -1,6 +1,7 @@
 package com.chessrl.integration
 
 import com.chessrl.chess.*
+import com.chessrl.rl.*
 
 /**
  * Shared data classes used across the integration module
@@ -8,6 +9,16 @@ import com.chessrl.chess.*
  */
 
 // Common enums
+
+/**
+ * Unified game outcome enumeration used across all self-play components
+ */
+enum class GameOutcome {
+    WHITE_WINS,
+    BLACK_WINS,
+    DRAW,
+    ONGOING
+}
 
 /**
  * Trend direction for metrics analysis
@@ -137,22 +148,95 @@ sealed class CommandResult {
     ) : CommandResult()
     
     data class Error(
-        val message: String
+        val message: String,
+        val exception: Throwable? = null
     ) : CommandResult()
 }
 
-// Optimization recommendations
+// Dashboard commands
 
 /**
- * Optimization recommendations
+ * Simple dashboard command record data class
  */
-data class OptimizationRecommendation(
-    val category: String,
-    val expectedImprovement: Double,
-    val implementationEffort: String
+data class DashboardCommandRecord(
+    val type: String,
+    val timestamp: Long,
+    val input: String
 )
 
-// Training dashboard
+// Dashboard supporting classes
+
+/**
+ * Session information for training dashboard
+ */
+data class SessionInfo(
+    val sessionId: Long,
+    val totalEpisodes: Int,
+    val totalSteps: Int,
+    val sessionDuration: Long
+)
+
+/**
+ * Current training statistics
+ */
+data class CurrentStatistics(
+    val currentEpisode: Double,
+    val averageReward: Double,
+    val winRate: Double,
+    val drawRate: Double,
+    val lossRate: Double,
+    val gameLength: Double
+)
+
+/**
+ * Trend analysis for metrics
+ */
+data class TrendAnalysis(
+    val rewardTrend: Double,
+    val winRateTrend: Double,
+    val gameQualityTrend: Double,
+    val efficiencyTrend: Double
+)
+
+/**
+ * System health status
+ */
+data class SystemHealth(
+    val status: HealthStatus,
+    val score: Double,
+    val warnings: Int,
+    val errors: Int
+)
+
+/**
+ * Health status enumeration
+ */
+enum class HealthStatus {
+    HEALTHY,
+    WARNING,
+    CRITICAL
+}
+
+/**
+ * Training efficiency metrics
+ */
+data class TrainingEfficiency(
+    val episodesPerSecond: Double,
+    val batchesPerSecond: Double,
+    val memoryUsage: Double,
+    val cpuUsage: Double
+)
+
+/**
+ * Interface information for dashboard
+ */
+data class InterfaceInfo(
+    val sessionId: String,
+    val sessionDuration: Long,
+    val dashboardUpdateInterval: Long,
+    val lastUpdate: Long,
+    val activeFeatures: List<String>
+)
 
 /**
  * Training dashboard data structure
@@ -170,64 +254,42 @@ data class TrainingDashboard(
     val interfaceInfo: InterfaceInfo? = null
 )
 
-// Supporting data classes for dashboard
-
-data class SessionInfo(
-    val sessionId: Long,
-    val totalEpisodes: Int,
-    val totalSteps: Int,
-    val sessionDuration: Long
-)
-
-data class CurrentStatistics(
-    val currentEpisode: Double,
-    val averageReward: Double,
-    val winRate: Double,
-    val drawRate: Double,
-    val lossRate: Double,
-    val gameLength: Double
-)
-
-data class TrendAnalysis(
-    val rewardTrend: Double,
-    val winRateTrend: Double,
-    val gameQualityTrend: Double,
-    val efficiencyTrend: Double
-)
-
-data class SystemHealth(
-    val status: HealthStatus,
-    val score: Double,
-    val warnings: Int,
-    val errors: Int
-)
-
-enum class HealthStatus {
-    HEALTHY,
-    WARNING,
-    CRITICAL
-}
-
-data class TrainingEfficiency(
-    val episodesPerSecond: Double,
-    val batchesPerSecond: Double,
-    val memoryUsage: Double,
-    val cpuUsage: Double
-)
-
-data class InterfaceInfo(
-    val sessionId: String,
-    val sessionDuration: Long,
-    val dashboardUpdateInterval: Long,
-    val lastUpdate: Long,
-    val activeFeatures: List<String>
-)
-
-// Training issues
-
+/**
+ * Training issue data class
+ */
 data class TrainingIssue(
     val type: String,
     val severity: String,
     val description: String,
     val recommendation: String
+)
+
+// Optimization recommendations
+
+/**
+ * Optimization recommendations
+ */
+data class OptimizationRecommendation(
+    val category: String,
+    val expectedImprovement: Double,
+    val implementationEffort: String
+)
+
+// Duplicate definitions removed - these are already defined above
+
+// Unified self-play result models
+
+/**
+ * Unified result of a single self-play game
+ * This is the canonical model used across all self-play components
+ */
+data class SelfPlayGameResult(
+    val gameId: Int,
+    val gameLength: Int,
+    val gameOutcome: GameOutcome,
+    val terminationReason: EpisodeTerminationReason,
+    val gameDuration: Long,
+    val experiences: List<Experience<DoubleArray, Int>>,
+    val chessMetrics: ChessMetrics,
+    val finalPosition: String
 )

@@ -532,15 +532,7 @@ enum class ExperienceCleanupStrategy {
     RANDOM             // Remove random experiences
 }
 
-/**
- * Game outcome enumeration
- */
-enum class GameOutcome {
-    WHITE_WINS,
-    BLACK_WINS,
-    DRAW,
-    ONGOING
-}
+
 
 /**
  * Enhanced experience with additional metadata
@@ -585,19 +577,7 @@ data class EnhancedExperience(
     }
 }
 
-/**
- * Result of a single self-play game
- */
-data class SelfPlayGameResult(
-    val gameId: Int,
-    val gameLength: Int,
-    val gameOutcome: GameOutcome,
-    val terminationReason: EpisodeTerminationReason,
-    val gameDuration: Long,
-    val experiences: List<Experience<DoubleArray, Int>>,
-    val chessMetrics: ChessMetrics,
-    val finalPosition: String
-)
+
 
 /**
  * Complete results from self-play session

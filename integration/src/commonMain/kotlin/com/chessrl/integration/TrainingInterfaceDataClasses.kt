@@ -91,25 +91,7 @@ enum class ValidationType {
     GAME_QUALITY    // Validate game quality
 }
 
-/**
- * Types of visualization
- */
-enum class VisualizationType {
-    BOARD,              // Chess board visualization
-    LEARNING_CURVE,     // Learning progress visualization
-    PERFORMANCE_METRICS // Performance metrics visualization
-}
-
-/**
- * Types of reports
- */
-enum class ReportType {
-    COMPREHENSIVE,  // Complete training report
-    PERFORMANCE,    // Performance-focused report
-    GAME_QUALITY,   // Game quality analysis report
-    VALIDATION,     // Validation results report
-    ISSUES          // Issues and problems report
-}
+// VisualizationType and ReportType are now defined in SharedDataClasses.kt
 
 /**
  * Time control for human vs agent games
@@ -472,9 +454,9 @@ enum class CommandType {
 // Analysis classes
 
 /**
- * Position analysis result
+ * Position analysis result for training interface
  */
-data class PositionAnalysis(
+data class TrainingPositionAnalysis(
     val moveNumber: Int,
     val positionFEN: String,
     val decisionAnalysis: AgentDecisionAnalysis,
@@ -493,32 +475,7 @@ data class PositionAnalysisResult(
 
 // Dashboard enhancement classes
 
-/**
- * Enhanced training dashboard with interface information
- */
-data class TrainingDashboard(
-    val sessionInfo: SessionInfo,
-    val currentStats: CurrentStatistics,
-    val recentTrends: TrendAnalysis,
-    val systemHealth: SystemHealth,
-    val activeIssues: List<ActiveIssue>,
-    val performanceMetrics: PerformanceMetrics,
-    val gameQualityMetrics: GameQualityMetrics,
-    val trainingEfficiency: TrainingEfficiency,
-    val lastUpdate: Long,
-    val interfaceInfo: InterfaceInfo? = null
-)
-
-/**
- * Interface-specific information for dashboard
- */
-data class InterfaceInfo(
-    val sessionId: String,
-    val sessionDuration: Long,
-    val dashboardUpdateInterval: Long,
-    val lastUpdate: Long,
-    val activeFeatures: List<String>
-)
+// TrainingDashboard and InterfaceInfo are now defined in SharedDataClasses.kt
 
 // Utility classes for chess operations
 

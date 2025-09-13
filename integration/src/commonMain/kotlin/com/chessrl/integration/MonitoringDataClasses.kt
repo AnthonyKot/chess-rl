@@ -197,19 +197,7 @@ data class DetectedIssue(
     val confidence: Double
 )
 
-/**
- * Performance snapshot for trend analysis
- */
-data class PerformanceSnapshot(
-    val cycle: Int,
-    val timestamp: Long,
-    val overallScore: Double,
-    val winRate: Double,
-    val averageReward: Double,
-    val gameQuality: Double,
-    val trainingEfficiency: Double,
-    val convergenceIndicator: Double
-)
+// PerformanceSnapshot is now defined in SharedDataClasses.kt
 
 /**
  * Training cycle analysis result
@@ -225,17 +213,7 @@ data class TrainingCycleAnalysis(
     val analysisTime: Long
 )
 
-/**
- * Convergence analysis
- */
-data class ConvergenceAnalysis(
-    val status: ConvergenceStatus,
-    val confidence: Double,
-    val estimatedCyclesToConvergence: Int?,
-    val stabilityScore: Double,
-    val trendDirection: TrendDirection = TrendDirection.STABLE,
-    val convergenceRate: Double = 0.0
-)
+// ConvergenceAnalysis is defined locally in this file as it has different fields than the shared one
 
 // Using shared TrendDirection from SharedDataClasses.kt
 
@@ -265,14 +243,14 @@ enum class RecommendationType {
  */
 // Using shared TrainingDashboard from SharedDataClasses.kt
 
-data class SessionInfo(
+data class MonitoringSessionInfo(
     val elapsedTime: Long,
     val totalCycles: Int,
     val totalGames: Int,
     val totalExperiences: Int
 )
 
-data class CurrentStatistics(
+data class MonitoringCurrentStatistics(
     val averageReward: Double,
     val winRate: Double,
     val gameQuality: Double,
@@ -281,23 +259,21 @@ data class CurrentStatistics(
     val convergenceScore: Double
 )
 
-data class TrendAnalysis(
+data class MonitoringTrendAnalysis(
     val rewardTrend: Double,
     val winRateTrend: Double,
     val gameQualityTrend: Double,
     val efficiencyTrend: Double
 )
 
-data class SystemHealth(
+data class MonitoringSystemHealth(
     val status: HealthStatus,
     val score: Double,
     val criticalIssues: Int,
     val totalIssues: Int
 )
 
-enum class HealthStatus {
-    HEALTHY, WARNING, CRITICAL
-}
+// HealthStatus is now defined in SharedDataClasses.kt
 
 data class ActiveIssue(
     val type: IssueType,
@@ -311,7 +287,7 @@ data class ActiveIssue(
 
 // Using shared GameQualityMetrics from SharedDataClasses.kt
 
-data class TrainingEfficiency(
+data class MonitoringTrainingEfficiency(
     val gamesPerSecond: Double,
     val experiencesPerSecond: Double,
     val batchUpdatesPerSecond: Double,
@@ -335,17 +311,9 @@ sealed class MonitoringCommand {
     data class Configure(val newConfig: MonitoringConfig) : MonitoringCommand()
 }
 
-/**
- * Command execution result
- */
-sealed class CommandResult {
-    data class Success(val message: String, val data: Any? = null) : CommandResult()
-    data class Error(val message: String, val exception: Throwable? = null) : CommandResult()
-}
+// CommandResult is now defined in SharedDataClasses.kt
 
-enum class ReportType {
-    COMPREHENSIVE, PERFORMANCE, GAME_QUALITY, ISSUES
-}
+// ReportType is now defined in SharedDataClasses.kt
 
 // Report structures
 
@@ -440,7 +408,7 @@ data class DetailedGameAnalysis(
     val analysisTime: Long
 )
 
-data class PositionAnalysis(
+data class MonitoringPositionAnalysis(
     val moveNumber: Int,
     val position: String,
     val evaluation: Double,
@@ -487,14 +455,7 @@ data class MoveConsequences(
     val activityChange: Double
 )
 
-data class StrategicAnalysis(
-    val openingStrategy: String,
-    val middlegameStrategy: String,
-    val endgameStrategy: String,
-    val strategicConsistency: Double,
-    val planExecution: Double,
-    val adaptability: Double
-)
+// StrategicAnalysis is now defined in SharedDataClasses.kt
 
 data class GameQualityAssessment(
     val overallQuality: Double,

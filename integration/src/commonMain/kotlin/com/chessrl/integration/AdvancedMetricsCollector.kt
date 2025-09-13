@@ -140,7 +140,7 @@ class AdvancedMetricsCollector(
     /**
      * Analyze termination reasons for enhanced episode tracking
      */
-    private fun analyzeTerminationReasons(gameResults: List<GameResult>): TerminationAnalysis {
+    private fun analyzeTerminationReasons(gameResults: List<SelfPlayGameResult>): TerminationAnalysis {
         val totalGames = gameResults.size
         if (totalGames == 0) {
             return TerminationAnalysis(0.0, 0.0, 0.0, 0.0)
@@ -334,7 +334,7 @@ class AdvancedMetricsCollector(
     /**
      * Calculate game quality score
      */
-    private fun calculateGameQuality(gameResult: GameResult): Double {
+    private fun calculateGameQuality(gameResult: SelfPlayGameResult): Double {
         // Simplified game quality calculation
         val lengthScore = when {
             gameResult.gameLength < 10 -> 0.3 // Too short
@@ -354,7 +354,7 @@ class AdvancedMetricsCollector(
     /**
      * Calculate move accuracy
      */
-    private fun calculateMoveAccuracy(gameResult: GameResult): Double {
+    private fun calculateMoveAccuracy(gameResult: SelfPlayGameResult): Double {
         // Simplified move accuracy calculation
         // In practice, would analyze each move against optimal play
         return 0.7 + Random.nextDouble() * 0.3 // Placeholder: 70-100%
@@ -363,7 +363,7 @@ class AdvancedMetricsCollector(
     /**
      * Calculate strategic depth
      */
-    private fun calculateStrategicDepth(gameResult: GameResult): Double {
+    private fun calculateStrategicDepth(gameResult: SelfPlayGameResult): Double {
         // Simplified strategic depth calculation
         // In practice, would analyze long-term planning and strategic themes
         val lengthFactor = minOf(gameResult.gameLength / 50.0, 1.0)
@@ -373,7 +373,7 @@ class AdvancedMetricsCollector(
     /**
      * Calculate tactical accuracy
      */
-    private fun calculateTacticalAccuracy(gameResult: GameResult): Double {
+    private fun calculateTacticalAccuracy(gameResult: SelfPlayGameResult): Double {
         // Simplified tactical accuracy calculation
         // In practice, would analyze tactical combinations and calculations
         return 0.6 + Random.nextDouble() * 0.4 // Placeholder: 60-100%

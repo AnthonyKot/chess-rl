@@ -120,14 +120,7 @@ sealed class DashboardCommand {
     ) : DashboardCommand()
 }
 
-/**
- * Command execution record
- */
-data class DashboardCommandRecord(
-    val type: String,
-    val timestamp: Long,
-    val input: String
-)
+// DashboardCommandRecord is now defined in SharedDataClasses.kt
 
 // Result classes
 
@@ -151,19 +144,7 @@ sealed class DashboardUpdateResult {
     object NotActive : DashboardUpdateResult()
 }
 
-/**
- * Command execution result
- */
-sealed class CommandResult {
-    data class Success(
-        val message: String,
-        val data: Any? = null
-    ) : CommandResult()
-    
-    data class Error(
-        val message: String
-    ) : CommandResult()
-}
+// CommandResult is now defined in SharedDataClasses.kt
 
 /**
  * Dashboard stop result

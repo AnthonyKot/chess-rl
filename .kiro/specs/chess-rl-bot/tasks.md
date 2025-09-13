@@ -345,18 +345,19 @@
 
 - [ ] 11. Integration Stabilization and Model Alignment
 
-  - [ ] 11.1 Unify self-play result model and outcome enums
+  - [x] 11.1 Unify self-play result model and outcome enums
     - Standardize on `SelfPlaySystem`’s `SelfPlayGameResult` and `GameOutcome { WHITE_WINS, BLACK_WINS, DRAW, ONGOING }` across integration.
     - Align `RealSelfPlayController` result types: rename `WHITE_WIN/BLACK_WIN` → `WHITE_WINS/BLACK_WINS`; add `terminationReason`, `gameLength`, `finalPosition`; or provide mapping helpers.
     - Update analytics/monitoring modules (`AdvancedMetricsCollector`, `GameAnalyzer`, monitoring/reporting) to the unified model.
     - Deliverable: All integration code compiles without enum/field mismatches; self-play analytics run against one coherent model.
 
-  - [ ] 11.2 Consolidate shared data classes and visibility
+  - [x] 11.2 Consolidate shared data classes and visibility
     - Create single, public definitions for shared types: `PerformanceMetrics`, `PerformanceSnapshot`, `GameQualityMetrics`, `DashboardCommand`, `VisualizationType`, `ReportType`, `TrendDirection`, `CommandResult`, `GamePhaseAnalysis`, `StrategicAnalysis`, `OptimizationRecommendation`, `RecommendationPriority`.
     - Remove duplicates, fix imports, and resolve private-in-file visibility issues.
     - Deliverable: No redeclaration or visibility errors during `:integration:compileKotlinJvm`.
 
   - [ ] 11.3 Replace final class inheritance with composition
+    - This is not TODO. It's optional if you find checklist useful.
     - Stop extending `ChessAgent` (final); introduce an adapter that wraps an agent where needed.
     - Remove all overrides of final methods; prefer pass-through composition.
     - Deliverable: No “final cannot be inherited/overridden” compile errors.

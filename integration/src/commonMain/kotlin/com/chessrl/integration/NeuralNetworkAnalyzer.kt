@@ -126,7 +126,7 @@ class NeuralNetworkAnalyzer(
     ): GamePhaseNetworkAnalysis {
         
         val board = ChessBoard()
-        val phaseAnalyses = mutableListOf<GamePhaseAnalysis>()
+        val phaseAnalyses = mutableListOf<NeuralNetworkGamePhaseAnalysis>()
         
         // Sample positions throughout the game
         val sampleIndices = if (gameHistory.size <= samplePositions) {
@@ -149,7 +149,7 @@ class NeuralNetworkAnalyzer(
             val networkOutput = analyzeNetworkOutput(board)
             val phaseCharacteristics = analyzePhaseCharacteristics(networkOutput, gamePhase)
             
-            phaseAnalyses.add(GamePhaseAnalysis(
+            phaseAnalyses.add(NeuralNetworkGamePhaseAnalysis(
                 moveNumber = moveIndex + 1,
                 gamePhase = gamePhase,
                 networkOutput = networkOutput,
@@ -624,7 +624,7 @@ class NeuralNetworkAnalyzer(
         )
     }
     
-    private fun analyzePhaseTransitions(phaseAnalyses: List<GamePhaseAnalysis>): List<PhaseTransition> {
+    private fun analyzePhaseTransitions(phaseAnalyses: List<NeuralNetworkGamePhaseAnalysis>): List<PhaseTransition> {
         val transitions = mutableListOf<PhaseTransition>()
         
         for (i in 1 until phaseAnalyses.size) {
@@ -644,7 +644,7 @@ class NeuralNetworkAnalyzer(
         return transitions
     }
     
-    private fun identifyPhasePatterns(phaseAnalyses: List<GamePhaseAnalysis>): Map<GamePhase, PhasePattern> {
+    private fun identifyPhasePatterns(phaseAnalyses: List<NeuralNetworkGamePhaseAnalysis>): Map<GamePhase, PhasePattern> {
         val patterns = mutableMapOf<GamePhase, PhasePattern>()
         
         GamePhase.values().forEach { phase ->
@@ -691,9 +691,7 @@ enum class ComparisonType {
     POLICY_SIMILARITY, VALUE_SIMILARITY, QVALUE_SIMILARITY
 }
 
-enum class VisualizationType {
-    HEATMAP, ARROW_DIAGRAM, PROBABILITY_BARS, DECISION_TREE
-}
+// VisualizationType is now defined in SharedDataClasses.kt
 
 enum class GamePhase {
     OPENING, MIDDLEGAME, ENDGAME
@@ -813,12 +811,12 @@ data class NetworkComparisonResult(
 
 data class GamePhaseNetworkAnalysis(
     val gameLength: Int,
-    val phaseAnalyses: List<GamePhaseAnalysis>,
+    val phaseAnalyses: List<NeuralNetworkGamePhaseAnalysis>,
     val phaseTransitions: List<PhaseTransition>,
     val phasePatterns: Map<GamePhase, PhasePattern>
 )
 
-data class GamePhaseAnalysis(
+private data class NeuralNetworkGamePhaseAnalysis(
     val moveNumber: Int,
     val gamePhase: GamePhase,
     val networkOutput: NeuralNetworkOutput,
