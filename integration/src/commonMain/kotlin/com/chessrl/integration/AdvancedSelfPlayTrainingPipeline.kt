@@ -29,6 +29,7 @@ class AdvancedSelfPlayTrainingPipeline(
     
     // Training state
     private var isTraining = false
+    private var isPaused = false
     private var currentCycle = 0
     private var totalCycles = 0
     private var bestModelVersion = 0
@@ -159,6 +160,7 @@ class AdvancedSelfPlayTrainingPipeline(
         println("=" * 80)
         
         isTraining = true
+        isPaused = false
         currentCycle = 0
         this.totalCycles = totalCycles
         cycleHistory.clear()
@@ -185,6 +187,14 @@ class AdvancedSelfPlayTrainingPipeline(
             // Main training loop with sophisticated cycle management
             for (cycle in 1..totalCycles) {
                 currentCycle = cycle
+                
+                // Check for pause state
+                while (isPaused && isTraining) {
+                    Thread.sleep(100) // Wait while paused
+                }
+                
+                // Check if training was stopped while paused
+                if (!isTraining) break
                 
                 println("\n🔄 Advanced Training Cycle $cycle/$totalCycles")
                 println("-" * 60)
@@ -893,12 +903,38 @@ class AdvancedSelfPlayTrainingPipeline(
     }
     
     /**
+     * Pause training gracefully
+     */
+    fun pauseTraining() {
+        if (isTraining && !isPaused) {
+            isPaused = true
+            println("⏸️ Advanced self-play training paused")
+        }
+    }
+    
+    /**
+     * Resume training from pause
+     */
+    fun resumeTraining() {
+        if (isTraining && isPaused) {
+            isPaused = false
+            println("▶️ Advanced self-play training resumed")
+        }
+    }
+    
+    /**
+     * Check if training is currently paused
+     */
+    fun isTrainingPaused(): Boolean = isPaused
+    
+    /**
      * Stop training gracefully
      */
     fun stopTraining() {
         if (isTraining) {
             selfPlaySystem?.stop()
             isTraining = false
+            isPaused = false
             println("🛑 Advanced self-play training stopped by user")
         }
     }
