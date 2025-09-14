@@ -86,7 +86,7 @@ class ValidationConsole(
     /**
      * Display game quality assessment in console format
      */
-    fun displayGameQuality(assessment: GameQualityAssessment): String {
+    fun displayGameQuality(assessment: ValidationGameQualityAssessment): String {
         val output = StringBuilder()
         
         output.appendLine("=== GAME QUALITY ASSESSMENT ===")

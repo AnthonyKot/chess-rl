@@ -28,6 +28,14 @@ class SeedManager private constructor() {
             return instance
         }
         
+        // Alias for older call sites
+        fun initializeWithMasterSeed(seed: Long): SeedManager = initializeWithSeed(seed)
+
+        // Convenience getters for static-style access
+        fun getNeuralNetworkRandom() = getInstance().getNeuralNetworkRandom()
+        fun getExplorationRandom() = getInstance().getExplorationRandom()
+        fun getReplayBufferRandom() = getInstance().getReplayBufferRandom()
+        
         /**
          * Initialize with random seed for non-deterministic runs
          */
@@ -387,9 +395,7 @@ object SeededOperations {
     /**
      * Generate seeded Gaussian random number
      */
-    fun nextGaussian(random: Random): Double {
-        return random.nextGaussian()
-    }
+    fun nextGaussian(random: Random): Double = random.nextGaussian()
     
     /**
      * Shuffle array with seeded random

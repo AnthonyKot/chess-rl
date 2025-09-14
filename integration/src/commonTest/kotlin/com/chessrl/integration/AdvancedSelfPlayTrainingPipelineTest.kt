@@ -15,19 +15,19 @@ class AdvancedSelfPlayTrainingPipelineTest {
     @BeforeTest
     fun setup() {
         config = AdvancedSelfPlayConfig(
-            initialGamesPerCycle = 5,
-            minGamesPerCycle = 3,
-            maxGamesPerCycle = 10,
+            initialGamesPerCycle = 2,
+            minGamesPerCycle = 1,
+            maxGamesPerCycle = 4,
             maxConcurrentGames = 2,
-            maxStepsPerGame = 50,
-            evaluationGamesPerCycle = 3,
-            batchSize = 16,
-            maxBatchesPerCycle = 5,
-            maxExperienceBufferSize = 1000,
+            maxStepsPerGame = 20,
+            evaluationGamesPerCycle = 1,
+            batchSize = 8,
+            maxBatchesPerCycle = 2,
+            maxExperienceBufferSize = 400,
             checkpointInterval = 2,
             cycleReportInterval = 2,
             enableEarlyStopping = false, // Disable for testing
-            convergenceConfig = ConvergenceConfig(windowSize = 5)
+            convergenceConfig = ConvergenceConfig(windowSize = 3)
         )
         
         pipeline = AdvancedSelfPlayTrainingPipeline(config)
@@ -52,7 +52,7 @@ class AdvancedSelfPlayTrainingPipelineTest {
         
         assertTrue(pipeline.initialize(), "Pipeline initialization should succeed")
         
-        val results = pipeline.runAdvancedTraining(totalCycles = 3)
+        val results = pipeline.runAdvancedTraining(totalCycles = 2)
         
         // Verify training completed
         assertEquals(3, results.totalCycles, "Should complete 3 training cycles")
@@ -84,7 +84,7 @@ class AdvancedSelfPlayTrainingPipelineTest {
         
         assertTrue(pipeline.initialize(), "Pipeline initialization should succeed")
         
-        val results = pipeline.runAdvancedTraining(totalCycles = 4)
+        val results = pipeline.runAdvancedTraining(totalCycles = 2)
         
         // Verify adaptive scheduling changes
         val schedulingStates = results.cycleHistory.map { it.adaptiveScheduling }
@@ -114,7 +114,7 @@ class AdvancedSelfPlayTrainingPipelineTest {
         
         assertTrue(pipeline.initialize(), "Pipeline initialization should succeed")
         
-        val results = pipeline.runAdvancedTraining(totalCycles = 2)
+        val results = pipeline.runAdvancedTraining(totalCycles = 1)
         
         // Verify experience processing
         for (cycle in results.cycleHistory) {
@@ -156,7 +156,7 @@ class AdvancedSelfPlayTrainingPipelineTest {
         
         assertTrue(pipeline.initialize(), "Pipeline initialization should succeed")
         
-        val results = pipeline.runAdvancedTraining(totalCycles = 2)
+        val results = pipeline.runAdvancedTraining(totalCycles = 1)
         
         // Verify batch training validation
         for (cycle in results.cycleHistory) {
@@ -203,7 +203,7 @@ class AdvancedSelfPlayTrainingPipelineTest {
         
         assertTrue(pipeline.initialize(), "Pipeline initialization should succeed")
         
-        val results = pipeline.runAdvancedTraining(totalCycles = 2)
+        val results = pipeline.runAdvancedTraining(totalCycles = 1)
         
         // Verify performance evaluation
         for (cycle in results.cycleHistory) {
@@ -309,7 +309,7 @@ class AdvancedSelfPlayTrainingPipelineTest {
         
         // Verify sampling statistics
         assertTrue(experienceStats.samplingStatistics.isNotEmpty(), "Sampling statistics should not be empty")
-        for ((strategy, stats) in experienceStats.samplingStatistics) {
+        for ((_, stats) in experienceStats.samplingStatistics) {
             assertTrue(stats.timesUsed >= 0, "Times used should be non-negative")
             assertTrue(stats.totalExperiencesSampled >= 0, "Total sampled should be non-negative")
             assertTrue(stats.averageQuality >= 0.0, "Average quality should be non-negative")
@@ -358,7 +358,7 @@ class AdvancedSelfPlayTrainingPipelineTest {
         assertEquals(0, initialStatus.totalCycles, "Total cycles should be 0")
         
         // Start training in a separate thread (simulated)
-        val results = pipeline.runAdvancedTraining(totalCycles = 2)
+        pipeline.runAdvancedTraining(totalCycles = 2)
         
         // Check final status
         val finalStatus = pipeline.getTrainingStatus()

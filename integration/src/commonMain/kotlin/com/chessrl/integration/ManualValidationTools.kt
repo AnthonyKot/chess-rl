@@ -40,7 +40,7 @@ class ManualValidationTools(
             val probability = actionProbabilities[actionIndex] ?: 0.0
             val qValue = qValues[actionIndex] ?: 0.0
             
-            MoveAnalysis(
+            ValidationMoveAnalysis(
                 move = move,
                 probability = probability,
                 qValue = qValue,
@@ -132,7 +132,7 @@ class ManualValidationTools(
         gameHistory: List<Move>,
         gameResult: GameStatus,
         finalBoard: ChessBoard
-    ): GameQualityAssessment {
+    ): ValidationGameQualityAssessment {
         
         val gameLength = gameHistory.size
         val averageMoveTime = 1.0 // Placeholder - would need actual timing data
@@ -153,7 +153,7 @@ class ManualValidationTools(
             gameLength, moveQuality, progression, gameResult
         )
         
-        return GameQualityAssessment(
+        return ValidationGameQualityAssessment(
             gameLength = gameLength,
             gameResult = gameResult,
             qualityScore = qualityScore,
@@ -573,7 +573,7 @@ class ManualValidationTools(
     
     private fun generateValidationRecommendations(
         scenarioResults: List<ScenarioInspectionResult>,
-        gameQualityResults: List<GameQualityAssessment>,
+        gameQualityResults: List<ValidationGameQualityAssessment>,
         overallAccuracy: Double,
         averageGameQuality: Double
     ): List<String> {
@@ -682,13 +682,13 @@ data class AgentDecisionAnalysis(
     val position: String,
     val activeColor: PieceColor,
     val validMovesCount: Int,
-    val topMoves: List<MoveAnalysis>,
+    val topMoves: List<ValidationMoveAnalysis>,
     val positionEvaluation: Double,
     val decisionConfidence: Double,
     val entropy: Double
 )
 
-data class MoveAnalysis(
+data class ValidationMoveAnalysis(
     val move: Move,
     val probability: Double,
     val qValue: Double,
@@ -709,7 +709,7 @@ data class MoveProbabilityEntry(
     val isValid: Boolean
 )
 
-data class GameQualityAssessment(
+data class ValidationGameQualityAssessment(
     val gameLength: Int,
     val gameResult: GameStatus,
     val qualityScore: Double,
@@ -815,7 +815,7 @@ data class InteractiveMoveAnalysis(
 
 data class ValidationReport(
     val scenarioResults: List<ScenarioInspectionResult>,
-    val gameQualityResults: List<GameQualityAssessment>,
+    val gameQualityResults: List<ValidationGameQualityAssessment>,
     val overallAccuracy: Double,
     val averageGameQuality: Double,
     val recommendations: List<String>,

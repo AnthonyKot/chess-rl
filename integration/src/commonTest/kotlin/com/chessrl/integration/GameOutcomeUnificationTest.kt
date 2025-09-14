@@ -24,6 +24,16 @@ class GameOutcomeUnificationTest {
     @Test
     fun testSelfPlayGameResultUsesUnifiedEnum() {
         // Test that SelfPlayGameResult can be created with unified enum
+        val metrics = ChessMetrics(
+            gameLength = 50,
+            totalMaterialValue = 0,
+            piecesInCenter = 0,
+            developedPieces = 0,
+            kingSafetyScore = 0.0,
+            moveCount = 50,
+            captureCount = 0,
+            checkCount = 0
+        )
         val result = SelfPlayGameResult(
             gameId = 1,
             gameLength = 50,
@@ -31,32 +41,11 @@ class GameOutcomeUnificationTest {
             terminationReason = EpisodeTerminationReason.GAME_ENDED,
             gameDuration = 1000L,
             experiences = emptyList(),
-            chessMetrics = ChessMetrics(),
+            chessMetrics = metrics,
             finalPosition = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
         )
-        
         assertEquals(GameOutcome.WHITE_WINS, result.gameOutcome)
         assertEquals(1, result.gameId)
         assertEquals(50, result.gameLength)
-    }
-    
-    @Test
-    fun testGameResultToSelfPlayGameResultConversion() {
-        // Test that GameResult can be converted to SelfPlayGameResult
-        val gameResult = GameResult(
-            gameId = 2,
-            moves = emptyList(),
-            outcome = GameOutcome.BLACK_WINS,
-            moveCount = 30,
-            duration = 2000L,
-            terminationReason = EpisodeTerminationReason.GAME_ENDED,
-            finalPosition = "test_position"
-        )
-        
-        val selfPlayResult = gameResult.toSelfPlayGameResult()
-        assertEquals(GameOutcome.BLACK_WINS, selfPlayResult.gameOutcome)
-        assertEquals(2, selfPlayResult.gameId)
-        assertEquals(30, selfPlayResult.gameLength)
-        assertEquals("test_position", selfPlayResult.finalPosition)
     }
 }

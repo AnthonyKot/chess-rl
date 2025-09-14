@@ -166,8 +166,10 @@ class SystemOptimizationDemo {
         repeat(20) {
             val snapshot = monitor.collectPerformanceSnapshot()
             if (it % 5 == 0) {
-                println("  Snapshot ${it + 1}: ${String.format("%.2f", snapshot.metrics.throughput)} ops/sec, " +
-                       "${snapshot.resources.memoryUsage / 1024 / 1024}MB memory")
+                println(
+                    "  Snapshot ${it + 1}: score=${String.format("%.3f", snapshot.overallScore)}, " +
+                        "eff=${String.format("%.3f", snapshot.trainingEfficiency)}"
+                )
             }
             
             // Simulate work
@@ -178,10 +180,11 @@ class SystemOptimizationDemo {
         val report = monitor.generatePerformanceReport()
         
         println("Performance Monitoring Results:")
-        println("  - Current throughput: ${String.format("%.2f", report.currentPerformance.metrics.throughput)} ops/sec")
-        println("  - Average latency: ${String.format("%.2f", report.currentPerformance.metrics.averageLatency)}ms")
-        println("  - Memory usage: ${report.currentPerformance.resources.memoryUsage / 1024 / 1024}MB")
-        println("  - CPU usage: ${String.format("%.1f", report.currentPerformance.resources.cpuUsage * 100)}%")
+        println("  - Overall score: ${String.format("%.3f", report.currentPerformance.overallScore)}")
+        println("  - Win rate: ${String.format("%.1f", report.currentPerformance.winRate * 100)}%")
+        println("  - Avg reward: ${String.format("%.3f", report.currentPerformance.averageReward)}")
+        println("  - Training efficiency: ${String.format("%.3f", report.currentPerformance.trainingEfficiency)}")
+        println("  - Convergence indicator: ${String.format("%.3f", report.currentPerformance.convergenceIndicator)}")
         println("  - Identified bottlenecks: ${report.identifiedBottlenecks.size}")
         println("  - Optimization recommendations: ${report.optimizationRecommendations.size}")
         
@@ -195,7 +198,12 @@ class SystemOptimizationDemo {
         if (report.optimizationRecommendations.isNotEmpty()) {
             println("  Recommendations:")
             report.optimizationRecommendations.take(3).forEach { recommendation ->
-                println("    - ${recommendation.category}: ${recommendation.description}")
+                println(
+                    "    - ${recommendation.category}: expected improvement ${String.format(
+                        "%.2f",
+                        recommendation.expectedImprovement
+                    )}, effort ${recommendation.implementationEffort}"
+                )
             }
         }
         

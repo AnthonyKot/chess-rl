@@ -10,8 +10,10 @@ class PerformanceBenchmark {
     fun benchmarkNeuralNetworkPerformance() {
         println("=== Neural Network Performance Benchmark ===")
         
-        // Warm up JVM
-        repeat(3) {
+        // Warmup iterations (stabilize JIT / caches)
+        val warmups = 3
+        println("Warmup iterations: $warmups")
+        repeat(warmups) {
             runQuickBenchmark()
         }
         
@@ -165,6 +167,8 @@ class PerformanceBenchmark {
     private fun printResults(results: List<BenchmarkResult>) {
         println("\n=== Benchmark Results ===")
         println("Platform: ${getPlatformInfo()}")
+        println("Runtime: ${platformRuntimeInfo()}")
+        println("Hardware: ${platformHardwareInfo()}")
         println("Timestamp: ${getCurrentTimestamp()}")
         println()
         

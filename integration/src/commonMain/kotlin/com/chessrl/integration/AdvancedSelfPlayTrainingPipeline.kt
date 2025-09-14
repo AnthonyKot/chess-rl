@@ -50,6 +50,13 @@ class AdvancedSelfPlayTrainingPipeline(
     fun initialize(): Boolean {
         try {
             println("🔧 Initializing Advanced Self-Play Training Pipeline")
+
+            // Log seed summary if available
+            runCatching { SeedManager.getInstance().getSeedSummary() }.onSuccess { summary ->
+                println("🎲 Seed Summary: seeded=${summary.isSeeded}, deterministic=${summary.isDeterministicMode}, masterSeed=${summary.masterSeed}")
+            }.onFailure {
+                println("🎲 Seed Summary: not initialized (non-deterministic run)")
+            }
             
             // Create training validator
             trainingValidator = TrainingValidator(
@@ -178,7 +185,8 @@ class AdvancedSelfPlayTrainingPipeline(
                 metadata = CheckpointMetadata(
                     cycle = 0,
                     performance = 0.0,
-                    description = "Initial model before training"
+                    description = "Initial model before training",
+                    seedConfiguration = try { SeedManager.getInstance().getSeedConfiguration() } catch (_: Throwable) { null }
                 )
             )
             
@@ -201,8 +209,8 @@ class AdvancedSelfPlayTrainingPipeline(
                 
                 // Execute training cycle with adaptive scheduling
                 val cycleResult = executeTrainingCycle(
-                    cycle, mainAgent, opponentAgent, selfPlaySystem, 
-                    trainingPipeline, trainingValidator, experienceManager
+                    cycle, mainAgent, opponentAgent, selfPlaySystem,
+                    trainingValidator, experienceManager
                 )
                 
                 cycleHistory.add(cycleResult)
@@ -228,7 +236,7 @@ class AdvancedSelfPlayTrainingPipeline(
                 }
                 
                 // Adaptive scheduling updates
-                updateAdaptiveScheduling(cycleResult)
+                updateAdaptiveScheduling()
                 
                 // Convergence detection
                 val convergenceStatus = convergenceDetector.checkConvergence(performanceHistory)
@@ -247,7 +255,8 @@ class AdvancedSelfPlayTrainingPipeline(
                         metadata = CheckpointMetadata(
                             cycle = cycle,
                             performance = cycleResult.performance.averageReward,
-                            description = "Regular checkpoint - cycle $cycle"
+                            description = "Regular checkpoint - cycle $cycle",
+                            seedConfiguration = try { SeedManager.getInstance().getSeedConfiguration() } catch (_: Throwable) { null }
                         )
                     )
                     lastCheckpointCycle = cycle
@@ -260,7 +269,7 @@ class AdvancedSelfPlayTrainingPipeline(
                 }
                 
                 // Model versioning and rollback check
-                if (shouldConsiderRollback(cycleResult)) {
+                if (shouldConsiderRollback()) {
                     val rollbackResult = considerModelRollback(checkpointManager, mainAgent)
                     if (rollbackResult.rolledBack) {
                         println("🔄 Model rolled back to version ${rollbackResult.version}")
@@ -268,7 +277,7 @@ class AdvancedSelfPlayTrainingPipeline(
                 }
                 
                 // Update opponent strategy
-                updateOpponentStrategy(cycle, cycleResult, opponentAgent, mainAgent)
+                updateOpponentStrategy(cycle, cycleResult)
                 
                 // Memory management and cleanup
                 performMemoryManagement(experienceManager, cycle)
@@ -324,7 +333,6 @@ class AdvancedSelfPlayTrainingPipeline(
         mainAgent: ChessAgent,
         opponentAgent: ChessAgent,
         selfPlaySystem: SelfPlaySystem,
-        trainingPipeline: ChessTrainingPipeline,
         trainingValidator: TrainingValidator,
         experienceManager: AdvancedExperienceManager
     ): TrainingCycleResult {
@@ -349,7 +357,7 @@ class AdvancedSelfPlayTrainingPipeline(
         // Phase 3: Batch training with validation
         println("🔬 Phase 3: Batch training with validation")
         val trainingResults = performValidatedBatchTraining(
-            experienceManager, trainingPipeline, trainingValidator, cycle
+            experienceManager, trainingValidator, cycle
         )
         
         // Phase 4: Performance evaluation
@@ -379,7 +387,6 @@ class AdvancedSelfPlayTrainingPipeline(
      */
     private fun performValidatedBatchTraining(
         experienceManager: AdvancedExperienceManager,
-        trainingPipeline: ChessTrainingPipeline,
         trainingValidator: TrainingValidator,
         cycle: Int
     ): ValidatedTrainingResults {
@@ -426,6 +433,12 @@ class AdvancedSelfPlayTrainingPipeline(
                     updateResult = updateResult,
                     episodeNumber = cycle * 1000 + batchIndex // Unique episode number
                 )
+                // Log raw and smoothed gradientNorm for clarity
+                val rawG = updateResult.gradientNorm
+                val emaG = validationResult.smoothedGradientNorm ?: rawG
+                val rawH = updateResult.policyEntropy
+                val emaH = validationResult.smoothedPolicyEntropy ?: rawH
+                println("   Batch $batchIndex metrics: loss=${"%.4f".format(updateResult.loss)}, grad=${"%.4f".format(rawG)} (ema=${"%.4f".format(emaG)}), entropy=${"%.4f".format(rawH)} (ema=${"%.4f".format(emaH)})")
                 
                 batchResults.add(
                     ValidatedBatchResult(
@@ -475,25 +488,8 @@ class AdvancedSelfPlayTrainingPipeline(
         // Convert enhanced experiences to basic experiences for training
         val basicExperiences = experiences.map { it.toBasicExperience() }
         
-        // Add experiences to agent
-        basicExperiences.forEach { experience ->
-            agent.learn(experience)
-        }
-        
-        // Force policy update
-        agent.forceUpdate()
-        
-        // Calculate realistic training metrics based on cycle progress
-        val progressFactor = currentCycle.toDouble() / totalCycles
-        val baseLoss = 2.0 * exp(-progressFactor * 2.0) // Decreasing loss
-        val baseGradientNorm = 3.0 * exp(-progressFactor * 1.5) // Decreasing gradient norm
-        val baseEntropy = 1.0 + 0.5 * (1.0 - progressFactor) // Decreasing entropy
-        
-        return PolicyUpdateResult(
-            loss = baseLoss + Random.nextDouble(-0.2, 0.2),
-            gradientNorm = baseGradientNorm + Random.nextDouble(-0.3, 0.3),
-            policyEntropy = baseEntropy + Random.nextDouble(-0.1, 0.1)
-        )
+        // Train using agent's batch API and return real update metrics
+        return agent.trainBatch(basicExperiences)
     }
     
     /**
@@ -563,12 +559,13 @@ class AdvancedSelfPlayTrainingPipeline(
         } else 0.0
         
         val wins = gameResults.count { it.gameOutcome == GameOutcome.WHITE_WINS }
-        val draws = gameResults.count { it.gameOutcome == GameOutcome.DRAW }
+        val ongoing = gameResults.count { it.gameOutcome == GameOutcome.ONGOING }
+        val draws = gameResults.count { it.gameOutcome == GameOutcome.DRAW } + ongoing // treat ongoing as draws
         val losses = gameResults.count { it.gameOutcome == GameOutcome.BLACK_WINS }
-        
-        val winRate = if (gameResults.isNotEmpty()) wins.toDouble() / gameResults.size else 0.0
-        val drawRate = if (gameResults.isNotEmpty()) draws.toDouble() / gameResults.size else 0.0
-        val lossRate = if (gameResults.isNotEmpty()) losses.toDouble() / gameResults.size else 0.0
+        val counted = (wins + draws + losses).coerceAtLeast(1) // avoid divide by zero
+        val winRate = wins.toDouble() / counted
+        val drawRate = draws.toDouble() / counted
+        val lossRate = losses.toDouble() / counted
         
         // Calculate performance score (weighted combination of metrics)
         val performanceScore = calculatePerformanceScore(avgReward, winRate, drawRate, avgGameLength)
@@ -661,8 +658,8 @@ class AdvancedSelfPlayTrainingPipeline(
     /**
      * Update adaptive scheduling based on training progress
      */
-    private fun updateAdaptiveScheduling(cycleResult: TrainingCycleResult) {
-        val performance = cycleResult.performance.performanceScore
+    private fun updateAdaptiveScheduling() {
+        // Consider recent performance trend for scheduling adjustments
         val recentPerformance = performanceHistory.takeLast(config.adaptiveSchedulingWindow)
         
         if (recentPerformance.size >= config.adaptiveSchedulingWindow) {
@@ -723,7 +720,7 @@ class AdvancedSelfPlayTrainingPipeline(
     /**
      * Check if we should consider model rollback
      */
-    private fun shouldConsiderRollback(cycleResult: TrainingCycleResult): Boolean {
+    private fun shouldConsiderRollback(): Boolean {
         if (!config.enableModelRollback) return false
         
         val recentPerformance = performanceHistory.takeLast(config.rollbackWindow)
@@ -768,9 +765,7 @@ class AdvancedSelfPlayTrainingPipeline(
      */
     private fun updateOpponentStrategy(
         cycle: Int,
-        cycleResult: TrainingCycleResult,
-        opponentAgent: ChessAgent,
-        mainAgent: ChessAgent
+        cycleResult: TrainingCycleResult
     ) {
         when (config.opponentUpdateStrategy) {
             OpponentUpdateStrategy.COPY_MAIN -> {
@@ -921,6 +916,40 @@ class AdvancedSelfPlayTrainingPipeline(
             println("▶️ Advanced self-play training resumed")
         }
     }
+
+    /**
+     * Load a specific checkpoint version into the main agent (JVM path uses real file I/O).
+     * Returns true on success.
+     */
+    fun loadCheckpointVersion(version: Int): Boolean {
+        val agent = mainAgent ?: return false
+        val manager = checkpointManager ?: return false
+        val info = manager.getCheckpoint(version) ?: return false
+        val result = manager.loadCheckpoint(info, agent)
+        if (result.success) {
+            println("📂 Loaded checkpoint version ${result.version} into main agent")
+        } else {
+            println("❌ Failed to load checkpoint version $version: ${result.error}")
+        }
+        return result.success
+    }
+
+    /**
+     * Load the current best checkpoint into the main agent if available.
+     * Returns true on success.
+     */
+    fun loadBestCheckpoint(): Boolean {
+        val agent = mainAgent ?: return false
+        val manager = checkpointManager ?: return false
+        val best = manager.getBestCheckpoint() ?: return false
+        val result = manager.loadCheckpoint(best, agent)
+        if (result.success) {
+            println("📂 Loaded best checkpoint version ${best.version} into main agent")
+            return true
+        }
+        println("❌ Failed to load best checkpoint: ${result.error}")
+        return false
+    }
     
     /**
      * Check if training is currently paused
@@ -1006,7 +1035,8 @@ data class AdvancedSelfPlayConfig(
     val experienceQualityThreshold: Double = 0.5,
     val experienceCleanupStrategy: ExperienceCleanupStrategy = ExperienceCleanupStrategy.LOWEST_QUALITY,
     val samplingStrategies: List<SamplingStrategy> = listOf(
-        SamplingStrategy.UNIFORM, SamplingStrategy.RECENT, SamplingStrategy.MIXED
+        // Use available strategies from TrainingPipeline: RANDOM, RECENT, MIXED
+        SamplingStrategy.RANDOM, SamplingStrategy.RECENT, SamplingStrategy.MIXED
     ),
     
     // Reward configuration

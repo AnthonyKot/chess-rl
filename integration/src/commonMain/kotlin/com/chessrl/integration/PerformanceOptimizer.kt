@@ -44,9 +44,9 @@ class JVMTrainingOptimizer {
     }
     
     private fun generateOptimalConfig(
-        memoryResult: MemoryOptimizationResult,
-        batchResult: BatchOptimizationResult,
-        concurrentResult: ConcurrentOptimizationResult
+        memoryResult: TrainingMemoryManager.MemoryOptimizationResult,
+        batchResult: OptimizedBatchProcessor.BatchOptimizationResult,
+        concurrentResult: ConcurrentTrainingManager.ConcurrentOptimizationResult
     ): JVMOptimizationConfig {
         return JVMOptimizationConfig(
             batchSize = batchResult.optimalBatchSize,
@@ -85,7 +85,7 @@ class TrainingMemoryManager {
         val gcOptimization = testGCOptimization()
         
         val finalMemory = getMemoryUsage()
-        val memoryReduction = (initialMemory - finalMemory) / initialMemory
+        val memoryReduction = (initialMemory - finalMemory).toDouble() / initialMemory.toDouble()
         
         return MemoryOptimizationResult(
             optimalPoolSize = config.memoryPoolSize,
@@ -124,6 +124,9 @@ class TrainingMemoryManager {
         return runtime.totalMemory() - runtime.freeMemory()
     }
 }
+
+// Lightweight stub for experience pool simulation
+private data class ExperienceBuffer(val capacity: Int)
 
 /**
  * Optimized Batch Processor for 32-128 batch sizes with minimal overhead

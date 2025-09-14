@@ -405,7 +405,7 @@ class ABTester {
         val learningRateEffect = config.learningRate * 100
         val batchSizeEffect = min(1.0, config.batchSize / 64.0) * 0.1
         val explorationEffect = (1.0 - config.explorationRate) * 0.1
-        val noise = Random.nextGaussian() * 0.05
+        val noise = Random.Default.nextGaussian() * 0.05
         
         return basePerformance + learningRateEffect + batchSizeEffect + explorationEffect + noise
     }

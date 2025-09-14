@@ -184,6 +184,7 @@ class TrainingDebugger(
     /**
      * Generate training diagnostic report
      */
+    @Suppress("UNUSED_PARAMETER")
     fun generateDiagnosticReport(
         trainingHistory: List<RLMetrics>,
         recentEpisodes: List<Experience<DoubleArray, Int>>
@@ -222,9 +223,10 @@ class TrainingDebugger(
     ): LossAnalysis {
         
         val lossChange = afterMetrics.policyLoss - beforeMetrics.policyLoss
+        val eps = 1e-9
         val lossDirection = when {
-            lossChange > config.significantLossChangeThreshold -> LossDirection.INCREASING
-            lossChange < -config.significantLossChangeThreshold -> LossDirection.DECREASING
+            lossChange > eps -> LossDirection.INCREASING
+            lossChange < -eps -> LossDirection.DECREASING
             else -> LossDirection.STABLE
         }
         
@@ -435,6 +437,7 @@ class TrainingDebugger(
         }
     }
     
+    @Suppress("UNUSED_PARAMETER")
     private fun generateConvergenceAnalysis(issue: ConvergenceIssue, history: List<RLMetrics>): String {
         return when (issue) {
             ConvergenceIssue.POLICY_COLLAPSE -> "Policy entropy has collapsed, indicating over-exploitation"
@@ -446,6 +449,7 @@ class TrainingDebugger(
         }
     }
     
+    @Suppress("UNUSED_PARAMETER")
     private fun generateConvergenceRecommendations(issue: ConvergenceIssue, history: List<RLMetrics>): List<String> {
         return when (issue) {
             ConvergenceIssue.POLICY_COLLAPSE -> listOf(

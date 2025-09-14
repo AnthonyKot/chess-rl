@@ -76,9 +76,9 @@ class GameAnalyzer(
             
             // Quality metrics
             qualityScore = qualityAssessment.overallQuality,
-            moveAccuracy = qualityAssessment.moveAccuracy,
-            strategicComplexity = qualityAssessment.strategicComplexity,
-            tacticalAccuracy = qualityAssessment.tacticalAccuracy,
+            moveAccuracy = decisionAnalysis.decisionConfidence,
+            strategicComplexity = (phaseAnalysis.openingQuality + phaseAnalysis.middlegameQuality + phaseAnalysis.endgameQuality) / 3.0,
+            tacticalAccuracy = decisionAnalysis.decisionConfidence,
             
             // Game phases
             openingQuality = phaseAnalysis.openingQuality,
@@ -90,13 +90,13 @@ class GameAnalyzer(
             decisionConfidence = decisionAnalysis.decisionConfidence,
             explorationRate = decisionAnalysis.explorationRate,
             
-            // Learning insights
-            learningValue = learningInsights.learningValue,
-            noveltyScore = learningInsights.noveltyScore,
-            difficultyLevel = learningInsights.difficultyLevel,
+            // Learning insights (aggregate placeholders)
+            learningValue = 0.0,
+            noveltyScore = 0.0,
+            difficultyLevel = 0.0,
             
-            // Detailed analysis
-            moveAnalyses = moveAnalyses,
+            // Detailed analysis (summary-level list expected here)
+            moveAnalyses = emptyList(),
             criticalPositions = criticalPositions
         )
         
@@ -426,18 +426,12 @@ class GameAnalyzer(
     
     private fun analyzePosition(position: String, moveNumber: Int): PositionAnalysis {
         return PositionAnalysis(
-            moveNumber = moveNumber,
             position = position,
             evaluation = Random.nextDouble(-2.0, 2.0),
             complexity = Random.nextDouble(0.0, 1.0),
             tacticalThemes = listOf("pin", "fork", "skewer").shuffled().take(Random.nextInt(0, 3)),
             strategicThemes = listOf("center control", "king safety", "pawn structure").shuffled().take(Random.nextInt(0, 3)),
-            agentAssessment = AgentPositionAssessment(
-                confidence = Random.nextDouble(0.5, 1.0),
-                topMoves = listOf("e4", "d4", "Nf3").shuffled().take(3),
-                moveProbabilities = mapOf("e4" to 0.4, "d4" to 0.3, "Nf3" to 0.3),
-                positionUnderstanding = Random.nextDouble(0.4, 1.0)
-            )
+            agentAssessment = Random.nextDouble(0.4, 1.0)
         )
     }
     
@@ -531,29 +525,11 @@ class GameAnalyzer(
     
     // Strategic analysis methods
     
-    private fun analyzeOpeningStrategy(game: AnalyzedGame): String {
-        return when {
-            game.openingQuality > 0.8 -> "Excellent opening preparation"
-            game.openingQuality > 0.6 -> "Solid opening play"
-            else -> "Opening needs improvement"
-        }
-    }
+    private fun analyzeOpeningStrategy(game: AnalyzedGame): Double = game.openingQuality
     
-    private fun analyzeMiddlegameStrategy(game: AnalyzedGame): String {
-        return when {
-            game.middlegameQuality > 0.8 -> "Strong middlegame planning"
-            game.middlegameQuality > 0.6 -> "Adequate middlegame play"
-            else -> "Middlegame strategy unclear"
-        }
-    }
+    private fun analyzeMiddlegameStrategy(game: AnalyzedGame): Double = game.middlegameQuality
     
-    private fun analyzeEndgameStrategy(game: AnalyzedGame): String {
-        return when {
-            game.endgameQuality > 0.8 -> "Precise endgame technique"
-            game.endgameQuality > 0.6 -> "Reasonable endgame play"
-            else -> "Endgame technique needs work"
-        }
-    }
+    private fun analyzeEndgameStrategy(game: AnalyzedGame): Double = game.endgameQuality
     
     private fun calculateStrategicConsistency(game: AnalyzedGame): Double {
         val phaseQualities = listOf(game.openingQuality, game.middlegameQuality, game.endgameQuality)
@@ -646,18 +622,12 @@ class GameAnalyzer(
         // Update position database (simplified)
         game.criticalPositions.forEach { criticalPos ->
             positionDatabase[criticalPos.position] = PositionAnalysis(
-                moveNumber = criticalPos.moveNumber,
                 position = criticalPos.position,
                 evaluation = criticalPos.evaluation,
                 complexity = criticalPos.criticality,
                 tacticalThemes = emptyList(),
                 strategicThemes = emptyList(),
-                agentAssessment = AgentPositionAssessment(
-                    confidence = 0.8,
-                    topMoves = listOf(criticalPos.correctMove),
-                    moveProbabilities = mapOf(criticalPos.correctMove to 1.0),
-                    positionUnderstanding = 0.7
-                )
+                agentAssessment = 0.8
             )
         }
     }

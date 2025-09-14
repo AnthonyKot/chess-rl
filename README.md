@@ -1,22 +1,25 @@
 # Chess RL Bot
 
-A production-ready reinforcement learning chess bot built with Kotlin Multiplatform. This system demonstrates complete chess RL implementation with advanced neural networks, sophisticated training pipelines, and comprehensive validation tools.
+A Kotlin Multiplatform reinforcement learning chess project. It includes a full chess engine, a neural network package, an RL framework, and an integration layer for self-play and training.
+
+Repo Sync Update — 2025-09-14
+- Reality check: Parts of the optimization/monitoring stack are simulated and not wired to real training yet. DQN/PG algorithms do not apply optimizer updates; target network sync and illegal‑action masking are not implemented. Model save/load is stubbed.
+- What’s real: Chess engine, NN core, self‑play result models, training pipeline scaffold, seeded components, metrics/reporting types.
+- Short‑term fixes queued: align monitoring API usage, patch minor syntax, and then implement a minimal batch train path and DQN target sync/masking.
 
 ## 🚀 How to Run and Test
 
 ### Quick Start
 ```bash
-# Build and verify everything works
-./verify-build.sh
+# Build and run tests
+./verify-build.sh                  # Convenience script
+./gradlew test                     # All modules
 
-# Run all tests (recommended first step)
-./gradlew test
-
-# Run specific component tests
-./gradlew integration:jvmTest     # Chess RL integration tests
-./gradlew chess-engine:jvmTest    # Chess engine tests  
-./gradlew nn-package:jvmTest      # Neural network tests
-./gradlew rl-framework:jvmTest    # RL framework tests
+# Useful subsets
+./gradlew chess-engine:jvmTest     # Chess engine tests
+./gradlew nn-package:jvmTest       # Neural network tests
+./gradlew rl-framework:jvmTest     # RL framework tests
+./gradlew integration:jvmTest      # Integration tests (pipeline/self‑play/monitoring)
 ```
 
 ### Performance Benchmarking
@@ -27,6 +30,9 @@ A production-ready reinforcement learning chess bot built with Kotlin Multiplatf
 # JVM-only benchmarks (works on all platforms)
 ./benchmark-jvm-only.sh
 ```
+Notes:
+- Scripts pin consistent JVM flags (`-Xms1g -Xmx1g -XX:+UseG1GC -XX:MaxGCPauseMillis=100`) and record environment metadata to `benchmark-results/**/metadata.txt`.
+- Benchmarks include warmup iterations to stabilize JIT/caches and print runtime/hardware details in results.
 
 ### Chess Engine Demo
 ```bash
@@ -36,11 +42,9 @@ A production-ready reinforcement learning chess bot built with Kotlin Multiplatf
 
 ### Chess RL Training Demo
 ```bash
-# Run chess RL integration demo
-./gradlew :integration:runDemo
-
-# Run training pipeline demo
-./gradlew :integration:runTrainingDemo
+# Run integration demos
+./gradlew :integration:runTrainingDemo      # Training pipeline
+./gradlew :integration:runIntegratedDemo    # Integrated self‑play
 ```
 
 ### Requirements
@@ -50,7 +54,7 @@ A production-ready reinforcement learning chess bot built with Kotlin Multiplatf
 
 ## 🎯 Project Goals & Architecture
 
-### Target: Production-Ready Chess RL System
+### Target: Production-Ready Chess RL System (in progress)
 - **Advanced Self-Play Training**: Agents learn chess through sophisticated self-play with concurrent game generation
 - **Neural Network Integration**: Custom NN library optimized for chess position evaluation and move selection
 - **Comprehensive Training Pipeline**: Batch processing, experience replay, validation, and debugging tools
@@ -214,7 +218,25 @@ println("  Average reward: ${metrics.averageReward}")
 - **Training Pipeline**: Batch processing (32-128 sizes), multiple sampling strategies
 - **Enhanced Metrics**: Detailed episode termination analysis and performance tracking
 
-## ✅ What's Already Implemented (Tasks 1-8 Complete)
+## ✅ Status Reality Check
+
+What’s real today
+- Chess engine, NN core (forward/backward, layers, optimizers), integration scaffolding (pipeline, self‑play controller/system), shared metrics/reporting.
+- Seed/Determinism infrastructure and seeded wrappers matching current interfaces.
+
+Important limitations
+- DQN: No optimizer step and no target network copy; illegal‑action masking not applied.
+- Policy Gradient: No real optimizer updates; batch training not wired.
+- Monitoring/Optimizers: PerformanceMonitor and JVMTrainingOptimizer collect simulated metrics and are not wired into real training loops.
+- Serialization: FeedforwardNetwork.save/load is stubbed (load throws).
+- Self‑play “concurrency”: Batched sequential execution with simulated concurrency.
+
+Near‑term plan
+- Replace simulated metrics with real batch metrics in pipeline (loss/entropy/grad‑norm).  
+- Centralize determinism (single run seed), thread through NN init, replay, and exploration; log in checkpoints.  
+- Minimal JVM save/load for networks; checkpoint + resume.  
+- Illegal‑action masking in DQN targets; maintain target sync cadence.  
+- Standardize logging/metrics and benchmark flags for reproducibility.
 
 ### 🏗️ **Foundation Components** (Tasks 1-4)
 - ✅ **Project Setup**: Kotlin Multiplatform with comprehensive CI/CD
@@ -228,11 +250,11 @@ println("  Average reward: ${metrics.averageReward}")
 - ✅ **Regularization**: L1/L2 regularization, dropout working with mini-batches
 - ✅ **Training Infrastructure**: Dataset interface, batch processing, model serialization
 
-### 🤖 **RL Framework** (Task 6)
+### 🤖 **RL Framework** (Current)
 - ✅ **Core Interfaces**: Environment, Agent, Experience with generic type support
-- ✅ **DQN Algorithm**: Complete implementation with target networks, experience replay
-- ✅ **Policy Gradient**: REINFORCE algorithm with optional baseline
-- ✅ **Experience Replay**: Circular and prioritized buffers with efficient sampling
+- ⚠️ **DQN Algorithm**: Forward/backward only; missing optimizer step, target sync, and illegal‑action masking
+- ⚠️ **Policy Gradient**: Computes returns/advantages; missing proper optimizer/batch updates
+- ✅ **Experience Replay**: Circular and prioritized buffers; sampling can be optimized further
 - ✅ **Exploration Strategies**: Epsilon-greedy, Boltzmann exploration
 
 ### 🔗 **Chess RL Integration** (Tasks 7-8)
@@ -257,6 +279,25 @@ println("  Average reward: ${metrics.averageReward}")
 - ✅ **Checkpointing**: Model persistence, training state recovery, performance history
 - ✅ **Configuration Management**: Flexible parameter adjustment and experiment tracking
 
+#### Lightweight Logger and Metrics Export
+- Use `Log` for simple, consistent logs with levels.
+```kotlin
+import com.chessrl.integration.logging.Log
+
+Log.setLevel(Log.Level.INFO)
+Log.info("Starting training…")
+Log.debug("Buffer size=\${metrics.experienceBufferSize}")
+```
+
+- Standardize and export metrics (CSV/NDJSON) with `MetricsStandardizer` and `MetricsExporter`.
+```kotlin
+import com.chessrl.integration.metrics.*
+
+val rec = MetricsStandardizer.fromEpisodeMetrics(episode.metrics, tags = mapOf("run" to "expA"))
+MetricsExporter.writeCsv("out/metrics.csv", listOf(rec))
+MetricsExporter.writeJsonLines("out/metrics.ndjson", listOf(rec), append = true)
+```
+
 ### 🚀 **Advanced Self-Play Training** (Task 9.2 Complete)
 - ✅ **AdvancedSelfPlayTrainingPipeline**: Sophisticated learning cycle management with adaptive scheduling
 - ✅ **AdvancedExperienceManager**: Large-scale experience buffer management (50K+ experiences)
@@ -264,6 +305,71 @@ println("  Average reward: ${metrics.averageReward}")
 - ✅ **ConvergenceDetector**: Multi-criteria convergence analysis with automated recommendations
 - ✅ **Integration Tests**: Comprehensive testing for complete self-play training pipeline
 - ✅ **Performance Tests**: Large-scale training scenario validation and optimization
+
+#### Checkpoint Resume Helpers
+Use these helpers to restore the main agent from saved checkpoints in the advanced pipeline.
+
+```kotlin
+// Initialize advanced pipeline
+val pipeline = AdvancedSelfPlayTrainingPipeline()
+check(pipeline.initialize())
+
+// Load the best checkpoint found so far (if any)
+val loadedBest = pipeline.loadBestCheckpoint()
+println("Loaded best checkpoint: $loadedBest")
+
+// Or load a specific checkpoint version
+val loadedV5 = pipeline.loadCheckpointVersion(5)
+println("Loaded version 5: $loadedV5")
+
+// Continue training after restoring weights
+val results = pipeline.runAdvancedTraining(totalCycles = 3)
+println("Training resumed. Best model version: ${results.bestModelVersion}")
+```
+
+Notes:
+- Checkpoints are created automatically (initial, best, periodic) under `AdvancedSelfPlayConfig.checkpointDirectory`.
+- On JVM, `FeedforwardNetwork.save/load` uses real file I/O. Native save/load is not yet implemented.
+
+#### DQN Action Masking (Illegal Moves)
+Masking ensures DQN targets only consider valid next-state actions when computing `max_a' Q(s', a')`.
+
+Behavior:
+- If a provider is set, DQN uses `validNextActions = provider(nextState)` to mask illegal actions in target computation.
+- If no provider is set, it falls back to unmasked max over the full action space.
+
+Integration default:
+- `ChessTrainingPipeline` automatically sets the provider to `environment::getValidActions`, so masking works out of the box.
+
+Custom environments or manual wiring:
+```kotlin
+// If you manage the agent/algorithm directly, provide the valid-actions function once.
+// Via agent (preferred):
+agent.setNextActionProvider { nextState -> myEnv.getValidActions(nextState) }
+
+// Or if you access the underlying DQN algorithm directly:
+// (only applicable when your agent exposes it)
+// dqn.setNextActionProvider { nextState -> myEnv.getValidActions(nextState) }
+```
+
+#### DQN Target Sync Cadence
+The DQN target network synchronizes with the main Q-network every `targetUpdateFrequency` updates and logs a short message when it happens.
+
+- Log: `🔁 DQN target network synchronized at update=<n> (freq=<k>)`
+- Configure cadence when constructing DQN (integration defaults to 100):
+```kotlin
+val dqn = DQNAlgorithm(
+    qNetwork = qNet,
+    targetNetwork = tgtNet,
+    experienceReplay = replay,
+    gamma = 0.99,
+    targetUpdateFrequency = 200, // sync every 200 updates
+    batchSize = 64
+)
+```
+Notes:
+- Sync uses a best‑effort weight copy when the underlying networks support synchronization.
+- The log helps verify cadence during debugging and tests.
 
 ## � TODO:  Next Implementation Phase
 
@@ -474,3 +580,17 @@ This project serves as a comprehensive reference for:
 ---
 
 **🚀 This chess RL system demonstrates production-ready ML engineering with sophisticated training pipelines, comprehensive validation, and performance optimization - ready for advanced self-play implementation and production deployment!**
+
+## 📌 Roadmap Snapshot (11.5–11.13)
+
+- 11.8 Real Metrics [IMPORTANT, medium]: Wire true loss/entropy/grad‑norm from batch training into pipeline; remove simulated metrics. DoD: pipeline reports match algorithm outputs; values are finite and trend meaningfully.
+- 11.5 Determinism [IMPORTANT, fast]: Single run seed; thread through NN init, replay sampling, exploration; log with checkpoints. DoD: deterministic test mode and documented seed handling.
+- 11.9 Checkpointing (JVM) [IMPORTANT, medium]: Implement FeedforwardNetwork save/load (config + weights) and integrate with CheckpointManager. DoD: save→load roundtrip and resume training.
+- 11.11 Buffer API Cleanup [IMPROVEMENT, fast]: Remove duplicate agent buffer for off‑policy; use algorithm replay as source of truth; keep per‑episode buffer only for on‑policy. DoD: no duplicate growth paths.
+- 11.6 Logging & Metrics [IMPROVEMENT, fast]: Lightweight logger + standardized metric keys/units; optional CSV/JSON dumps. DoD: consistent logs and exportable snapshots.
+- 11.7 Benchmark Standardization [IMPROVEMENT, fast]: Pin JVM flags, add warmup, record HW/JDK metadata. DoD: reproducible outputs with metadata.
+- 11.12 Safety Checks [IMPROVEMENT, fast]: Stronger require/check on dims, masks, rewards; fail fast. DoD: clearer errors in edge cases.
+- 11.13 Baseline Opponent [ADDITION, medium]: Simple material+mobility heuristic for evaluation runs. DoD: baseline win/draw/loss metrics separate from self‑play.
+
+Notes
+- We trimmed legacy UI/demo tests and added fast smoke tests (DQN learning, invalid‑action penalty). Performance tests are scaled down for CI.

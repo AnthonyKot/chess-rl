@@ -23,10 +23,13 @@ class NeuralNetworkAnalyzer(
         val state = stateEncoder.encode(board)
         val validMoves = getValidMoves(board)
         
-        // Get raw network outputs
-        val policyOutput = agent.getPolicyOutput(state)
-        val valueOutput = agent.getValueOutput(state)
+        // Get raw outputs derived from agent APIs
         val qValues = agent.getQValues(state, validMoves)
+        val probs = agent.getActionProbabilities(state, validMoves)
+        val policyOutput = DoubleArray(ChessActionEncoder.ACTION_SPACE_SIZE) { 0.0 }.also { arr ->
+            probs.forEach { (action, p) -> if (action in arr.indices) arr[action] = p }
+        }
+        val valueOutput = qValues.values.average()
         
         // Analyze policy distribution
         val policyAnalysis = analyzePolicyDistribution(policyOutput, validMoves)
@@ -125,7 +128,8 @@ class NeuralNetworkAnalyzer(
         samplePositions: Int = 10
     ): GamePhaseNetworkAnalysis {
         
-        val board = ChessBoard()
+        // Build a fresh board per sampled position
+        var baseBoard = ChessBoard()
         val phaseAnalyses = mutableListOf<NeuralNetworkGamePhaseAnalysis>()
         
         // Sample positions throughout the game
@@ -138,8 +142,8 @@ class NeuralNetworkAnalyzer(
         }
         
         sampleIndices.forEach { moveIndex ->
-            // Reset board and play moves up to this point
-            board.reset()
+            // Create a fresh board and play moves up to this point
+            val board = ChessBoard()
             repeat(moveIndex) { i ->
                 board.makeLegalMove(gameHistory[i])
                 board.switchActiveColor()
@@ -187,6 +191,7 @@ class NeuralNetworkAnalyzer(
             VisualizationType.ARROW_DIAGRAM -> createArrowDiagram(networkOutput, board)
             VisualizationType.PROBABILITY_BARS -> createProbabilityBars(networkOutput, validMoves)
             VisualizationType.DECISION_TREE -> createDecisionTree(networkOutput, validMoves)
+            else -> createProbabilityBars(networkOutput, validMoves)
         }
         
         return DecisionVisualization(
@@ -816,7 +821,7 @@ data class GamePhaseNetworkAnalysis(
     val phasePatterns: Map<GamePhase, PhasePattern>
 )
 
-private data class NeuralNetworkGamePhaseAnalysis(
+data class NeuralNetworkGamePhaseAnalysis(
     val moveNumber: Int,
     val gamePhase: GamePhase,
     val networkOutput: NeuralNetworkOutput,

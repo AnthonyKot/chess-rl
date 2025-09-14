@@ -1751,8 +1751,7 @@ class FeedforwardNetwork(
     override fun save(path: String) {
         try {
             val serializedData = modelSerializer.serialize(this)
-            // In a real implementation, this would write to file
-            // For now, we'll store in a simple way
+            // Write to file (platform-specific implementation on JVM)
             saveToFile(path, serializedData)
         } catch (e: Exception) {
             throw RuntimeException("Failed to save model to $path: ${e.message}", e)
@@ -1805,21 +1804,23 @@ class FeedforwardNetwork(
         layer.setBiases(savedWeights.biases)
     }
     
-    // Simplified file I/O (would need platform-specific implementation)
+    // File I/O using platform-specific implementations
     private fun saveToFile(path: String, data: String) {
-        // Platform-specific file writing would go here
-        println("Saving model to $path (${data.length} characters)")
+        writeTextFile(path, data)
     }
     
     private fun loadFromFile(path: String): String {
-        // Platform-specific file reading would go here
-        throw RuntimeException("File loading not implemented for path: $path")
+        return readTextFile(path)
     }
     
     // Helper methods for testing and monitoring
     fun getTrainingHistory(): List<TrainingMetrics> = trainingHistory.toList()
     fun getLossFunction(): LossFunction = lossFunction
 }
+
+// Platform-specific file I/O declarations
+expect fun writeTextFile(path: String, content: String)
+expect fun readTextFile(path: String): String
 
 /**
  * Hyperparameter configuration for automated testing

@@ -10,13 +10,13 @@ import kotlin.math.pow
  * This addresses the integration gaps identified in task 10.1
  */
 class RealSelfPlayController(
-    private val config: RealSelfPlayConfig = RealSelfPlayConfig()
+    private val config: SelfPlayConfig = SelfPlayConfig()
 ) {
     
     private var isRunning = false
     private var currentSession: SelfPlaySession? = null
     private val gameResults = mutableListOf<SelfPlayGameResult>()
-    private val experienceBuffer = com.chessrl.rl.CircularExperienceBuffer<DoubleArray, Int>(maxSize = config.maxExperiences)
+    private val experienceBuffer = com.chessrl.rl.CircularExperienceBuffer<DoubleArray, Int>(maxSize = 10000)
     
     // Chess components
     private val chessEnvironment = ChessEnvironment()
@@ -33,25 +33,9 @@ class RealSelfPlayController(
     fun initialize(): SelfPlayInitResult {
         return try {
             // Create real chess agents
-            whiteAgent = RealChessAgentFactory.createRealDQNAgent(
-                inputSize = ChessStateEncoder.TOTAL_FEATURES,
-                outputSize = ChessActionEncoder.ACTION_SPACE_SIZE,
-                hiddenLayers = config.hiddenLayers,
-                learningRate = config.learningRate,
-                explorationRate = config.explorationRate,
-                batchSize = config.batchSize,
-                maxBufferSize = config.maxExperiences
-            )
+            whiteAgent = RealChessAgentFactory.createRealDQNAgent()
             
-            blackAgent = RealChessAgentFactory.createRealDQNAgent(
-                inputSize = ChessStateEncoder.TOTAL_FEATURES,
-                outputSize = ChessActionEncoder.ACTION_SPACE_SIZE,
-                hiddenLayers = config.hiddenLayers,
-                learningRate = config.learningRate,
-                explorationRate = config.explorationRate,
-                batchSize = config.batchSize,
-                maxBufferSize = config.maxExperiences
-            )
+            blackAgent = RealChessAgentFactory.createRealDQNAgent()
             
             SelfPlayInitResult.Success("Self-play controller initialized with real agents")
         } catch (e: Exception) {
@@ -103,7 +87,7 @@ class RealSelfPlayController(
             val experiencesCollected = collectExperiences(gamesPlayed)
             
             // Phase 3: Train neural networks if we have enough experiences
-            if (experienceBuffer.size() >= config.batchSize) {
+            if (experienceBuffer.size() >= 32) {
                 trainNetworks()
             }
             
@@ -279,12 +263,12 @@ class RealSelfPlayController(
      * Train the neural networks using collected experiences
      */
     private fun trainNetworks() {
-        if (experienceBuffer.size() < config.batchSize) {
+        if (experienceBuffer.size() < 32) {
             return
         }
         
         // Sample experiences for training
-        val batch = experienceBuffer.sample(config.batchSize)
+        val batch = experienceBuffer.sample(32)
         
         // Train both agents (they share the same architecture but have separate networks)
         whiteAgent?.let { agent ->
@@ -304,7 +288,8 @@ class RealSelfPlayController(
     private fun updateExploration(episode: Int) {
         val decayRate = 0.995
         val minExploration = 0.01
-        val newRate = (config.explorationRate * decayRate.pow(episode.toDouble())).coerceAtLeast(minExploration)
+        val baseRate = 0.1
+        val newRate = (baseRate * decayRate.pow(episode.toDouble())).coerceAtLeast(minExploration)
         
         whiteAgent?.setExplorationRate(newRate)
         blackAgent?.setExplorationRate(newRate)
@@ -387,13 +372,8 @@ class RealSelfPlayController(
 /**
  * Configuration for real self-play controller training
  */
-data class RealSelfPlayConfig(
-    val hiddenLayers: List<Int> = listOf(512, 256, 128),
-    val learningRate: Double = 0.001,
-    val explorationRate: Double = 0.1,
-    val batchSize: Int = 32,
-    val maxExperiences: Int = 10000
-)
+// Backward compatibility alias; prefer using SelfPlayConfig directly
+typealias RealSelfPlayConfig = SelfPlayConfig
 
 /**
  * Configuration for a self-play session

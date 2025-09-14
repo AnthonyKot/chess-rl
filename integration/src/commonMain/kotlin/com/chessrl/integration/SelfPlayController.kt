@@ -524,6 +524,18 @@ class SelfPlayController(
                     )
                 )
             }
+            AgentType.ACTOR_CRITIC -> {
+                // Temporary mapping: use policy gradient agent for actor-critic until AC is implemented
+                ChessAgentFactory.createPolicyGradientAgent(
+                    hiddenLayers = config.hiddenLayers,
+                    learningRate = config.learningRate,
+                    temperature = config.temperature,
+                    config = ChessAgentConfig(
+                        batchSize = config.batchSize,
+                        maxBufferSize = config.maxExperienceBufferSize
+                    )
+                )
+            }
         }
     }
     

@@ -13,6 +13,16 @@ interface NeuralNetwork {
 }
 
 /**
+ * Optional extension for networks that support batched training.
+ */
+interface TrainableNeuralNetwork : NeuralNetwork {
+    /**
+     * Train the network on a batch of inputs and targets. Returns average loss.
+     */
+    fun trainBatch(inputs: Array<DoubleArray>, targets: Array<DoubleArray>): Double
+}
+
+/**
  * RL Algorithm interface for policy updates and action selection
  */
 interface RLAlgorithm<S, A> {
@@ -25,6 +35,13 @@ interface RLAlgorithm<S, A> {
     fun setLearningRate(rate: Double)
     fun setExplorationStrategy(strategy: ExplorationStrategy<A>)
     fun getTrainingMetrics(): RLMetrics
+}
+
+/**
+ * Optional extension for networks that support copying/synchronizing weights.
+ */
+interface SynchronizableNetwork {
+    fun copyWeightsTo(target: NeuralNetwork)
 }
 
 /**
@@ -91,9 +108,19 @@ class DQNAlgorithm(
 ) : RLAlgorithm<DoubleArray, Int> {
     
     private var updateCount = 0
+    private var lastTargetSyncAt = 0
     private var learningRate = 0.001
     private var explorationStrategy: ExplorationStrategy<Int> = EpsilonGreedyStrategy(0.1)
     private var lastMetrics = RLMetrics(0, 0.0, 0.0, 0.0, 0.0, policyEntropy = 0.0, gradientNorm = 0.0)
+    private var nextActionProvider: ((DoubleArray) -> List<Int>)? = null
+
+    /**
+     * Provide a function that returns the list of valid next-state actions for masking.
+     * If set, DQN targets will only consider Q-values over valid actions.
+     */
+    fun setNextActionProvider(provider: (DoubleArray) -> List<Int>) {
+        nextActionProvider = provider
+    }
     
     override fun updatePolicy(experiences: List<Experience<DoubleArray, Int>>): PolicyUpdateResult {
         // Add experiences to replay buffer
@@ -112,40 +139,84 @@ class DQNAlgorithm(
         
         // Prepare training data
         val inputs = batch.map { it.state }.toTypedArray()
+        // Capture predicted outputs before modifying targets for a simple output-gradient estimate
+        val predictedOutputs = Array(batch.size) { i ->
+            val out = qNetwork.forward(batch[i].state)
+            require(out.isNotEmpty()) { "qNetwork.forward returned empty vector" }
+            out.copyOf()
+        }
         val targets = Array(batch.size) { i ->
-            val qValues = qNetwork.forward(batch[i].state)
+            val qValues = predictedOutputs[i].copyOf()
+            require(batch[i].action in qValues.indices) {
+                "Action index ${batch[i].action} out of bounds for Q-values size ${qValues.size}"
+            }
             qValues[batch[i].action] = qTargets[i]
             qValues
         }
         
-        // Train main network - simplified training loop
+        // Train main network
         var totalLoss = 0.0
-        for (i in 0 until batch.size) {
-            val predicted = qNetwork.forward(inputs[i])
-            val loss = computeMSELoss(predicted, targets[i])
-            totalLoss += loss
-            
-            // Simplified backward pass
-            qNetwork.backward(targets[i])
+        val trainable = qNetwork as? TrainableNeuralNetwork
+        if (trainable != null) {
+            // Use proper batch training when available
+            totalLoss = trainable.trainBatch(inputs, targets)
+        } else {
+            // Fallback: per-sample forward/backward without optimizer updates
+            for (i in 0 until batch.size) {
+                val predicted = qNetwork.forward(inputs[i])
+                val loss = computeMSELoss(predicted, targets[i])
+                totalLoss += loss
+                qNetwork.backward(targets[i])
+            }
+            totalLoss /= batch.size
         }
         
         // Update target network periodically
         updateCount++
         if (updateCount % targetUpdateFrequency == 0) {
             updateTargetNetwork()
+            lastTargetSyncAt = updateCount
+            println("🔁 DQN target network synchronized at update=$updateCount (freq=$targetUpdateFrequency)")
         }
         
         // Calculate metrics
         val qValueStats = calculateQValueStats(batch)
         val policyEntropy = calculatePolicyEntropy(batch)
+        val gradientNormEstimate = estimateOutputGradientNorm(predictedOutputs, targets)
         
         return PolicyUpdateResult(
-            loss = totalLoss / batch.size,
-            gradientNorm = 1.0, // Simplified
+            loss = if (trainable != null) totalLoss else totalLoss,
+            gradientNorm = gradientNormEstimate,
             policyEntropy = policyEntropy,
             qValueMean = qValueStats.meanQValue,
             targetValueMean = qTargets.average()
         )
+    }
+
+    /**
+     * Estimate gradient norm at the network output using MSE dL/dy = 2/N * (y_pred - y_target).
+     * This is a proxy for stability monitoring when true layer gradient norms aren't available.
+     */
+    private fun estimateOutputGradientNorm(predicted: Array<DoubleArray>, targets: Array<DoubleArray>): Double {
+        if (predicted.isEmpty()) return 0.0
+        var sum = 0.0
+        val batchSize = predicted.size
+        for (i in 0 until batchSize) {
+            val p = predicted[i]
+            val t = targets[i]
+            val n = minOf(p.size, t.size)
+            if (n == 0) continue
+            val scale = 2.0 / n
+            var s2 = 0.0
+            var j = 0
+            while (j < n) {
+                val g = scale * (p[j] - t[j])
+                s2 += g * g
+                j++
+            }
+            sum += kotlin.math.sqrt(s2)
+        }
+        return sum / batchSize
     }
     
     private fun computeQTargets(batch: List<Experience<DoubleArray, Int>>): DoubleArray {
@@ -155,14 +226,38 @@ class DQNAlgorithm(
                 experience.reward
             } else {
                 val nextQValues = targetNetwork.forward(experience.nextState)
-                experience.reward + gamma * nextQValues.maxOrNull()!!
+                require(nextQValues.isNotEmpty()) { "targetNetwork.forward returned empty vector" }
+                val maskedMax = nextActionProvider?.let { provider ->
+                    val valid = provider.invoke(experience.nextState)
+                    if (valid.isEmpty()) {
+                        // No valid actions – treat as terminal-like
+                        0.0
+                    } else {
+                        var maxVal = Double.NEGATIVE_INFINITY
+                        for (a in valid) {
+                            require(a >= 0) { "Valid action contains negative index" }
+                            if (a in nextQValues.indices) {
+                                if (nextQValues[a] > maxVal) maxVal = nextQValues[a]
+                            }
+                        }
+                        if (maxVal == Double.NEGATIVE_INFINITY) 0.0 else maxVal
+                    }
+                } ?: (nextQValues.maxOrNull() ?: 0.0)
+                experience.reward + gamma * maskedMax
             }
         }
     }
     
     private fun updateTargetNetwork() {
-        // Simplified target network update - in practice would copy weights
-        // For now, this is a placeholder
+        // If the underlying networks support synchronization, copy weights
+        val sync = qNetwork as? SynchronizableNetwork
+        if (sync != null) {
+            try {
+                sync.copyWeightsTo(targetNetwork)
+            } catch (_: Throwable) {
+                // Best-effort sync; ignore if unsupported at runtime
+            }
+        }
     }
     
     private fun calculateQValueStats(batch: List<Experience<DoubleArray, Int>>): QValueStats {
@@ -222,9 +317,11 @@ class DQNAlgorithm(
     
     override fun getActionValues(state: DoubleArray, validActions: List<Int>): Map<Int, Double> {
         val qValues = qNetwork.forward(state)
-        return validActions.associateWith { action ->
-            if (action < qValues.size) qValues[action] else 0.0
+        require(qValues.isNotEmpty()) { "qNetwork.forward returned empty vector" }
+        require(validActions.all { it in qValues.indices }) {
+            "Valid actions contain out-of-bounds index for Q-values size ${qValues.size}"
         }
+        return validActions.associateWith { action -> qValues[action] }
     }
     
     override fun getActionProbabilities(state: DoubleArray, validActions: List<Int>): Map<Int, Double> {
@@ -251,6 +348,11 @@ class DQNAlgorithm(
     fun updateMetrics(metrics: RLMetrics) {
         lastMetrics = metrics
     }
+
+    /**
+     * For diagnostics and integration metrics.
+     */
+    fun getReplaySize(): Int = experienceReplay.size()
 }
 
 /**
@@ -278,17 +380,17 @@ class PolicyGradientAlgorithm(
         // Calculate advantages
         val advantages = returns.zip(baselines) { ret: Double, baseline: Double -> ret - baseline }
         
-        // Policy gradient update
+        // Policy gradient update (prefer batched train when available)
         val policyLoss = updatePolicyNetwork(experiences, advantages)
         
         // Value network update (if using baseline)
-        val valueLoss = valueNetwork?.let { vNet ->
+        val valueLoss = if (valueNetwork != null) {
             updateValueNetwork(experiences, returns)
-        } ?: 0.0
+        } else 0.0
         
         // Calculate metrics
         val policyEntropy = calculatePolicyEntropy(experiences)
-        val gradientNorm = 1.0 // Simplified
+        val gradientNorm = estimateOutputGradientNorm(experiences, advantages)
         
         return PolicyUpdateResult(
             loss = policyLoss,
@@ -312,30 +414,76 @@ class PolicyGradientAlgorithm(
     }
     
     private fun updatePolicyNetwork(experiences: List<Experience<DoubleArray, Int>>, advantages: List<Double>): Double {
-        var totalLoss = 0.0
-        
-        // REINFORCE policy gradient update
-        for (i in experiences.indices) {
-            val experience = experiences[i]
-            val advantage = advantages[i]
-            
-            // Forward pass to get action probabilities
-            val logits = policyNetwork.forward(experience.state)
-            val probabilities = softmax(logits)
-            
-            // Calculate policy gradient loss: -log(π(a|s)) * A(s,a)
-            val actionProb = probabilities[experience.action]
-            val logProb = ln(actionProb.coerceAtLeast(1e-8))
-            val loss = -logProb * advantage
-            
-            totalLoss += loss
-            
-            // Create target for backpropagation (simplified)
-            val target = probabilities.copyOf()
-            policyNetwork.backward(target)
+        val trainable = policyNetwork as? TrainableNeuralNetwork
+        if (trainable != null) {
+            // Batched REINFORCE using MSE proxy: target = p + alpha*A*(one_hot - p)
+            val alpha = 1.0 // scaling; effective step size governed by optimizer LR
+            val inputs = Array(experiences.size) { i -> experiences[i].state }
+            val targets = Array(experiences.size) { i ->
+                val logits = policyNetwork.forward(experiences[i].state)
+                require(logits.isNotEmpty()) { "policyNetwork.forward returned empty vector" }
+                val p = softmaxLocal(logits)
+                val a = experiences[i].action
+                require(a in p.indices) { "Action ${a} out of bounds for policy output ${p.size}" }
+                val adv = advantages[i]
+                val t = DoubleArray(p.size) { j ->
+                    val oneHot = if (j == a) 1.0 else 0.0
+                    p[j] + alpha * adv * (oneHot - p[j])
+                }
+                t
+            }
+            return trainable.trainBatch(inputs, targets)
+        } else {
+            var totalLoss = 0.0
+            for (i in experiences.indices) {
+                val experience = experiences[i]
+                val advantage = advantages[i]
+                val logits = policyNetwork.forward(experience.state)
+                val probabilities = softmaxLocal(logits)
+                val actionProb = probabilities[experience.action]
+                val logProb = ln(actionProb.coerceAtLeast(1e-8))
+                val loss = -logProb * advantage
+                totalLoss += loss
+                val target = probabilities.copyOf()
+                policyNetwork.backward(target)
+            }
+            return totalLoss / experiences.size
         }
-        
-        return totalLoss / experiences.size
+    }
+
+    /**
+     * Estimate gradient norm at the policy output using REINFORCE proxy:
+     * ||A|| * ||(softmax(logits) - one_hot(action))||_2 averaged over batch.
+     */
+    private fun estimateOutputGradientNorm(
+        experiences: List<Experience<DoubleArray, Int>>,
+        advantages: List<Double>
+    ): Double {
+        if (experiences.isEmpty()) return 0.0
+        var sum = 0.0
+        for (i in experiences.indices) {
+            val exp = experiences[i]
+            val adv = kotlin.math.abs(advantages[i])
+            val logits = policyNetwork.forward(exp.state)
+            require(logits.isNotEmpty()) { "policyNetwork.forward returned empty vector" }
+            require(exp.action in logits.indices) { "Action ${exp.action} out of bounds for logits size ${logits.size}" }
+            val p = softmaxLocal(logits)
+            var s2 = 0.0
+            for (j in p.indices) {
+                val oneHot = if (j == exp.action) 1.0 else 0.0
+                val g = (p[j] - oneHot) * adv
+                s2 += g * g
+            }
+            sum += kotlin.math.sqrt(s2)
+        }
+        return sum / experiences.size
+    }
+
+    private fun softmaxLocal(values: DoubleArray): DoubleArray {
+        val maxValue = values.maxOrNull() ?: 0.0
+        val expValues = values.map { kotlin.math.exp(it - maxValue) }
+        val sumExp = expValues.sum().let { if (it == 0.0) 1.0 else it }
+        return expValues.map { it / sumExp }.toDoubleArray()
     }
     
     private fun updateValueNetwork(experiences: List<Experience<DoubleArray, Int>>, returns: List<Double>): Double {
@@ -396,7 +544,7 @@ class PolicyGradientAlgorithm(
     
     override fun getActionProbabilities(state: DoubleArray, validActions: List<Int>): Map<Int, Double> {
         val logits = policyNetwork.forward(state)
-        val probabilities = softmax(logits)
+        val probabilities = softmaxLocal(logits)
         
         return validActions.associateWith { action ->
             if (action < probabilities.size) probabilities[action] else 0.0
@@ -438,7 +586,7 @@ class NeuralNetworkAgent(
         
         // Update policy when we have enough experiences or at episode end
         if (experience.done || experienceBuffer.size >= 32) {
-            val updateResult = algorithm.updatePolicy(experienceBuffer.toList())
+            algorithm.updatePolicy(experienceBuffer.toList())
             
             // Clear buffer after learning (for on-policy methods like REINFORCE)
             if (algorithm is PolicyGradientAlgorithm) {

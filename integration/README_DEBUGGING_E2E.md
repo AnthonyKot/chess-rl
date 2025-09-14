@@ -2,6 +2,10 @@
 
 This document provides comprehensive instructions for running and verifying the complete debugging system end-to-end.
 
+Repo Sync Update — 2025-09-14
+- The ProductionDebugging* demos/interfaces referenced below are illustrative and not included in the current source set. Some E2E tests reference them and may not compile/run. Use the working demos/tests listed under Quick Start.
+- Prefer the TrainingPipeline and Integrated Self‑Play demos/tests for end‑to‑end checks while core RL wiring is completed.
+
 ## 🎯 Overview
 
 The Chess RL Debugging System provides production-ready debugging and validation tools with the following capabilities:
@@ -22,41 +26,32 @@ Run the complete test suite to verify all functionality:
 
 ```bash
 cd integration
-./run_debugging_tests.sh
+./gradlew jvmTest --tests "*ChessTrainingPipelineTest*"
+./gradlew jvmTest --tests "*SelfPlayIntegrationTest*"
+./gradlew jvmTest --tests "*TrainingMonitoringSystemTest*"
 ```
 
-This will execute:
-1. Unit tests for all components
-2. Integration tests for component interaction
-3. End-to-end workflow tests
-4. Real-world scenario demonstrations
+This covers pipeline runs, self‑play flow, and monitoring snapshots that are present in the repo today.
 
 ### Option 2: Manual Test Execution
 
 If you prefer to run tests manually:
 
 ```bash
-# Run individual component tests
-./gradlew test --tests "com.chessrl.integration.ProductionDebuggingInterfaceTest"
-./gradlew test --tests "com.chessrl.integration.NeuralNetworkAnalyzerTest"
+# Run individual component tests that are available
+./gradlew test --tests "com.chessrl.integration.ChessTrainingPipelineTest"
+./gradlew test --tests "com.chessrl.integration.SelfPlayIntegrationTest"
+./gradlew test --tests "com.chessrl.integration.TrainingMonitoringSystemTest"
 ./gradlew test --tests "com.chessrl.integration.ExperienceBufferAnalyzerTest"
-
-# Run E2E integration tests
-./gradlew test --tests "com.chessrl.integration.ProductionDebuggingE2ETest"
-./gradlew test --tests "com.chessrl.integration.DebuggingSystemE2ERunner"
 ```
 
 ### Option 3: Interactive Demo
 
-Run the interactive demonstration:
+Run available demos:
 
-```kotlin
-import com.chessrl.integration.ProductionDebuggingDemo
-
-fun main() {
-    val demo = ProductionDebuggingDemo()
-    demo.runCompleteDemo()
-}
+```bash
+./gradlew :integration:runTrainingDemo         # Training pipeline walkthrough
+./gradlew :integration:runIntegratedDemo       # Integrated self‑play demo
 ```
 
 ## 📋 E2E Test Coverage

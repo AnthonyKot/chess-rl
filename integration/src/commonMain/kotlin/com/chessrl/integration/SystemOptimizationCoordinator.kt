@@ -149,9 +149,12 @@ class SystemOptimizationCoordinator {
         
         result.performanceReport?.let { report ->
             println("\nPerformance Report:")
-            println("  - Current throughput: ${String.format("%.2f", report.currentPerformance.metrics.throughput)} ops/sec")
-            println("  - Average latency: ${String.format("%.2f", report.currentPerformance.metrics.averageLatency)}ms")
-            println("  - Memory usage: ${report.currentPerformance.resources.memoryUsage / 1024 / 1024}MB")
+            val snap = report.currentPerformance
+            println("  - Overall score: ${String.format("%.3f", snap.overallScore)}")
+            println("  - Win rate: ${String.format("%.1f", snap.winRate * 100)}%")
+            println("  - Avg reward: ${String.format("%.3f", snap.averageReward)}")
+            println("  - Training efficiency: ${String.format("%.3f", snap.trainingEfficiency)}")
+            println("  - Convergence indicator: ${String.format("%.3f", snap.convergenceIndicator)}")
             println("  - Identified bottlenecks: ${report.identifiedBottlenecks.size}")
             println("  - Optimization recommendations: ${report.optimizationRecommendations.size}")
         }

@@ -21,6 +21,15 @@ enum class GameOutcome {
 }
 
 /**
+ * Episode termination reasons for self-play/training episodes
+ */
+enum class EpisodeTerminationReason {
+    GAME_ENDED,   // Natural end: checkmate/stalemate/draw
+    STEP_LIMIT,   // Reached maximum configured steps
+    MANUAL        // Manually stopped/interrupted
+}
+
+/**
  * Trend direction for metrics analysis
  */
 enum class TrendDirection {
@@ -246,7 +255,7 @@ data class TrainingDashboard(
     val currentStats: CurrentStatistics,
     val recentTrends: TrendAnalysis,
     val systemHealth: SystemHealth,
-    val activeIssues: List<TrainingIssue>,
+    val activeIssues: List<ActiveIssue>,
     val performanceMetrics: PerformanceMetrics,
     val gameQualityMetrics: GameQualityMetrics,
     val trainingEfficiency: TrainingEfficiency,
@@ -257,12 +266,7 @@ data class TrainingDashboard(
 /**
  * Training issue data class
  */
-data class TrainingIssue(
-    val type: String,
-    val severity: String,
-    val description: String,
-    val recommendation: String
-)
+// ActiveIssue is defined in MonitoringDataClasses.kt and used in dashboards
 
 // Optimization recommendations
 

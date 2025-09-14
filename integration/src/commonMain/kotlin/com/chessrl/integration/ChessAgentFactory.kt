@@ -60,7 +60,7 @@ object ChessAgentFactory {
         learningRate: Double = 0.001,
         explorationRate: Double = 0.1,
         config: ChessAgentConfig = ChessAgentConfig(),
-        seedManager: SeedManager = SeedManager
+        seedManager: SeedManager = SeedManager.getInstance()
     ): ChessAgent {
         return RealChessAgentFactory.createSeededDQNAgent(
             inputSize = 776,
@@ -86,7 +86,7 @@ object ChessAgentFactory {
         learningRate: Double = 0.001,
         temperature: Double = 1.0,
         config: ChessAgentConfig = ChessAgentConfig(),
-        seedManager: SeedManager = SeedManager
+        seedManager: SeedManager = SeedManager.getInstance()
     ): ChessAgent {
         return RealChessAgentFactory.createSeededPolicyGradientAgent(
             inputSize = 776,
@@ -129,15 +129,22 @@ class ChessAgentAdapter(
     
     override fun getTrainingMetrics(): ChessAgentMetrics {
         val simpleMetrics = realAgent.getTrainingMetrics()
+        val last = realAgent.getLastUpdate()
         return ChessAgentMetrics(
             averageReward = simpleMetrics.averageReward,
             explorationRate = simpleMetrics.explorationRate,
-            experienceBufferSize = simpleMetrics.experienceBufferSize
+            experienceBufferSize = simpleMetrics.experienceBufferSize,
+            averageLoss = last?.loss ?: 0.0,
+            policyEntropy = last?.policyEntropy ?: 0.0
         )
     }
     
     override fun forceUpdate() {
         realAgent.forceUpdate()
+    }
+
+    override fun trainBatch(experiences: List<Experience<DoubleArray, Int>>): PolicyUpdateResult {
+        return realAgent.trainBatch(experiences)
     }
     
     override fun save(path: String) {
@@ -158,5 +165,9 @@ class ChessAgentAdapter(
     
     override fun getConfig(): ChessAgentConfig {
         return config
+    }
+
+    override fun setNextActionProvider(provider: (DoubleArray) -> List<Int>) {
+        realAgent.setNextActionProvider(provider)
     }
 }

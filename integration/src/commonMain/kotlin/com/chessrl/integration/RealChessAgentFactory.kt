@@ -21,6 +21,8 @@ object RealChessAgentFactory {
         batchSize: Int = 32,
         maxBufferSize: Int = 10000
     ): RealChessAgent {
+        // Seeded randoms if available
+        val nnRandom = try { SeedManager.getNeuralNetworkRandom() } catch (_: Throwable) { kotlin.random.Random.Default }
         
         // Create main Q-network using actual neural network package
         val qNetworkLayers = mutableListOf<Layer>()
@@ -31,7 +33,8 @@ object RealChessAgentFactory {
                 DenseLayer(
                     inputSize = currentInputSize,
                     outputSize = hiddenSize,
-                    activation = ReLUActivation()
+                    activation = ReLUActivation(),
+                    random = nnRandom
                 )
             )
             currentInputSize = hiddenSize
@@ -42,7 +45,8 @@ object RealChessAgentFactory {
             DenseLayer(
                 inputSize = currentInputSize,
                 outputSize = outputSize,
-                activation = LinearActivation()
+                activation = LinearActivation(),
+                random = nnRandom
             )
         )
         
@@ -62,7 +66,8 @@ object RealChessAgentFactory {
                 DenseLayer(
                     inputSize = currentInputSize,
                     outputSize = hiddenSize,
-                    activation = ReLUActivation()
+                    activation = ReLUActivation(),
+                    random = nnRandom
                 )
             )
             currentInputSize = hiddenSize
@@ -72,7 +77,8 @@ object RealChessAgentFactory {
             DenseLayer(
                 inputSize = currentInputSize,
                 outputSize = outputSize,
-                activation = LinearActivation()
+                activation = LinearActivation(),
+                random = nnRandom
             )
         )
         
@@ -110,6 +116,7 @@ object RealChessAgentFactory {
     /**
      * Create a Policy Gradient agent with real neural networks
      */
+    @Suppress("UNUSED_PARAMETER")
     fun createRealPolicyGradientAgent(
         inputSize: Int = 776,
         outputSize: Int = 4096,
@@ -118,7 +125,6 @@ object RealChessAgentFactory {
         temperature: Double = 1.0,
         batchSize: Int = 32
     ): RealChessAgent {
-        
         // Create policy network
         val policyNetworkLayers = mutableListOf<Layer>()
         
@@ -145,7 +151,7 @@ object RealChessAgentFactory {
         
         val policyNetwork = FeedforwardNetwork(
             _layers = policyNetworkLayers,
-            lossFunction = CrossEntropyLoss(),
+            lossFunction = MSELoss(),
             optimizer = AdamOptimizer(learningRate = learningRate),
             regularization = L2Regularization(lambda = 0.001)
         )
@@ -287,6 +293,7 @@ object RealChessAgentFactory {
     /**
      * Create a seeded Policy Gradient agent with deterministic neural network initialization
      */
+    @Suppress("UNUSED_PARAMETER")
     fun createSeededPolicyGradientAgent(
         inputSize: Int = 776,
         outputSize: Int = 4096,
@@ -329,7 +336,7 @@ object RealChessAgentFactory {
         
         val policyNetwork = FeedforwardNetwork(
             _layers = policyNetworkLayers,
-            lossFunction = CrossEntropyLoss(),
+            lossFunction = MSELoss(),
             optimizer = AdamOptimizer(learningRate = learningRate),
             regularization = L2Regularization(lambda = 0.001)
         )
@@ -361,7 +368,7 @@ object RealChessAgentFactory {
  */
 class RealNeuralNetworkWrapper(
     private val network: FeedforwardNetwork
-) : com.chessrl.rl.NeuralNetwork {
+) : com.chessrl.rl.TrainableNeuralNetwork, com.chessrl.rl.SynchronizableNetwork {
     
     override fun forward(input: DoubleArray): DoubleArray {
         return network.forward(input)
@@ -373,6 +380,34 @@ class RealNeuralNetworkWrapper(
     
     override fun predict(input: DoubleArray): DoubleArray {
         return network.predict(input)
+    }
+
+    override fun trainBatch(inputs: Array<DoubleArray>, targets: Array<DoubleArray>): Double {
+        // Train for a single epoch on provided batch; return average loss
+        val history = network.train(
+            inputs = inputs,
+            targets = targets,
+            epochs = 1,
+            batchSize = maxOf(1, minOf(64, inputs.size))
+        )
+        // Return average loss of the last epoch
+        return if (history.isNotEmpty()) history.last().averageLoss else 0.0
+    }
+
+    override fun copyWeightsTo(target: com.chessrl.rl.NeuralNetwork) {
+        // Copy weights layer-by-layer when both sides are RealNeuralNetworkWrapper
+        val t = target as? RealNeuralNetworkWrapper ?: return
+        val srcLayers = network.layers
+        val dstLayers = t.network.layers
+        require(srcLayers.size == dstLayers.size) { "Layer count mismatch for sync: ${srcLayers.size} vs ${dstLayers.size}" }
+        for (i in srcLayers.indices) {
+            val src = srcLayers[i]
+            val dst = dstLayers[i]
+            if (src is DenseLayer && dst is DenseLayer) {
+                dst.setWeights(src.getWeights())
+                dst.setBiases(src.getBiases())
+            }
+        }
     }
 }
 
@@ -391,28 +426,55 @@ class RealChessAgent(
     private var totalReward = 0.0
     private var episodeReward = 0.0
     
+    private val explorationRandom: kotlin.random.Random = try {
+        SeedManager.getExplorationRandom()
+    } catch (_: Throwable) {
+        kotlin.random.Random.Default
+    }
+
+    private var lastUpdate: PolicyUpdateResult? = null
+
     fun selectAction(state: DoubleArray, validActions: List<Int>): Int {
         val actionValues = algorithm.getActionValues(state, validActions)
-        return explorationStrategy.selectAction(validActions, actionValues)
+        return explorationStrategy.selectAction(validActions, actionValues, explorationRandom)
     }
     
     fun learn(experience: Experience<DoubleArray, Int>) {
-        experienceBuffer.add(experience)
+        // Track episode reward regardless of algorithm type
         episodeReward += experience.reward
-        
-        // Update policy when we have enough experiences or episode ends
-        if (experience.done || experienceBuffer.size >= 32) {
-            algorithm.updatePolicy(experienceBuffer.toList())
-            
-            if (experience.done) {
-                episodeCount++
-                totalReward += episodeReward
-                episodeReward = 0.0
+
+        when (algorithm) {
+            is DQNAlgorithm -> {
+                // Off-policy: do not duplicate experiences in an agent-level buffer.
+                // Let the algorithm manage its own replay and training cadence.
+                lastUpdate = algorithm.updatePolicy(listOf(experience))
+                if (experience.done) {
+                    episodeCount++
+                    totalReward += episodeReward
+                    episodeReward = 0.0
+                }
             }
-            
-            // Clear buffer for on-policy methods
-            if (algorithm is PolicyGradientAlgorithm) {
-                experienceBuffer.clear()
+            is PolicyGradientAlgorithm -> {
+                // On-policy: keep per-episode buffer and update at episode end (or when large enough)
+                experienceBuffer.add(experience)
+                if (experience.done || experienceBuffer.size >= 32) {
+                    lastUpdate = algorithm.updatePolicy(experienceBuffer.toList())
+                    experienceBuffer.clear()
+                    if (experience.done) {
+                        episodeCount++
+                        totalReward += episodeReward
+                        episodeReward = 0.0
+                    }
+                }
+            }
+            else -> {
+                // Default: treat like off-policy, avoid agent-level buffering
+                lastUpdate = algorithm.updatePolicy(listOf(experience))
+                if (experience.done) {
+                    episodeCount++
+                    totalReward += episodeReward
+                    episodeReward = 0.0
+                }
             }
         }
     }
@@ -427,10 +489,15 @@ class RealChessAgent(
     
     fun getTrainingMetrics(): SimpleRLMetrics {
         val averageReward = if (episodeCount > 0) totalReward / episodeCount else 0.0
+        val bufferSize = when (algorithm) {
+            is DQNAlgorithm -> algorithm.getReplaySize()
+            is PolicyGradientAlgorithm -> experienceBuffer.size
+            else -> 0
+        }
         return SimpleRLMetrics(
             averageReward = averageReward,
             explorationRate = explorationStrategy.getExplorationRate(),
-            experienceBufferSize = experienceBuffer.size
+            experienceBufferSize = bufferSize
         )
     }
     
@@ -438,6 +505,12 @@ class RealChessAgent(
         if (experienceBuffer.isNotEmpty()) {
             algorithm.updatePolicy(experienceBuffer.toList())
         }
+    }
+
+    fun trainBatch(experiences: List<Experience<DoubleArray, Int>>): PolicyUpdateResult {
+        val result = algorithm.updatePolicy(experiences)
+        lastUpdate = result
+        return result
     }
     
     fun save(path: String) {
@@ -460,6 +533,15 @@ class RealChessAgent(
             explorationStrategy.setEpsilon(rate)
         }
     }
+
+    fun setNextActionProvider(provider: (DoubleArray) -> List<Int>) {
+        // Wire provider only when algorithm supports it (DQN)
+        if (algorithm is DQNAlgorithm) {
+            algorithm.setNextActionProvider(provider)
+        }
+    }
+
+    fun getLastUpdate(): PolicyUpdateResult? = lastUpdate
 }
 
 /**

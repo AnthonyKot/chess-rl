@@ -481,8 +481,6 @@ class ChessTrainingValidatorTest {
     fun testLearningProgressionImproving() {
         // Arrange - create improving game history
         repeat(25) { episode ->
-            val gameQuality = 0.3 + episode * 0.02 // Improving quality
-            val moveDiversity = 0.2 + episode * 0.01 // Improving diversity
             val gameResults = listOf(
                 createChessGameResult(
                     outcome = if (episode > 15) "WHITE_WINS" else "DRAW",

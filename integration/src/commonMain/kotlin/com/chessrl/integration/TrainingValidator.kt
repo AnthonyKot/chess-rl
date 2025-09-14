@@ -13,6 +13,8 @@ class TrainingValidator(
     
     private val validationHistory = mutableListOf<ValidationSnapshot>()
     private val issueHistory = mutableListOf<TrainingIssueEvent>()
+    private var smoothedGradientNorm: Double? = null
+    private var smoothedPolicyEntropy: Double? = null
     
     /**
      * Validate a policy update and detect potential issues
@@ -47,6 +49,22 @@ class TrainingValidator(
             }
         }
         
+        // Compute optional smoothed gradient norm (EMA)
+        val rawGrad = updateResult.gradientNorm
+        val smoothedGrad = if (config.enableGradientSmoothing) {
+            val alpha = config.gradientSmoothingAlpha.coerceIn(0.0, 1.0)
+            smoothedGradientNorm = if (smoothedGradientNorm == null) rawGrad else alpha * rawGrad + (1 - alpha) * smoothedGradientNorm!!
+            smoothedGradientNorm
+        } else null
+
+        // Compute optional smoothed policy entropy (EMA)
+        val rawEntropy = updateResult.policyEntropy
+        val smoothedEntropy = if (config.enableEntropySmoothing) {
+            val alpha = config.entropySmoothingAlpha.coerceIn(0.0, 1.0)
+            smoothedPolicyEntropy = if (smoothedPolicyEntropy == null) rawEntropy else alpha * rawEntropy + (1 - alpha) * smoothedPolicyEntropy!!
+            smoothedPolicyEntropy
+        } else null
+
         // Create validation result
         val result = PolicyValidationResult(
             episodeNumber = episodeNumber,
@@ -55,6 +73,8 @@ class TrainingValidator(
             warnings = warnings,
             recommendations = recommendations,
             updateMetrics = updateResult,
+            smoothedGradientNorm = smoothedGrad,
+            smoothedPolicyEntropy = smoothedEntropy,
             beforeMetrics = beforeMetrics,
             afterMetrics = afterMetrics,
             timestamp = getCurrentTimeMillis()
@@ -103,7 +123,10 @@ class TrainingValidator(
         val status = determineConvergenceStatus(rewardTrend, lossTrend, rewardStability, lossStability)
         val confidence = calculateConvergenceConfidence(rewardStability, lossStability)
         val trendDirection = determineTrendDirection(rewardTrend)
-        val stabilityScore = (rewardStability + lossStability) / 2.0
+        var stabilityScore = (rewardStability + lossStability) / 2.0
+        // Small-window penalty: early phases are expected to be less stable
+        val smallWindowPenalty = if (recentMetrics.size <= 10) 0.2 else 0.0
+        stabilityScore = (stabilityScore - smallWindowPenalty).coerceIn(0.0, 1.0)
         
         // Generate recommendations
         val recommendations = generateConvergenceRecommendations(status, rewardTrend, lossTrend, stabilityScore)
@@ -135,7 +158,7 @@ class TrainingValidator(
         updateResult?.let { result ->
             if (result.gradientNorm > config.explodingGradientThreshold) {
                 detections.add(TrainingIssueDetection(
-                    issue = TrainingIssue.EXPLODING_GRADIENTS,
+                    issue = com.chessrl.rl.TrainingIssue.EXPLODING_GRADIENTS,
                     severity = IssueSeverity.HIGH,
                     value = result.gradientNorm,
                     threshold = config.explodingGradientThreshold,
@@ -150,7 +173,7 @@ class TrainingValidator(
             
             if (result.gradientNorm < config.vanishingGradientThreshold) {
                 detections.add(TrainingIssueDetection(
-                    issue = TrainingIssue.VANISHING_GRADIENTS,
+                    issue = com.chessrl.rl.TrainingIssue.VANISHING_GRADIENTS,
                     severity = IssueSeverity.MEDIUM,
                     value = result.gradientNorm,
                     threshold = config.vanishingGradientThreshold,
@@ -166,7 +189,7 @@ class TrainingValidator(
             // Policy collapse detection
             if (result.policyEntropy < config.policyCollapseThreshold) {
                 detections.add(TrainingIssueDetection(
-                    issue = TrainingIssue.POLICY_COLLAPSE,
+                    issue = com.chessrl.rl.TrainingIssue.POLICY_COLLAPSE,
                     severity = IssueSeverity.HIGH,
                     value = result.policyEntropy,
                     threshold = config.policyCollapseThreshold,
@@ -183,7 +206,7 @@ class TrainingValidator(
         // Exploration issues
         if (metrics.explorationRate < config.insufficientExplorationThreshold) {
             detections.add(TrainingIssueDetection(
-                issue = TrainingIssue.EXPLORATION_INSUFFICIENT,
+                issue = com.chessrl.rl.TrainingIssue.EXPLORATION_INSUFFICIENT,
                 severity = IssueSeverity.MEDIUM,
                 value = metrics.explorationRate,
                 threshold = config.insufficientExplorationThreshold,
@@ -200,7 +223,7 @@ class TrainingValidator(
         metrics.qValueStats?.let { qStats ->
             if (qStats.meanQValue > config.qValueOverestimationThreshold) {
                 detections.add(TrainingIssueDetection(
-                    issue = TrainingIssue.VALUE_OVERESTIMATION,
+                    issue = com.chessrl.rl.TrainingIssue.VALUE_OVERESTIMATION,
                     severity = IssueSeverity.MEDIUM,
                     value = qStats.meanQValue,
                     threshold = config.qValueOverestimationThreshold,
@@ -217,7 +240,7 @@ class TrainingValidator(
         // Learning rate issues based on loss behavior
         if (metrics.policyLoss.isNaN() || metrics.policyLoss.isInfinite()) {
             detections.add(TrainingIssueDetection(
-                issue = TrainingIssue.LEARNING_RATE_TOO_HIGH,
+                issue = com.chessrl.rl.TrainingIssue.LEARNING_RATE_TOO_HIGH,
                 severity = IssueSeverity.HIGH,
                 value = metrics.policyLoss,
                 threshold = Double.NaN,
@@ -241,19 +264,21 @@ class TrainingValidator(
         val validValidations = validationHistory.count { it.result.isValid }
         val totalIssues = issueHistory.size
         
-        val issuesByType = issueHistory.flatMap { event -> 
-            event.issues.map { issue -> 
-                when (issue.type) {
-                    IssueType.EXPLODING_GRADIENTS -> TrainingIssue.EXPLODING_GRADIENTS
-                    IssueType.VANISHING_GRADIENTS -> TrainingIssue.VANISHING_GRADIENTS
-                    IssueType.POLICY_COLLAPSE -> TrainingIssue.POLICY_COLLAPSE
-                    IssueType.NUMERICAL_INSTABILITY -> TrainingIssue.LEARNING_RATE_TOO_HIGH
-                    IssueType.LOSS_EXPLOSION -> TrainingIssue.LEARNING_RATE_TOO_HIGH
-                    IssueType.Q_VALUE_OVERESTIMATION -> TrainingIssue.VALUE_OVERESTIMATION
-                    IssueType.EXPLORATION_INSUFFICIENT -> TrainingIssue.EXPLORATION_INSUFFICIENT
+        val issuesByType: Map<com.chessrl.rl.TrainingIssue, Int> = issueHistory
+            .flatMap { event ->
+                event.issues.map { issue ->
+                    when (issue.type) {
+                        IssueType.EXPLODING_GRADIENTS -> com.chessrl.rl.TrainingIssue.EXPLODING_GRADIENTS
+                        IssueType.VANISHING_GRADIENTS -> com.chessrl.rl.TrainingIssue.VANISHING_GRADIENTS
+                        IssueType.POLICY_COLLAPSE -> com.chessrl.rl.TrainingIssue.POLICY_COLLAPSE
+                        IssueType.NUMERICAL_INSTABILITY, IssueType.LOSS_EXPLOSION -> com.chessrl.rl.TrainingIssue.LEARNING_RATE_TOO_HIGH
+                        IssueType.Q_VALUE_OVERESTIMATION -> com.chessrl.rl.TrainingIssue.VALUE_OVERESTIMATION
+                        IssueType.EXPLORATION_INSUFFICIENT -> com.chessrl.rl.TrainingIssue.EXPLORATION_INSUFFICIENT
+                    }
                 }
             }
-        }.groupBy { it }.mapValues { it.value.size }
+            .groupingBy { it }
+            .eachCount()
         
         val recentIssues = issueHistory.takeLast(10)
         
@@ -278,6 +303,7 @@ class TrainingValidator(
     
     // Private helper methods
     
+    @Suppress("UNUSED_PARAMETER")
     private fun validateNumericalStability(
         updateResult: PolicyUpdateResult,
         issues: MutableList<ValidationIssue>,
@@ -308,22 +334,23 @@ class TrainingValidator(
         warnings: MutableList<String>,
         recommendations: MutableList<String>
     ) {
+        val gradToCheck = if (config.enableGradientSmoothing && smoothedGradientNorm != null) smoothedGradientNorm!! else updateResult.gradientNorm
         when {
-            updateResult.gradientNorm > config.explodingGradientThreshold -> {
+            gradToCheck > config.explodingGradientThreshold -> {
                 issues.add(ValidationIssue(
                     type = IssueType.EXPLODING_GRADIENTS,
                     severity = IssueSeverity.HIGH,
-                    message = "Gradient norm too high: ${updateResult.gradientNorm}",
-                    value = updateResult.gradientNorm
+                    message = "Gradient norm too high: ${gradToCheck}",
+                    value = gradToCheck
                 ))
                 recommendations.add("Apply gradient clipping or reduce learning rate")
             }
-            updateResult.gradientNorm < config.vanishingGradientThreshold -> {
-                warnings.add("Gradient norm very low: ${updateResult.gradientNorm}")
+            gradToCheck < config.vanishingGradientThreshold -> {
+                warnings.add("Gradient norm very low: ${gradToCheck}")
                 recommendations.add("Consider increasing learning rate or changing architecture")
             }
-            updateResult.gradientNorm > config.gradientWarningThreshold -> {
-                warnings.add("Gradient norm elevated: ${updateResult.gradientNorm}")
+            gradToCheck > config.gradientWarningThreshold -> {
+                warnings.add("Gradient norm elevated: ${gradToCheck}")
             }
         }
     }
@@ -334,18 +361,19 @@ class TrainingValidator(
         warnings: MutableList<String>,
         recommendations: MutableList<String>
     ) {
+        val entropyToCheck = if (config.enableEntropySmoothing && smoothedPolicyEntropy != null) smoothedPolicyEntropy!! else updateResult.policyEntropy
         when {
-            updateResult.policyEntropy < config.policyCollapseThreshold -> {
+            entropyToCheck < config.policyCollapseThreshold -> {
                 issues.add(ValidationIssue(
                     type = IssueType.POLICY_COLLAPSE,
                     severity = IssueSeverity.HIGH,
-                    message = "Policy entropy too low: ${updateResult.policyEntropy}",
-                    value = updateResult.policyEntropy
+                    message = "Policy entropy too low: ${entropyToCheck}",
+                    value = entropyToCheck
                 ))
                 recommendations.add("Increase exploration or add entropy regularization")
             }
-            updateResult.policyEntropy < config.entropyWarningThreshold -> {
-                warnings.add("Policy entropy low: ${updateResult.policyEntropy}")
+            entropyToCheck < config.entropyWarningThreshold -> {
+                warnings.add("Policy entropy low: ${entropyToCheck}")
                 recommendations.add("Monitor exploration and consider entropy bonus")
             }
         }
@@ -380,6 +408,7 @@ class TrainingValidator(
         }
     }
     
+    @Suppress("UNUSED_PARAMETER")
     private fun validateQValues(
         qMean: Double,
         targetMean: Double,
@@ -536,10 +565,14 @@ data class ValidationConfig(
     val explodingGradientThreshold: Double = 10.0,
     val vanishingGradientThreshold: Double = 1e-6,
     val gradientWarningThreshold: Double = 5.0,
+    val enableGradientSmoothing: Boolean = false,
+    val gradientSmoothingAlpha: Double = 0.2,
     
     // Policy entropy thresholds
     val policyCollapseThreshold: Double = 0.1,
     val entropyWarningThreshold: Double = 0.5,
+    val enableEntropySmoothing: Boolean = false,
+    val entropySmoothingAlpha: Double = 0.2,
     
     // Exploration thresholds
     val insufficientExplorationThreshold: Double = 0.01,
@@ -571,6 +604,8 @@ data class PolicyValidationResult(
     val warnings: List<String>,
     val recommendations: List<String>,
     val updateMetrics: PolicyUpdateResult,
+    val smoothedGradientNorm: Double?,
+    val smoothedPolicyEntropy: Double?,
     val beforeMetrics: RLMetrics,
     val afterMetrics: RLMetrics,
     val timestamp: Long
@@ -650,7 +685,7 @@ data class ValidationSummary(
     val validValidations: Int,
     val validationRate: Double,
     val totalIssues: Int,
-    val issuesByType: Map<TrainingIssue, Int>,
+    val issuesByType: Map<com.chessrl.rl.TrainingIssue, Int>,
     val recentIssues: List<TrainingIssueEvent>,
     val lastValidation: PolicyValidationResult?
 )

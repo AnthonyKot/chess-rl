@@ -16,6 +16,8 @@ class ChessTrainingPipeline(
     private var episodeCount = 0
     private var totalReward = 0.0
     private val trainingMetrics = mutableListOf<TrainingEpisodeMetrics>()
+    private var emaGradNorm: Double? = null
+    private var emaEntropy: Double? = null
     
     /**
      * Run a single training episode
@@ -110,6 +112,11 @@ class ChessTrainingPipeline(
             metrics = episodeMetrics
         )
     }
+
+    init {
+        // Provide next-state valid actions to agent for algorithms that can consume it (e.g., DQN masking)
+        runCatching { agent.setNextActionProvider(environment::getValidActions) }
+    }
     
     /**
      * Run multiple training episodes
@@ -148,13 +155,9 @@ class ChessTrainingPipeline(
      */
     private fun performBatchTraining() {
         // Sample experiences based on strategy
-        val batch = when (config.samplingStrategy) {
-            SamplingStrategy.RECENT -> {
-                experienceBuffer.takeLast(config.batchSize)
-            }
-            SamplingStrategy.RANDOM -> {
-                experienceBuffer.shuffled().take(config.batchSize)
-            }
+        val batch: List<Experience<DoubleArray, Int>> = when (config.samplingStrategy) {
+            SamplingStrategy.RECENT -> experienceBuffer.takeLast(config.batchSize)
+            SamplingStrategy.RANDOM -> experienceBuffer.shuffled().take(config.batchSize)
             SamplingStrategy.MIXED -> {
                 val recentCount = config.batchSize / 2
                 val randomCount = config.batchSize - recentCount
@@ -163,14 +166,20 @@ class ChessTrainingPipeline(
                 recent + random
             }
         }
-        
-        // Train agent on batch
-        batch.forEach { experience ->
-            agent.learn(experience)
-        }
-        
-        // Force policy update
-        agent.forceUpdate()
+
+        // Train agent on batch using real batch API
+        val result = agent.trainBatch(batch)
+        // Compute simple EMA for gradient norm to smooth noise
+        emaGradNorm = if (emaGradNorm == null) result.gradientNorm else 0.2 * result.gradientNorm + 0.8 * emaGradNorm!!
+        emaEntropy = if (emaEntropy == null) result.policyEntropy else 0.2 * result.policyEntropy + 0.8 * emaEntropy!!
+
+        // Optional: lightweight progress print for batch metrics (raw and smoothed grad)
+        println(
+            "   Batch update: " +
+            "loss=${"%.4f".format(result.loss)}, " +
+            "entropy=${"%.4f".format(result.policyEntropy)} (ema=${"%.4f".format(emaEntropy)}), " +
+            "grad=${"%.4f".format(result.gradientNorm)} (ema=${"%.4f".format(emaGradNorm)})"
+        )
     }
     
     /**
@@ -186,8 +195,13 @@ class ChessTrainingPipeline(
         println("   Recent Avg Reward: $avgReward")
         println("   Recent Avg Steps: $avgSteps")
         println("   Recent Avg Duration: ${avgDuration}ms")
+        val agentMetrics = agent.getTrainingMetrics()
         println("   Experience Buffer: ${experienceBuffer.size}/${config.maxBufferSize}")
-        println("   Agent Exploration: ${agent.getTrainingMetrics().explorationRate}")
+        println("   Agent Exploration: ${agentMetrics.explorationRate}")
+        // If available, show latest training batch metrics
+        if (agentMetrics.averageLoss != 0.0 || agentMetrics.policyEntropy != 0.0) {
+            println("   Last Batch: loss=${agentMetrics.averageLoss}, entropy=${agentMetrics.policyEntropy}")
+        }
     }
     
     /**

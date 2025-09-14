@@ -20,13 +20,7 @@ object SelfPlayIntegrationDemo {
         return try {
             // Step 1: Create real self-play controller
             println("1. Creating Real Self-Play Controller...")
-            val config = RealSelfPlayConfig(
-                hiddenLayers = listOf(64, 32, 16),
-                learningRate = 0.001,
-                explorationRate = 0.1,
-                batchSize = 16,
-                maxExperiences = 1000
-            )
+            val config = RealSelfPlayConfig()
             
             val controller = RealSelfPlayController(config)
             println("   ✓ Self-play controller created")

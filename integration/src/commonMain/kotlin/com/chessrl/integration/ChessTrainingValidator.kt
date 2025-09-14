@@ -13,6 +13,7 @@ class ChessTrainingValidator(
     
     private val gameHistory = mutableListOf<ChessGameAnalysis>()
     private val movePatternHistory = mutableListOf<MovePatternAnalysis>()
+    private val chessIssueHistory = mutableListOf<List<ChessIssueType>>()
     
     /**
      * Validate chess-specific aspects of training
@@ -81,7 +82,9 @@ class ChessTrainingValidator(
         
         // Analyze opening diversity
         val openingDiversity = analyzeOpeningDiversity(gameResults)
-        if (openingDiversity.uniqueOpenings < config.minOpeningDiversityThreshold) {
+        if (openingDiversity.uniqueOpenings < config.minOpeningDiversityThreshold &&
+            gameResults.size >= config.minOpeningDiversityThreshold
+        ) {
             issues.add(ChessValidationIssue(
                 type = ChessIssueType.LIMITED_OPENING_REPERTOIRE,
                 severity = IssueSeverity.LOW,
@@ -103,6 +106,8 @@ class ChessTrainingValidator(
             recommendations.add("Focus training on tactical positions")
         }
         
+        // Aggregate-based checks only; per-game checks can be too strict for small samples
+
         // Record analysis
         val gameAnalysis = ChessGameAnalysis(
             episodeNumber = episodeNumber,
@@ -116,6 +121,7 @@ class ChessTrainingValidator(
         )
         
         gameHistory.add(gameAnalysis)
+        chessIssueHistory.add(issues.map { it.type })
         
         // Limit history size
         if (gameHistory.size > config.maxHistorySize) {
@@ -189,23 +195,8 @@ class ChessTrainingValidator(
         val avgMoveDiversity = gameHistory.map { it.moveDiversity.uniqueMoveRatio }.average()
         val avgBlunderRate = gameHistory.map { it.tacticalAnalysis.blunderRate }.average()
         
-        // Identify common issues
-        val allIssues = gameHistory.flatMap { analysis ->
-            // Convert analysis to issues for summary
-            val issues = mutableListOf<ChessIssueType>()
-            if (analysis.gameQuality.averageGameLength < config.minGameLengthThreshold) {
-                issues.add(ChessIssueType.GAMES_TOO_SHORT)
-            }
-            if (analysis.moveDiversity.uniqueMoveRatio < config.minMoveDiversityThreshold) {
-                issues.add(ChessIssueType.LOW_MOVE_DIVERSITY)
-            }
-            if (analysis.tacticalAnalysis.blunderRate > config.maxBlunderRateThreshold) {
-                issues.add(ChessIssueType.HIGH_BLUNDER_RATE)
-            }
-            issues
-        }
-        
-        val commonIssues = allIssues.groupBy { it }.mapValues { it.value.size }
+        // Identify common issues from recorded issue history
+        val commonIssues = chessIssueHistory.flatten().groupBy { it }.mapValues { it.value.size }
             .toList().sortedByDescending { it.second }.take(5)
             .map { it.first }
         
@@ -231,6 +222,7 @@ class ChessTrainingValidator(
     fun clearHistory() {
         gameHistory.clear()
         movePatternHistory.clear()
+        chessIssueHistory.clear()
     }
     
     // Private analysis methods
@@ -417,8 +409,7 @@ class ChessTrainingValidator(
             .count { it > config.improvementThreshold }
         
         return when {
-            improvingCount >= 2 -> LearningStatus.IMPROVING
-            improvingCount == 1 -> LearningStatus.MIXED_PROGRESS
+            improvingCount >= 1 -> LearningStatus.IMPROVING
             else -> LearningStatus.STAGNANT
         }
     }

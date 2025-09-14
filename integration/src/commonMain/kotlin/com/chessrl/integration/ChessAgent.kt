@@ -37,6 +37,11 @@ interface ChessAgent {
      * Force a policy update (useful for batch training)
      */
     fun forceUpdate()
+
+    /**
+     * Train on a batch of experiences and return real update metrics.
+     */
+    fun trainBatch(experiences: List<Experience<DoubleArray, Int>>): PolicyUpdateResult
     
     /**
      * Save agent state to file
@@ -62,6 +67,12 @@ interface ChessAgent {
      * Get agent configuration
      */
     fun getConfig(): ChessAgentConfig
+
+    /**
+     * Optional: provide a next-state valid-actions function for algorithms that can use masking (e.g., DQN).
+     * Implementations may ignore this when not applicable.
+     */
+    fun setNextActionProvider(provider: (DoubleArray) -> List<Int>) {}
 }
 
 /**

@@ -12,7 +12,7 @@ class PerformanceMonitor {
     private val resourceMonitor = ResourceMonitor()
     private val benchmarkSuite = PerformanceBenchmarkSuite()
     
-    private val performanceHistory = mutableListOf<MonitoringSnapshot>()
+    private val performanceHistory = mutableListOf<PerformanceSnapshot>()
     private var isMonitoring = false
     
     fun startMonitoring() {
@@ -107,8 +107,8 @@ class PerformanceMonitor {
         val recent = snapshots.takeLast(10)
         val baseline = snapshots.take(10)
         
-        val recentAvgThroughput = recent.map { it.metrics.throughput }.average()
-        val baselineAvgThroughput = baseline.map { it.metrics.throughput }.average()
+        val recentAvgThroughput = recent.map { it.trainingEfficiency }.average()
+        val baselineAvgThroughput = baseline.map { it.trainingEfficiency }.average()
         
         return recentAvgThroughput < baselineAvgThroughput * 0.9 // 10% regression threshold
     }
@@ -136,56 +136,49 @@ class PerformanceMonitor {
         bottlenecks: List<PerformanceBottleneck>
     ): List<OptimizationRecommendation> {
         val recommendations = mutableListOf<OptimizationRecommendation>()
-        
+
         for (bottleneck in bottlenecks) {
             when (bottleneck.type) {
                 BottleneckType.MEMORY -> {
                     recommendations.add(
                         OptimizationRecommendation(
-                            category = OptimizationCategory.MEMORY,
-                            priority = RecommendationPriority.HIGH,
-                            description = "Reduce batch size or implement memory pooling",
-                            expectedImprovement = "20-40% memory usage reduction",
-                            implementationEffort = ImplementationEffort.MEDIUM
+                            category = "MEMORY",
+                            expectedImprovement = 0.30, // ~30% reduction
+                            implementationEffort = "MEDIUM"
                         )
                     )
                 }
                 BottleneckType.CPU -> {
                     recommendations.add(
                         OptimizationRecommendation(
-                            category = OptimizationCategory.COMPUTATION,
-                            priority = RecommendationPriority.HIGH,
-                            description = "Optimize neural network operations or reduce model complexity",
-                            expectedImprovement = "15-30% CPU usage reduction",
-                            implementationEffort = ImplementationEffort.HIGH
+                            category = "COMPUTATION",
+                            expectedImprovement = 0.25, // ~25% reduction
+                            implementationEffort = "HIGH"
                         )
                     )
                 }
                 BottleneckType.THROUGHPUT -> {
                     recommendations.add(
                         OptimizationRecommendation(
-                            category = OptimizationCategory.PARALLELIZATION,
-                            priority = RecommendationPriority.MEDIUM,
-                            description = "Increase batch size or implement parallel training",
-                            expectedImprovement = "2-4x throughput improvement",
-                            implementationEffort = ImplementationEffort.MEDIUM
+                            category = "PARALLELIZATION",
+                            expectedImprovement = 2.0, // ~2x improvement
+                            implementationEffort = "MEDIUM"
                         )
                     )
                 }
                 BottleneckType.LATENCY -> {
                     recommendations.add(
                         OptimizationRecommendation(
-                            category = OptimizationCategory.CACHING,
-                            priority = RecommendationPriority.MEDIUM,
-                            description = "Implement result caching or optimize data structures",
-                            expectedImprovement = "30-50% latency reduction",
-                            implementationEffort = ImplementationEffort.LOW
+                            category = "CACHING",
+                            expectedImprovement = 0.40, // ~40% reduction
+                            implementationEffort = "LOW"
                         )
                     )
                 }
+                else -> {}
             }
         }
-        
+
         return recommendations
     }
 }
@@ -255,12 +248,7 @@ data class MonitoringPerformanceMetrics(
  * Local monitoring snapshot used by PerformanceMonitor to avoid conflicts with
  * the shared PerformanceSnapshot used in training analytics.
  */
-data class MonitoringSnapshot(
-    val timestamp: Long,
-    val metrics: MonitoringPerformanceMetrics,
-    val profiling: ProfilingData,
-    val resources: ResourceUsage
-)
+// Local snapshot type removed; using shared PerformanceSnapshot above
 
 /**
  * System Profiler for identifying performance hotspots
@@ -645,7 +633,7 @@ data class NetworkUsage(
 )
 
 data class PerformanceReport(
-    val currentPerformance: MonitoringSnapshot,
+    val currentPerformance: PerformanceSnapshot,
     val historicalAnalysis: HistoricalAnalysis,
     val identifiedBottlenecks: List<PerformanceBottleneck>,
     val optimizationRecommendations: List<OptimizationRecommendation>,

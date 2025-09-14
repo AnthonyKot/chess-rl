@@ -1,5 +1,129 @@
 # Chess RL Bot – Architecture & Improvement Notes
 
+Repo Sync Update — 2025-09-14
+
+This section reflects the current repository state and supersedes outdated parts of this document. It highlights what is already done, what needs immediate fixes to compile/align, and reorders the near-term priorities.
+
+Completed (present in repo)
+- Unified models: SelfPlayGameResult adopted; EpisodeTerminationReason used consistently (AdvancedMetricsCollector, SelfPlaySystem, RealSelfPlayController).
+- Game analysis alignment: GameAnalyzer uses consolidated fields (moveAccuracy, strategicComplexity, tacticalAccuracy) and SelfPlayGameResult throughout.
+- Duplicates removed: Canonical ChessAgent/ChessAgentFactory/ChessAgentConfig; MonitoringConfig and ConfigurationValidationResult settled; interface files reference canonical types.
+- PerformanceMonitor shapes: Uses shared PerformanceSnapshot and string-based OptimizationRecommendation; MonitoringSnapshot variant not used.
+- Random Gaussian: Single extension fun Random.nextGaussian(); call sites updated to Random.Default.nextGaussian() or instance.nextGaussian().
+- Seeded components: Seeded exploration strategies and replay buffers match rl-framework interfaces (selectAction signature with random param; sample(batchSize, random); capacity/isFull exposed).
+- Deterministic/dashboard drift: Advanced dashboard/controller demos moved under integration/_excluded pending re-enable.
+- Production debugging: Demo modules not present/compiled.
+
+Immediate Fixes (to make everything consistent)
+- TrainingMonitoringSystem.getPerformanceMetrics(): Build shared PerformanceMetrics(winRate, drawRate, lossRate, averageReward, rewardVariance) from history; remove custom fields like currentScore/bestScore.
+- TrainingMonitoringSystem.getGameQualityMetrics(): Return shared GameQualityMetrics(averageQuality, moveAccuracy, strategicDepth, tacticalAccuracy); drop qualityTrend/totalGamesAnalyzed here.
+- TrainingControlInterface.createEmptyDashboard(): Construct GameQualityMetrics with 4 args (remove the extra totalGames parameter).
+- SystemOptimizationCoordinator.printOptimizationSummary(): Do not access non-existent PerformanceSnapshot.metrics/resources; print via available fields (overallScore, trainingEfficiency, convergenceIndicator). If richer detail is needed, extend PerformanceReport explicitly and thread it through.
+- ExperienceBufferAnalyzer: Replace invalid string templates like "${value:.2f}" with "%.2f".format(value) (or String.format).
+
+Reordered Near-Term Priorities
+1) Batch training API in RL/NN [CRUCIAL]
+   - Add trainBatch(inputs, targets) path via ChessNeuralNetwork or extend rl.NeuralNetwork; wire into algorithms to ensure actual optimizer steps.
+2) Illegal-action masking in Q-targets [CRUCIAL]
+   - Use next-state legal action masks in DQN target computation; carry mask in Experience or expose an env callback.
+3) Target network synchronization [IMPORTANT]
+   - Implement deep copy from online to target network in DQNAlgorithm.updateTargetNetwork().
+4) Checkpointing (JVM-first) [IMPORTANT]
+   - Real save/load for network config + weights [+ optimizer state], and resume training.
+5) Self-play concurrency and backpressure [IMPORTANT]
+   - Coroutines with bounded Channel; honor maxConcurrentGames; graceful shutdown.
+6) Replay efficiency/memory layout [IMPORTANT]
+   - Replace .shuffled() with indexed sampling; consider ring buffer with primitive arrays for hot path.
+7) Performance/optimization wiring [IMPORTANT]
+   - Call PerformanceMonitor.collectPerformanceSnapshot() at episode/batch/self-play boundaries; replace simulated benchmarks with timers around real NN forward/backward/train, replay sample, move generation.
+
+Notes on Plan Changes
+- Items about unifying result models, termination reasons, seeded components alignment, Random.nextGaussian ambiguity, and PerformanceMonitor shape drift are DONE in the repo and can be de-emphasized in ongoing work.
+- Advanced UI/controllers remain excluded until core metrics stabilize; re-enable after items 1–4 are complete and TrainingMonitoringSystem metrics are corrected.
+
+Status Reality Check (details)
+- RL algorithms:
+  - DQN: no optimizer step; target network sync is a placeholder; illegal‑action masking not applied when computing next‑state max.
+  - Policy Gradient: computes returns/advantages but does not perform a real optimizer/batch update.
+- Serialization: FeedforwardNetwork.save/load is stubbed; load throws via loadFromFile.
+- Self‑play concurrency: SelfPlaySystem simulates concurrency; batch loop runs games sequentially.
+- Optimizers/monitors: PerformanceMonitor/JVMTrainingOptimizer produce simulated metrics and are not wired to real NN/replay operations.
+- Monitoring API mismatches to fix next: TrainingMonitoringSystem.getPerformanceMetrics/getGameQualityMetrics, TrainingControlInterface.createEmptyDashboard, SystemOptimizationCoordinator printing.
+- Minor syntax: ExperienceBufferAnalyzer string formatting uses Python‑style specifiers.
+
+What’s needed to make it work (concrete next steps)
+- Wire optimizer updates:
+  - Add a minimal trainBatch(inputs, targets) path via the existing NN adapter or extend rl.NeuralNetwork; use it from PG first, then DQN.
+  - Implement DQN target network weight copy and illegal‑action masking for next‑state Q.
+- Replace simulated metrics with real timings around NN forward/backward/train, replay sample, and move generation; invoke PerformanceMonitor at episode/batch boundaries.
+- Introduce coroutine‑based self‑play (bounded Channel from producers to trainer); remove thread simulations.
+- Implement real model save/load on JVM (weights + config [+ optimizer state]); persist seed/config with checkpoints.
+11.5–11.13 Priority Slice (curated, ordered)
+
+1) 11.8 Replace simulated metrics [IMPORTANT][medium]
+- State: TrainableNeuralNetwork + DQN batching exist; pipeline still computes synthetic metrics.
+- Action: Return real loss/entropy/grad‑norm from algorithms; plumb to pipeline reports; remove proxies.
+- DoD: Reports show real batch metrics; values are finite and trend with training.
+
+2) 11.5 Determinism & seeding [IMPORTANT][fast]
+- State: SeedManager + SeededComponents exist; not centralized; seed not checkpointed.
+- Action: Single run seed; thread Random into NN init, replay sampling, exploration; include seed in checkpoints + logs.
+- DoD: Deterministic test mode, documented seed flow.
+
+3) 11.9 Serialization / checkpointing (JVM minimal) [IMPORTANT][medium]
+- State: Serialize to string; loadFromFile throws; checkpoint flow present.
+- Action: JVM file I/O for FeedforwardNetwork.save/load (config + weights); integrate with CheckpointManager; resume.
+- DoD: Save→load roundtrip test; resume training from checkpoint.
+
+4) 11.11 API cleanup around buffers [IMPROVEMENT][fast]
+- State: Agent keeps its own buffer while algorithm manages replay; risk of duplication.
+- Action: Agent forwards to algorithm only; keep per‑episode buffer for on‑policy PG; remove off‑policy duplication.
+- DoD: Single source of truth for experiences.
+
+5) 11.6 Logging & metrics standardization [IMPROVEMENT][fast]
+- State: printlns; metric keys/units vary; exports ad hoc.
+- Action: Lightweight logger; standard keys (loss, grad_norm, entropy, q_mean, reward, win_rate, etc.); CSV/JSON snapshots.
+- DoD: Consistent logs and exportable metrics.
+
+6) 11.7 Benchmark standardization [IMPROVEMENT][fast]
+- State: Scripts exist; lack warmup and metadata; JVM flags vary.
+- Action: Add warmup, pin flags, record HW/OS/JDK metadata; stable filenames.
+- DoD: Reproducible outputs with metadata.
+
+7) 11.12 Safety checks & assertions [IMPROVEMENT][fast]
+- State: Some requires present; dims/masks/rewards not consistently enforced.
+- Action: Enforce input/output dims, mask sizes, reward ranges; fail fast in pipeline/algorithms.
+- DoD: Clear early errors on invalid inputs.
+
+8) 11.13 Baseline heuristic opponent [ADDITION][medium]
+- State: Self‑play only; no baseline.
+- Action: Add simple material+mobility heuristic as opponent for evaluation cycles; compute baseline metrics.
+- DoD: Baseline win/draw/loss tracked separately from self‑play.
+
+Runtime/test updates (just done)
+- Added DQNLearningSmokeTest and ChessEnvironmentInvalidActionTest.
+- Scaled down AdvancedSelfPlay* tests (fewer games/steps/cycles) to keep CI under minutes.
+- Removed/rewrote drifted integration/UI tests; kept meaningful core coverage.
+
+Notes for implementers
+- DQN masking requires next‑state valid action info: extend EnhancedExperience to carry mask or list of valid actions; do not change base Experience generics.
+- Target sync path is available via SynchronizableNetwork and the real wrapper; still add cadence verification/logging.
+- For save/load: use simple line‑based format already produced by SimpleModelSerializer; add JVM file I/O helpers and weight import safety checks.
+Risks and mitigations
+- Concurrency defects (races/backpressure): use structured concurrency and ownership of buffers; add cancellation/timeout tests.
+- Memory pressure (large buffers): prefer primitive arrays, batch allocations, and sampling by index (avoid shuffled()) to reduce GC churn.
+- Action space instability: ensure illegal actions are masked for both selection and loss/targets; add unit tests.
+- Reproducibility: centralize seeds through SeedManager; log/run deterministic mode in CI smoke tests.
+
+How to run (updated realistic set)
+- Tests that reflect current wiring:
+  - integration: ChessTrainingPipelineTest, SelfPlayIntegrationTest, TrainingMonitoringSystemTest, ExperienceBufferAnalyzerTest
+  - chess-engine/nn-package/rl-framework: module tests
+- Demos:
+  - :integration:runTrainingDemo and :integration:runIntegratedDemo
+- Note: ProductionDebugging* demos/interfaces mentioned in some docs are not included; E2E test runners that depend on them are out of scope until re‑enabled.
+
+
 Decisions (current milestone)
 - Focus: Prioritize Policy Gradient / Actor-Critic work before DQN.
 - API: Extend `rl.NeuralNetwork` with a batch `trainBatch(inputs, targets)` method and implement it by delegating to `nn`’s `FeedforwardNetwork.trainBatch` via `ChessNeuralNetwork`.
@@ -329,3 +453,35 @@ Acceptance criteria
 - Benchmarks run against actual NN/replay/engine paths; repeated runs show consistent deltas with changes.
 - Memory allocation/GC reduced after pooling; measured by monitor and confirmed by allocation counters.
 - Self-play concurrency increases experience generation rate with bounded resource usage (no deadlocks/leaks).
+Assessment Snapshot — Current
+
+What Works (Real)
+- Neural network core: FeedforwardNetwork with layers/optimizers; adapter RealNeuralNetworkWrapper adds TrainableNeuralNetwork + SynchronizableNetwork.
+- DQN path: Uses batch training via trainBatch when available; target sync implemented through SynchronizableNetwork copy; end‑to‑end smoke test (DQNLearningSmokeTest) demonstrates Q‑value change.
+- Self‑play result model: SelfPlayGameResult + EpisodeTerminationReason used consistently.
+- Environment + encoding: 776‑feature state, 4096 action encoding; invalid action yields negative reward (tested).
+- Seed/determinism: SeedManager + seeded strategies/replay buffers aligned to rl‑framework interfaces.
+- Training pipeline scaffold: ChessTrainingPipeline runs episodes, buffers experiences, and triggers agent.forceUpdate().
+
+What’s Broken/Missing
+- DQN: Illegal‑action masking in next‑state targets is not applied; metrics remain simplistic; test coverage is smoke‑level.
+- Policy Gradient: Computes returns/advantages but lacks proper batched optimizer updates using log‑prob gradients.
+- Serialization: FeedforwardNetwork.save/load lacks JVM file I/O; load still throws; checkpoints cannot restore weights.
+- Concurrency: Self‑play concurrency simulated (sequential batches); no coroutines/backpressure channel.
+- Performance/monitoring: PerformanceMonitor and optimizers still produce/consume simulated metrics; not wired to pipeline hot paths.
+- API cleanliness: Agent keeps an internal buffer even when algorithm maintains replay (off‑policy duplication risk).
+
+How To Run (updated)
+- Fast smoke tests:
+  - DQNLearningSmokeTest — verifies buffer growth and Q‑value change.
+  - ChessEnvironmentInvalidActionTest — penalizes illegal action.
+  - ChessAgentTest — creation, selection, learning basics.
+  - AdvancedSelfPlayTrainingPipelineTest — scaled configs; validates cycle structure/performance metrics.
+  - AdvancedSelfPlayPerformanceTestSimple — small/large configs with tight limits for CI.
+- Commands:
+  - `./gradlew :integration:jvmTest` (entire integration tests)
+  - Subset: `--tests "*DQNLearningSmokeTest*"`, `--tests "*AdvancedSelfPlayTrainingPipelineTest*"`
+
+Outdated/Excluded
+- Production Debugging UI/Interface and older control dashboards are excluded or removed; tests referencing them were pruned.
+- Scripts that call those components will fail until re‑enabled against stable interfaces.

@@ -1,5 +1,6 @@
 package com.chessrl.integration
 
+import com.chessrl.rl.Experience
 import kotlin.test.*
 
 /**

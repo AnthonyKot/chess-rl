@@ -259,7 +259,7 @@ class TrainingIssueDetector(
         val lossThreshold = config.issueThresholds["loss_high"] ?: 5.0
         if (metrics.averageLoss > lossThreshold) {
             issues.add(DetectedIssue(
-                type = IssueType.LEARNING_RATE_TOO_HIGH,
+                type = IssueType.LOSS_EXPLOSION,
                 severity = calculateSeverity(metrics.averageLoss, lossThreshold, lossThreshold * 2),
                 description = "Average loss (${formatDecimal(metrics.averageLoss, 4)}) unusually high",
                 timestamp = getCurrentTimeMillis(),
@@ -283,7 +283,7 @@ class TrainingIssueDetector(
             
             if (lossVariance > avgLoss * 0.5) {
                 issues.add(DetectedIssue(
-                    type = IssueType.LEARNING_RATE_TOO_HIGH,
+                    type = IssueType.NUMERICAL_INSTABILITY,
                     severity = 0.7,
                     description = "Loss oscillation detected (variance: ${formatDecimal(lossVariance, 4)})",
                     timestamp = getCurrentTimeMillis(),
@@ -334,7 +334,7 @@ class TrainingIssueDetector(
         // Poor move accuracy
         if (metrics.moveAccuracy < 0.4 && metrics.cycle > 10) {
             issues.add(DetectedIssue(
-                type = IssueType.VALUE_OVERESTIMATION,
+                type = IssueType.Q_VALUE_OVERESTIMATION,
                 severity = 0.5,
                 description = "Move accuracy (${formatPercentage(metrics.moveAccuracy)}) indicates poor decision making",
                 timestamp = getCurrentTimeMillis(),

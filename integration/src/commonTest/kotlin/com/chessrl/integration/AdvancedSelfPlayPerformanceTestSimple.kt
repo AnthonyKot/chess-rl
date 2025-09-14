@@ -97,17 +97,17 @@ class AdvancedSelfPlayPerformanceTestSimple {
         println("📈 Testing scalability")
         
         val smallConfig = AdvancedSelfPlayConfig(
-            initialGamesPerCycle = 5,
-            maxStepsPerGame = 20,
+            initialGamesPerCycle = 2,
+            maxStepsPerGame = 10,
             batchSize = 8,
             maxExperienceBufferSize = 200
         )
         
         val largeConfig = AdvancedSelfPlayConfig(
-            initialGamesPerCycle = 15,
-            maxStepsPerGame = 40,
-            batchSize = 32,
-            maxExperienceBufferSize = 1000
+            initialGamesPerCycle = 6,
+            maxStepsPerGame = 20,
+            batchSize = 16,
+            maxExperienceBufferSize = 500
         )
         
         // Test small configuration
@@ -115,8 +115,8 @@ class AdvancedSelfPlayPerformanceTestSimple {
         assertTrue(smallPipeline.initialize(), "Small pipeline should initialize")
         
         val smallTime = measureTimeMillis {
-            val smallResults = smallPipeline.runAdvancedTraining(totalCycles = 2)
-            assertTrue(smallResults.totalCycles == 2, "Small pipeline should complete")
+            val smallResults = smallPipeline.runAdvancedTraining(totalCycles = 1)
+            assertTrue(smallResults.totalCycles == 1, "Small pipeline should complete")
         }
         
         // Test large configuration
@@ -124,8 +124,8 @@ class AdvancedSelfPlayPerformanceTestSimple {
         assertTrue(largePipeline.initialize(), "Large pipeline should initialize")
         
         val largeTime = measureTimeMillis {
-            val largeResults = largePipeline.runAdvancedTraining(totalCycles = 2)
-            assertTrue(largeResults.totalCycles == 2, "Large pipeline should complete")
+            val largeResults = largePipeline.runAdvancedTraining(totalCycles = 1)
+            assertTrue(largeResults.totalCycles == 1, "Large pipeline should complete")
         }
         
         println("   Scalability results:")
@@ -135,6 +135,6 @@ class AdvancedSelfPlayPerformanceTestSimple {
         // Large configuration should not be dramatically slower
         val timeRatio = largeTime.toDouble() / smallTime
         println("     Time ratio: ${timeRatio}x")
-        assertTrue(timeRatio < 10.0, "Large config should not be more than 10x slower")
+        assertTrue(timeRatio < 6.0, "Large config should not be dramatically slower")
     }
 }

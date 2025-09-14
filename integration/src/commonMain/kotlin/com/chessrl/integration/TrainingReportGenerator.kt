@@ -346,52 +346,53 @@ class TrainingReportGenerator(
     fun generateConvergenceAnalysis(trainingHistory: List<TrainingCycleMetrics>): ConvergenceAnalysis {
         if (trainingHistory.size < 10) {
             return ConvergenceAnalysis(
-                status = ConvergenceStatus.INSUFFICIENT_DATA,
+                status = com.chessrl.rl.ConvergenceStatus.INSUFFICIENT_DATA,
                 confidence = 0.0,
-                estimatedCyclesToConvergence = null,
-                stabilityScore = 0.0
+                trendDirection = TrendDirection.UNKNOWN,
+                stabilityScore = 0.0,
+                rewardTrend = 0.0,
+                lossTrend = 0.0,
+                rewardStability = 0.0,
+                lossStability = 0.0,
+                recommendations = emptyList()
             )
         }
-        
+
         val recentMetrics = trainingHistory.takeLast(20)
         val winRates = recentMetrics.map { it.winRate }
         val rewards = recentMetrics.map { it.averageReward }
-        
+
         // Calculate trends and stability
         val winRateTrend = calculateTrend(winRates)
         val rewardTrend = calculateTrend(rewards)
         val winRateStability = calculateStability(winRates)
         val rewardStability = calculateStability(rewards)
-        
+
         val overallStability = (winRateStability + rewardStability) / 2.0
-        
+
         // Determine convergence status
         val status = when {
-            overallStability > 0.9 && abs(winRateTrend) < 0.01 -> ConvergenceStatus.CONVERGED
-            winRateTrend > 0.01 || rewardTrend > 0.01 -> ConvergenceStatus.IMPROVING
-            else -> ConvergenceStatus.STAGNANT
+            overallStability > 0.9 && abs(winRateTrend) < 0.01 -> com.chessrl.rl.ConvergenceStatus.CONVERGED
+            winRateTrend > 0.01 || rewardTrend > 0.01 -> com.chessrl.rl.ConvergenceStatus.IMPROVING
+            else -> com.chessrl.rl.ConvergenceStatus.STAGNANT
         }
-        
-        // Estimate cycles to convergence
-        val estimatedCycles = if (status == ConvergenceStatus.IMPROVING && winRateTrend > 0) {
-            val targetWinRate = 0.8
-            val currentWinRate = winRates.last()
-            if (currentWinRate < targetWinRate) {
-                ((targetWinRate - currentWinRate) / winRateTrend).toInt()
-            } else null
-        } else null
-        
+
+        val trendDirection = when {
+            winRateTrend > 0.01 || rewardTrend > 0.01 -> TrendDirection.IMPROVING
+            winRateTrend < -0.01 || rewardTrend < -0.01 -> TrendDirection.DECLINING
+            else -> TrendDirection.STABLE
+        }
+
         return ConvergenceAnalysis(
             status = status,
             confidence = overallStability,
-            estimatedCyclesToConvergence = estimatedCycles,
+            trendDirection = trendDirection,
             stabilityScore = overallStability,
-            trendDirection = when {
-                winRateTrend > 0.01 -> TrendDirection.IMPROVING
-                winRateTrend < -0.01 -> TrendDirection.DECLINING
-                else -> TrendDirection.STABLE
-            },
-            convergenceRate = abs(winRateTrend)
+            rewardTrend = rewardTrend,
+            lossTrend = 0.0,
+            rewardStability = rewardStability,
+            lossStability = 0.0,
+            recommendations = emptyList()
         )
     }
     
@@ -522,13 +523,13 @@ class TrainingReportGenerator(
         )
         
         // Algorithm performance
-        val algorithmPerformance = mapOf(
-            "Final Win Rate" to trainingHistory.last().winRate,
-            "Best Win Rate" to trainingHistory.maxByOrNull { it.winRate }?.winRate ?: 0.0,
-            "Average Loss" to trainingHistory.map { it.averageLoss }.average(),
-            "Policy Entropy" to trainingHistory.map { it.policyEntropy }.average(),
-            "Gradient Norm" to trainingHistory.map { it.gradientNorm }.average()
-        )
+        val algorithmPerformance = mutableMapOf<String, Double>().apply {
+            this["Final Win Rate"] = trainingHistory.last().winRate
+            this["Best Win Rate"] = trainingHistory.maxByOrNull { it.winRate }?.winRate ?: 0.0
+            this["Average Loss"] = trainingHistory.map { it.averageLoss }.average()
+            this["Policy Entropy"] = trainingHistory.map { it.policyEntropy }.average()
+            this["Gradient Norm"] = trainingHistory.map { it.gradientNorm }.average()
+        }.toMap()
         
         // Resource consumption
         val resourceConsumption = mapOf(
@@ -695,7 +696,7 @@ class TrainingReportGenerator(
     private fun analyzeIssueResolution(issueHistory: List<DetectedIssue>): Map<String, String> {
         val issueGroups = issueHistory.groupBy { it.type }
         
-        return issueGroups.mapValues { (type, issues) ->
+        val evaluated: Map<IssueType, String> = issueGroups.mapValues { (_, issues) ->
             val recentIssues = issues.takeLast(5)
             val avgSeverity = recentIssues.map { it.severity }.average()
             
@@ -705,6 +706,8 @@ class TrainingReportGenerator(
                 else -> "Persistent - Issue requires immediate attention"
             }
         }
+
+        return evaluated.entries.associate { it.key.name to it.value }
     }
     
     private fun generatePreventionRecommendations(issuesByType: Map<IssueType, Int>): List<String> {

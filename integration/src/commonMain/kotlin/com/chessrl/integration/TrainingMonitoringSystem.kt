@@ -159,10 +159,10 @@ class TrainingMonitoringSystem(
         
         return TrainingDashboard(
             sessionInfo = SessionInfo(
-                elapsedTime = elapsedTime,
-                totalCycles = trainingHistory.size,
-                totalGames = trainingHistory.sumOf { it.gamesPlayed },
-                totalExperiences = trainingHistory.sumOf { it.experiencesCollected }
+                sessionId = monitoringStartTime,
+                totalEpisodes = trainingHistory.size,
+                totalSteps = trainingHistory.sumOf { it.gamesPlayed },
+                sessionDuration = elapsedTime
             ),
             currentStats = currentStats,
             recentTrends = recentTrends,
@@ -182,13 +182,13 @@ class TrainingMonitoringSystem(
         return when (command) {
             is MonitoringCommand.Pause -> pauseMonitoring()
             is MonitoringCommand.Resume -> resumeMonitoring()
-            is MonitoringCommand.Stop -> stopMonitoring()
-            is MonitoringCommand.GenerateReport -> generateReport(command.reportType)
-            is MonitoringCommand.AnalyzeGame -> analyzeSpecificGame(command.gameId)
-            is MonitoringCommand.ShowTrends -> showTrends(command.metric, command.window)
-            is MonitoringCommand.DiagnoseIssues -> diagnoseIssues()
-            is MonitoringCommand.ExportData -> exportData(command.format, command.path)
-            is MonitoringCommand.Configure -> updateConfiguration(command.newConfig)
+            is MonitoringCommand.Stop -> CommandResult.Success("Monitoring stopped", stopMonitoring())
+            is MonitoringCommand.GenerateReport -> CommandResult.Success("Report generated", generateReport(command.reportType))
+            is MonitoringCommand.AnalyzeGame -> CommandResult.Success("Game analyzed", analyzeSpecificGame(command.gameId))
+            is MonitoringCommand.ShowTrends -> CommandResult.Success("Trends", showTrends(command.metric, command.window))
+            is MonitoringCommand.DiagnoseIssues -> CommandResult.Success("Diagnostics", diagnoseIssues())
+            is MonitoringCommand.ExportData -> CommandResult.Success("Exported", exportData(command.format, command.path))
+            is MonitoringCommand.Configure -> CommandResult.Success("Reconfigured", updateConfiguration(command.newConfig))
         }
     }
     
@@ -348,10 +348,15 @@ class TrainingMonitoringSystem(
     private fun analyzeConvergence(): ConvergenceAnalysis {
         if (trainingHistory.size < config.convergenceAnalysisWindow) {
             return ConvergenceAnalysis(
-                status = ConvergenceStatus.INSUFFICIENT_DATA,
+                status = com.chessrl.rl.ConvergenceStatus.INSUFFICIENT_DATA,
                 confidence = 0.0,
-                estimatedCyclesToConvergence = null,
-                stabilityScore = 0.0
+                trendDirection = TrendDirection.UNKNOWN,
+                stabilityScore = 0.0,
+                rewardTrend = 0.0,
+                lossTrend = 0.0,
+                rewardStability = 0.0,
+                lossStability = 0.0,
+                recommendations = emptyList()
             )
         }
         
@@ -368,16 +373,27 @@ class TrainingMonitoringSystem(
         val isConverging = overallStability > config.convergenceStabilityThreshold
         
         val status = when {
-            isConverging && rewardTrend > -0.001 -> ConvergenceStatus.CONVERGED
-            rewardTrend > 0.01 || winRateTrend > 0.01 -> ConvergenceStatus.IMPROVING
-            else -> ConvergenceStatus.STAGNANT
+            isConverging && rewardTrend > -0.001 -> com.chessrl.rl.ConvergenceStatus.CONVERGED
+            rewardTrend > 0.01 || winRateTrend > 0.01 -> com.chessrl.rl.ConvergenceStatus.IMPROVING
+            else -> com.chessrl.rl.ConvergenceStatus.STAGNANT
         }
         
+        val trendDirection = when {
+            rewardTrend > 0.01 || winRateTrend > 0.01 -> TrendDirection.IMPROVING
+            rewardTrend < -0.01 || winRateTrend < -0.01 -> TrendDirection.DECLINING
+            else -> TrendDirection.STABLE
+        }
+
         return ConvergenceAnalysis(
             status = status,
             confidence = overallStability,
-            estimatedCyclesToConvergence = estimateConvergenceCycles(rewardTrend, overallStability),
-            stabilityScore = overallStability
+            trendDirection = trendDirection,
+            stabilityScore = overallStability,
+            rewardTrend = rewardTrend,
+            lossTrend = 0.0,
+            rewardStability = rewardStability,
+            lossStability = 0.0,
+            recommendations = emptyList()
         )
     }
     
@@ -471,9 +487,8 @@ class TrainingMonitoringSystem(
         }
         
         println("\n🎯 Convergence Status: ${analysis.convergenceStatus.status}")
-        if (analysis.convergenceStatus.estimatedCyclesToConvergence != null) {
-            println("   Estimated cycles to convergence: ${analysis.convergenceStatus.estimatedCyclesToConvergence}")
-        }
+        // Convergence details
+        println("   Convergence trend: ${analysis.convergenceStatus.trendDirection}")
         
         if (analysis.recommendations.isNotEmpty()) {
             println("\n💡 Recommendations:")
@@ -489,15 +504,22 @@ class TrainingMonitoringSystem(
         if (trainingHistory.isEmpty()) {
             return CurrentStatistics(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         }
-        
+
         val recent = trainingHistory.takeLast(10)
+        val lastCycle = trainingHistory.last()
+        val averageReward = recent.map { it.averageReward }.average()
+        val winRate = recent.map { it.winRate }.average()
+        val drawRate = 0.0
+        val lossRate = 0.0
+        val gameLength = recent.map { it.averageGameLength }.average()
+
         return CurrentStatistics(
-            averageReward = recent.map { it.averageReward }.average(),
-            winRate = recent.map { it.winRate }.average(),
-            gameQuality = recent.map { it.averageGameQuality }.average(),
-            trainingEfficiency = recent.map { it.trainingEfficiency }.average(),
-            policyEntropy = recent.map { it.policyEntropy }.average(),
-            convergenceScore = calculateConvergenceIndicator()
+            currentEpisode = lastCycle.cycle.toDouble(),
+            averageReward = averageReward,
+            winRate = winRate,
+            drawRate = drawRate,
+            lossRate = lossRate,
+            gameLength = gameLength
         )
     }
     
@@ -536,8 +558,8 @@ class TrainingMonitoringSystem(
         return SystemHealth(
             status = status,
             score = healthScore,
-            criticalIssues = criticalIssues,
-            totalIssues = totalIssues
+            warnings = (totalIssues - criticalIssues).coerceAtLeast(0),
+            errors = criticalIssues
         )
     }
     
@@ -557,29 +579,39 @@ class TrainingMonitoringSystem(
         if (performanceHistory.isEmpty()) {
             return PerformanceMetrics(0.0, 0.0, 0.0, 0.0, 0.0)
         }
-        
+
         val recent = performanceHistory.takeLast(10)
+        val winRate = recent.last().winRate
+        val rewards = recent.map { it.averageReward }
+        val averageReward = rewards.average()
+        val rewardVariance = calculateVariance(rewards)
+
+        // Draw/loss rates are not tracked in PerformanceSnapshot; leave at 0.0 for now.
         return PerformanceMetrics(
-            currentScore = recent.last().overallScore,
-            bestScore = performanceHistory.maxByOrNull { it.overallScore }?.overallScore ?: 0.0,
-            averageScore = recent.map { it.overallScore }.average(),
-            scoreVariance = calculateVariance(recent.map { it.overallScore }),
-            improvementRate = calculateTrend(recent.map { it.overallScore })
+            winRate = winRate,
+            drawRate = 0.0,
+            lossRate = 0.0,
+            averageReward = averageReward,
+            rewardVariance = rewardVariance
         )
     }
     
     private fun getGameQualityMetrics(): GameQualityMetrics {
         if (gameHistory.isEmpty()) {
-            return GameQualityMetrics(0.0, 0.0, 0.0, 0.0, 0)
+            return GameQualityMetrics(0.0, 0.0, 0.0, 0.0)
         }
-        
+
         val recent = gameHistory.takeLast(50)
+        val averageQuality = recent.map { it.qualityScore }.average()
+        val moveAccuracy = recent.map { it.moveAccuracy }.average()
+        val strategicDepth = recent.map { it.strategicComplexity }.average()
+        val tacticalAccuracy = recent.map { it.tacticalAccuracy }.average()
+
         return GameQualityMetrics(
-            averageQuality = recent.map { it.qualityScore }.average(),
-            qualityTrend = calculateTrend(recent.map { it.qualityScore }),
-            strategicDepth = recent.map { it.strategicComplexity }.average(),
-            tacticalAccuracy = recent.map { it.tacticalAccuracy }.average(),
-            totalGamesAnalyzed = gameHistory.size
+            averageQuality = averageQuality,
+            moveAccuracy = moveAccuracy,
+            strategicDepth = strategicDepth,
+            tacticalAccuracy = tacticalAccuracy
         )
     }
     
@@ -587,17 +619,16 @@ class TrainingMonitoringSystem(
         if (trainingHistory.isEmpty()) {
             return TrainingEfficiency(0.0, 0.0, 0.0, 0.0)
         }
-        
-        val totalTime = getCurrentTimeMillis() - monitoringStartTime
-        val totalGames = trainingHistory.sumOf { it.gamesPlayed }
-        val totalExperiences = trainingHistory.sumOf { it.experiencesCollected }
-        val totalBatchUpdates = trainingHistory.sumOf { it.batchUpdates }
-        
+
+        val totalTimeSec = (getCurrentTimeMillis() - monitoringStartTime) / 1000.0
+        val episodesPerSecond = trainingHistory.size / totalTimeSec
+        val batchesPerSecond = trainingHistory.sumOf { it.batchUpdates } / totalTimeSec
+
         return TrainingEfficiency(
-            gamesPerSecond = totalGames.toDouble() / (totalTime / 1000.0),
-            experiencesPerSecond = totalExperiences.toDouble() / (totalTime / 1000.0),
-            batchUpdatesPerSecond = totalBatchUpdates.toDouble() / (totalTime / 1000.0),
-            overallEfficiency = calculateOverallEfficiency()
+            episodesPerSecond = episodesPerSecond,
+            batchesPerSecond = batchesPerSecond,
+            memoryUsage = 0.0,
+            cpuUsage = 0.0
         )
     }
     
@@ -620,6 +651,7 @@ class TrainingMonitoringSystem(
                 ReportType.PERFORMANCE -> reportGenerator.generatePerformanceReport(performanceHistory)
                 ReportType.GAME_QUALITY -> reportGenerator.generateGameQualityReport(gameHistory)
                 ReportType.ISSUES -> reportGenerator.generateIssueReport(issueHistory)
+                ReportType.VALIDATION -> reportGenerator.generateGameQualityReport(gameHistory)
             }
             CommandResult.Success("Report generated successfully", report)
         } catch (e: Exception) {

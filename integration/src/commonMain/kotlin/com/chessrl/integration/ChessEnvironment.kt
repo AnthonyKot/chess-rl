@@ -425,6 +425,9 @@ class ChessEnvironment(
     }
     
     override fun step(action: Int): StepResult<DoubleArray> {
+        require(action in 0 until ChessActionEncoder.ACTION_SPACE_SIZE) {
+            "Action index $action out of range [0, ${ChessActionEncoder.ACTION_SPACE_SIZE})"
+        }
         // Decode action to move
         val baseMove = actionEncoder.decodeAction(action)
         
@@ -434,9 +437,11 @@ class ChessEnvironment(
         
         if (actualMove == null) {
             // Invalid move - return current state with negative reward
+            val penalty = -1.0
+            require(penalty.isFinite()) { "Invalid reward computed for invalid move" }
             return StepResult(
                 nextState = stateEncoder.encode(chessBoard),
-                reward = -1.0, // Penalty for invalid move
+                reward = penalty, // Penalty for invalid move
                 done = false,
                 info = mapOf("error" to "Invalid move: ${baseMove.toAlgebraic()}")
             )
@@ -465,6 +470,7 @@ class ChessEnvironment(
         // Get game status and calculate reward
         val gameStatus = gameStateDetector.getGameStatus(chessBoard, gameHistory)
         val reward = calculateReward(gameStatus, actualMove, chessBoard.getActiveColor().opposite())
+        require(reward.isFinite()) { "Non-finite reward computed: $reward" }
         val done = gameStatus.isGameOver
         
         val nextState = stateEncoder.encode(chessBoard)
@@ -561,6 +567,7 @@ class ChessEnvironment(
     /**
      * Update game metrics after a move
      */
+    @Suppress("UNUSED_PARAMETER")
     private fun updateGameMetrics(move: Move) {
         moveCount++
         
@@ -582,6 +589,7 @@ class ChessEnvironment(
     /**
      * Check if a move is a capture by comparing material values
      */
+    @Suppress("UNUSED_PARAMETER")
     private fun isCapture(move: Move): Boolean {
         val currentMaterialValue = calculateTotalMaterialValue()
         return currentMaterialValue < previousMaterialValue
@@ -643,6 +651,7 @@ class ChessEnvironment(
     }
     
     override fun getValidActions(state: DoubleArray): List<Int> {
+        require(state.size == getStateSize()) { "State size ${state.size} does not match expected ${getStateSize()}" }
         val legalMoves = legalMoveValidator.getAllLegalMoves(chessBoard, chessBoard.getActiveColor())
         return actionEncoder.encodeValidMoves(legalMoves)
     }

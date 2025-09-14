@@ -9,6 +9,10 @@ echo "=== Neural Network Performance Comparison ==="
 echo "Comparing JVM vs Native compilation performance"
 echo
 
+echo "Pinning JVM flags for consistency..."
+export JAVA_TOOL_OPTIONS="-Xms1g -Xmx1g -XX:+UseG1GC -XX:MaxGCPauseMillis=100"
+export GRADLE_OPTS="-Xms1g -Xmx1g"
+
 # Clean previous builds
 echo "Cleaning previous builds..."
 ./gradlew clean > /dev/null 2>&1
@@ -20,6 +24,21 @@ RESULTS_DIR="benchmark-results/benchmark_$TIMESTAMP"
 mkdir -p "$RESULTS_DIR"
 
 echo "Results will be saved to: $RESULTS_DIR"
+
+# Collect environment metadata
+{
+  echo "=== Benchmark Environment Metadata ==="
+  echo "Date: $(date -u)"
+  echo "OS: $(uname -srm 2>/dev/null || echo unknown)"
+  echo "Kernel: $(uname -v 2>/dev/null || echo unknown)"
+  echo "CPU: $( (sysctl -n machdep.cpu.brand_string 2>/dev/null) || (lscpu | grep 'Model name' | sed 's/Model name:\s*//' 2>/dev/null) || echo unknown )"
+  echo "Cores: $( (sysctl -n hw.logicalcpu 2>/dev/null) || (nproc 2>/dev/null) || echo unknown )"
+  echo "Memory: $( (sysctl -n hw.memsize 2>/dev/null) || (grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2" KB"}') || echo unknown )"
+  echo "Java: $(java -version 2>&1 | tr '\n' ' ' | sed 's/\s\+/ /g')"
+  echo "Gradle: $(./gradlew -v | head -n 3 | tr '\n' ' ' | sed 's/\s\+/ /g')"
+  echo "JAVA_TOOL_OPTIONS=$JAVA_TOOL_OPTIONS"
+  echo "GRADLE_OPTS=$GRADLE_OPTS"
+} | tee "$RESULTS_DIR/metadata.txt"
 echo
 
 # Function to run benchmark and capture output

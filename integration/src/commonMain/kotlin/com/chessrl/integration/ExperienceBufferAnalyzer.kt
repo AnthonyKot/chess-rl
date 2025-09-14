@@ -4,6 +4,16 @@ import com.chessrl.rl.*
 import kotlin.math.*
 
 /**
+ * Depth levels for buffer inspection analyses
+ */
+enum class AnalysisDepth {
+    BASIC,
+    STANDARD,
+    DETAILED,
+    COMPREHENSIVE
+}
+
+/**
  * Experience buffer inspection and quality analysis component for debugging
  * training data quality and identifying potential issues in the experience collection process.
  */
@@ -79,11 +89,11 @@ class ExperienceBufferAnalyzer(
         
         val basicAnalysis = analyzeExperienceBuffer(experiences)
         
-        val detailedAnalysis = when (analysisDepth) {
+        val detailedAnalysis: DetailedInspectionResult? = when (analysisDepth) {
             AnalysisDepth.BASIC -> null
-            AnalysisDepth.STANDARD -> performStandardInspection(experiences)
+            AnalysisDepth.STANDARD -> performDetailedInspection(experiences)
             AnalysisDepth.DETAILED -> performDetailedInspection(experiences)
-            AnalysisDepth.COMPREHENSIVE -> performComprehensiveInspection(experiences)
+            AnalysisDepth.COMPREHENSIVE -> performComprehensiveInspection(experiences).detailedInspection
         }
         
         val episodeAnalysis = if (analysisDepth >= AnalysisDepth.DETAILED) {
@@ -215,7 +225,7 @@ class ExperienceBufferAnalyzer(
                     index = index,
                     type = AnomalyType.REWARD_OUTLIER,
                     severity = rewardZScore / anomalyThreshold,
-                    description = "Reward ${experience.reward} is ${rewardZScore:.2f} standard deviations from mean",
+                    description = "Reward ${experience.reward} is $rewardZScore standard deviations from mean",
                     experience = experience
                 ))
             }
@@ -236,7 +246,7 @@ class ExperienceBufferAnalyzer(
                     index = index,
                     type = AnomalyType.STATE_OUTLIER,
                     severity = stateZScore / anomalyThreshold,
-                    description = "State norm ${stateNorm:.2f} is ${stateZScore:.2f} standard deviations from mean",
+                    description = "State norm $stateNorm is $stateZScore standard deviations from mean",
                     experience = experience
                 ))
             }
@@ -309,7 +319,8 @@ class ExperienceBufferAnalyzer(
         }.average()
         
         // Identify problematic dimensions
-        val problematicDimensions = stateVariances.mapIndexedNotNull { index, variance ->
+        val problematicDimensions = stateVariances.indices.mapNotNull { index ->
+            val variance = stateVariances[index]
             if (variance < 1e-8) "Dimension $index has zero variance" else null
         }
         

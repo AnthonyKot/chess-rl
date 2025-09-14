@@ -22,6 +22,7 @@ class AdvancedExperienceManager(
     private var totalExperiencesDiscarded = 0
     private val qualityHistogram = mutableMapOf<Double, Int>()
     private val samplingStatistics = mutableMapOf<SamplingStrategy, SamplingStats>()
+    private val random: Random = try { SeedManager.getReplayBufferRandom() } catch (_: Throwable) { Random.Default }
     
     // Memory management
     private var lastCleanupSize = 0
@@ -80,7 +81,7 @@ class AdvancedExperienceManager(
         val strategy = selectSamplingStrategy()
         
         val sampledExperiences = when (strategy) {
-            SamplingStrategy.UNIFORM -> sampleUniform(actualBatchSize)
+            SamplingStrategy.RANDOM -> sampleUniform(actualBatchSize)
             SamplingStrategy.RECENT -> sampleRecent(actualBatchSize)
             SamplingStrategy.MIXED -> sampleMixed(actualBatchSize)
         }
@@ -181,6 +182,7 @@ class AdvancedExperienceManager(
     /**
      * Calculate enhanced quality score for an experience
      */
+    @Suppress("UNUSED_PARAMETER")
     private fun calculateEnhancedQualityScore(
         experience: EnhancedExperience,
         gameResults: List<SelfPlayGameResult>
@@ -212,8 +214,7 @@ class AdvancedExperienceManager(
         else if (absReward > 0.5) qualityScore += 0.05
         
         // Chess-specific quality factors (simplified for now)
-        val chessMetrics = experience.chessMetrics
-        // Add chess-specific quality assessment when ChessMetrics properties are available
+        // Chess-specific quality assessment can use experience.chessMetrics in future
         
         return qualityScore.coerceIn(0.0, 1.0)
     }
@@ -241,6 +242,7 @@ class AdvancedExperienceManager(
     /**
      * Filter experiences by quality threshold
      */
+    @Suppress("UNUSED_PARAMETER")
     private fun filterExperiencesByQuality(
         experiences: List<EnhancedExperience>,
         qualityAssessment: QualityAssessment
@@ -295,6 +297,7 @@ class AdvancedExperienceManager(
     /**
      * Update processing statistics
      */
+    @Suppress("UNUSED_PARAMETER")
     private fun updateStatistics(
         newExperiences: List<EnhancedExperience>,
         filteredExperiences: List<EnhancedExperience>,
@@ -381,7 +384,7 @@ class AdvancedExperienceManager(
      * Sample experiences uniformly from the buffer
      */
     private fun sampleUniform(batchSize: Int): List<EnhancedExperience> {
-        return experienceBuffer.shuffled().take(batchSize)
+        return experienceBuffer.shuffled(random).take(batchSize)
     }
     
     /**
@@ -400,7 +403,7 @@ class AdvancedExperienceManager(
         
         val recentSamples = recentBuffer.takeLast(recentCount)
         val uniformSamples = experienceBuffer.filter { it !in recentSamples }
-            .shuffled().take(uniformCount)
+            .shuffled(random).take(uniformCount)
         
         return recentSamples + uniformSamples
     }
@@ -469,7 +472,7 @@ data class ExperienceManagerConfig(
     val highQualityThreshold: Double = 0.7,
     val mediumQualityThreshold: Double = 0.5,
     val samplingStrategies: List<SamplingStrategy> = listOf(
-        SamplingStrategy.UNIFORM, SamplingStrategy.RECENT, SamplingStrategy.MIXED
+        SamplingStrategy.RANDOM, SamplingStrategy.RECENT, SamplingStrategy.MIXED
     ),
     val mixedSamplingRecentRatio: Double = 0.3,
     val cleanupStrategy: ExperienceCleanupStrategy = ExperienceCleanupStrategy.LOWEST_QUALITY,
