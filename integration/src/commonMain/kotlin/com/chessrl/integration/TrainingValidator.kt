@@ -124,8 +124,8 @@ class TrainingValidator(
         val confidence = calculateConvergenceConfidence(rewardStability, lossStability)
         val trendDirection = determineTrendDirection(rewardTrend)
         var stabilityScore = (rewardStability + lossStability) / 2.0
-        // Small-window penalty: early phases are expected to be less stable
-        val smallWindowPenalty = if (recentMetrics.size <= 10) 0.2 else 0.0
+        // Small-window penalty only for very small windows (< 10)
+        val smallWindowPenalty = if (recentMetrics.size < 10) 0.2 else 0.0
         stabilityScore = (stabilityScore - smallWindowPenalty).coerceIn(0.0, 1.0)
         
         // Generate recommendations
@@ -390,10 +390,11 @@ class TrainingValidator(
         val lossChange = afterMetrics.policyLoss - beforeMetrics.policyLoss
         
         // Check for reward stagnation
-        if (abs(rewardChange) < config.rewardStagnationThreshold && 
-            afterMetrics.explorationRate < config.insufficientExplorationThreshold) {
-            warnings.add("Reward stagnation with low exploration")
-            recommendations.add("Increase exploration rate or change strategy")
+        if (afterMetrics.explorationRate < config.insufficientExplorationThreshold) {
+            if (abs(rewardChange) < config.rewardStagnationThreshold || rewardChange < 0.0) {
+                warnings.add("Reward stagnation with low exploration")
+                recommendations.add("Increase exploration rate or change strategy")
+            }
         }
         
         // Check for loss explosion
@@ -422,7 +423,7 @@ class TrainingValidator(
         }
         
         val qTargetDiff = abs(qMean - targetMean)
-        if (qTargetDiff > config.qTargetDivergenceThreshold) {
+        if (qTargetDiff >= config.qTargetDivergenceThreshold) {
             warnings.add("Q-values diverging from targets: diff = $qTargetDiff")
             recommendations.add("Update target network more frequently")
         }

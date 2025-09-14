@@ -58,7 +58,7 @@ class HyperparameterOptimizer {
         val topCandidates = evaluationResults.sortedByDescending { it.performance.overallScore }.take(3)
         val abTestResult = abTester.performABTest(topCandidates.map { it.config })
         
-        val totalTime = getCurrentTimeMillis() - startTime
+        val totalTime = (getCurrentTimeMillis() - startTime).coerceAtLeast(1)
         
         return HyperparameterOptimizationResult(
             optimalConfig = optimalConfig.config,

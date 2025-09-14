@@ -1,6 +1,7 @@
 package com.chessrl.integration
 
 import kotlin.random.Random
+import kotlin.jvm.Volatile
 
 /**
  * Centralized seed management system for deterministic training runs.

@@ -257,7 +257,6 @@ class CheckpointManager(
         // Keep only the best N checkpoints if we exceed the limit
         if (checkpoints.size > config.maxVersions) {
             val sortedCheckpoints = checkpoints.values.sortedByDescending { it.metadata.performance }
-            val checkpointsToKeep = sortedCheckpoints.take(config.maxVersions)
             val checkpointsToDelete = sortedCheckpoints.drop(config.maxVersions)
             
             for (checkpoint in checkpointsToDelete) {
@@ -309,8 +308,9 @@ class CheckpointManager(
      * Estimate file size (in practice, would get actual file size)
      */
     private fun estimateFileSize(path: String): Long {
-        // Rough estimate based on typical model sizes
-        return kotlin.random.Random.nextLong(1000000, 5000000) // 1-5 MB
+        // Deterministic rough estimate based on path, in range [1MB, 5MB]
+        val hash = kotlin.math.abs(path.hashCode())
+        return 1_000_000L + (hash % 4_000_001)
     }
     
     /**
@@ -324,8 +324,8 @@ class CheckpointManager(
             // - Check model weights are valid numbers
             // - Verify metadata consistency
             
-            // Simulate validation with occasional failures
-            val validationSuccess = kotlin.random.Random.nextDouble() > 0.05 // 95% success rate
+            // Simulate validation with occasional failures, deterministically by path
+            val validationSuccess = (kotlin.math.abs(path.hashCode()) % 20) != 0 // ~95% success
             
             return if (validationSuccess) {
                 ValidationStatus.VALID
@@ -376,7 +376,7 @@ class CheckpointManager(
         performanceDiff: Double,
         improvementPercent: Double
     ): String {
-        return when {
+        val base = when {
             improvementPercent > 10.0 -> "Significant improvement - strongly recommend using newer version"
             improvementPercent > 5.0 -> "Good improvement - recommend using newer version"
             improvementPercent > 1.0 -> "Modest improvement - consider using newer version"
@@ -384,6 +384,7 @@ class CheckpointManager(
             improvementPercent > -5.0 -> "Slight regression - consider keeping older version"
             else -> "Significant regression - recommend keeping older version"
         }
+        return "$base (Δ=${"%.3f".format(performanceDiff)})"
     }
 }
 

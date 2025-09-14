@@ -154,7 +154,7 @@ class GameExporter {
                     val captureStr = if (capturedPiece != null) "x" else "-"
                     "${piece.type.symbol}${move.from.toAlgebraic()}$captureStr${move.to.toAlgebraic()}"
                 }
-                MoveNotation.DESCRIPTIVE -> convertToDescriptive(move, piece, capturedPiece, board)
+                MoveNotation.DESCRIPTIVE -> convertToDescriptive(move, piece, capturedPiece)
             }
             
             moves.add(moveString)
@@ -172,7 +172,7 @@ class GameExporter {
     /**
      * Convert move to descriptive notation (simplified)
      */
-    private fun convertToDescriptive(move: Move, piece: Piece, capturedPiece: Piece?, board: ChessBoard): String {
+    private fun convertToDescriptive(move: Move, piece: Piece, capturedPiece: Piece?): String {
         // Simplified descriptive notation - full implementation would be more complex
         val pieceStr = when (piece.type) {
             PieceType.KING -> "K"

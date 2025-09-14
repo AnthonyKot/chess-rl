@@ -417,3 +417,4 @@ class SyntheticValidationTest {
         assertTrue(miniBatchGradientVariance >= 0.0)
     }
 }
+@file:Suppress("UNUSED_VARIABLE")

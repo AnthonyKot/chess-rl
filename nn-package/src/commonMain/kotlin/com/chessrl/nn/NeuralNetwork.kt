@@ -1196,7 +1196,7 @@ class SimpleModelSerializer : ModelSerializer {
     override fun deserialize(data: String): ModelSerializer.NetworkData {
         val lines = data.lines().filter { it.isNotBlank() && !it.startsWith("#") }
         val config = parseConfig(lines)
-        val weights = parseWeights(lines, config)
+        val weights = parseWeights(lines)
         val history = parseTrainingHistory(lines)
         
         return ModelSerializer.NetworkData(config, weights, history)
@@ -1264,7 +1264,7 @@ class SimpleModelSerializer : ModelSerializer {
         )
     }
     
-    private fun parseWeights(lines: List<String>, config: NetworkConfig): NetworkWeights {
+    private fun parseWeights(lines: List<String>): NetworkWeights {
         val layerWeights = mutableListOf<NetworkWeights.LayerWeights>()
         var currentLayer = 0
         
@@ -1422,7 +1422,7 @@ class FeedforwardNetwork(
             totalLoss += sampleLoss
             
             // Backward pass (accumulates gradients in layers)
-            val lossArray = backward(batch.targets[i])
+            backward(batch.targets[i])
             
             // Compute gradient norm for monitoring
             totalGradientNorm += computeGradientNorm()

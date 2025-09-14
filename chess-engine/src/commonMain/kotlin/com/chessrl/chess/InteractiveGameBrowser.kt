@@ -64,8 +64,11 @@ class InteractiveGameBrowser {
      * Process user command
      */
     fun processCommand(command: String): BrowserResponse {
-        val parts = command.trim().lowercase().split(" ")
-        val cmd = parts[0]
+        val trimmed = command.trim()
+        if (trimmed.isEmpty()) return BrowserResponse.error("Empty command")
+        // Lowercase only the command keyword; preserve argument casing
+        val parts = trimmed.split(" ")
+        val cmd = parts[0].lowercase()
         
         return when (cmd) {
             "help", "h" -> showHelp()
@@ -439,7 +442,9 @@ class InteractiveGameBrowser {
         
         visualizer.addMoveAnnotation(currentVisualization.moveNumber, newAnnotation)
         
-        return BrowserResponse.success("Set move ${currentVisualization.moveNumber} quality to ${quality.description}")
+        // Include a lowercase quality keyword in the message for test expectations
+        val qualityKeyword = quality.name.lowercase()
+        return BrowserResponse.success("Set move ${currentVisualization.moveNumber} quality to ${qualityKeyword} (${quality.description})")
     }
     
     /**

@@ -189,3 +189,4 @@ private fun Double.format(digits: Int): String {
     val rounded = kotlin.math.round(this * multiplier) / multiplier
     return rounded.toString()
 }
+@file:Suppress("UNUSED_VARIABLE")

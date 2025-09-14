@@ -490,3 +490,4 @@ class NeuralNetworkTest {
         assertTrue(initialLoss >= 0.0 && initialLoss.isFinite(), "Initial loss should be non-negative and finite")
     }
 }
+@file:Suppress("UNUSED_VARIABLE")

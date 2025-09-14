@@ -1,15 +1,56 @@
 # Chess RL Bot
 
-A Kotlin Multiplatform reinforcement learning chess project. It includes a full chess engine, a neural network package, an RL framework, and an integration layer for self-play and training.
+Production‑minded Kotlin Multiplatform reinforcement learning for chess. It bundles a full chess engine, a neural network package, RL algorithms (DQN + Policy Gradient), and an integration layer with self‑play, checkpoints, and a baseline opponent.
 
-Repo Sync Update — 2025-09-14
-- Reality check: Parts of the optimization/monitoring stack are simulated and not wired to real training yet. DQN/PG algorithms do not apply optimizer updates; target network sync and illegal‑action masking are not implemented. Model save/load is stubbed.
-- What’s real: Chess engine, NN core, self‑play result models, training pipeline scaffold, seeded components, metrics/reporting types.
-- Short‑term fixes queued: align monitoring API usage, patch minor syntax, and then implement a minimal batch train path and DQN target sync/masking.
+## 🚀 Quick Start (Practical)
 
-## 🚀 How to Run and Test
+1) Requirements
+- JDK 21+ (toolchain targets Java 21)
+- Gradle (wrapper provided)
 
-### Quick Start
+2) Build + test everything
+```bash
+./gradlew clean build
+```
+
+3) Train (advanced pipeline)
+```bash
+# Train 5 cycles
+./gradlew :integration:runCli --args="--train-advanced --cycles 5"
+
+# Resume best checkpoint and train 5 more cycles
+./gradlew :integration:runCli --args="--train-advanced --cycles 5 --resume-best"
+
+# Deterministic run
+./gradlew :integration:runCli --args="--train-advanced --cycles 5 --seed 12345"
+```
+
+4) Evaluate vs baseline heuristic
+```bash
+# Agent vs baseline for 10 games
+./gradlew :integration:runCli --args="--eval-baseline --games 10"
+
+# Options
+./gradlew :integration:runCli --args="--eval-baseline --games 20 --colors alternate --seed 42"
+./gradlew :integration:runCli --args="--eval-baseline --games 10 --load-best --checkpoint-dir checkpoints/advanced"
+```
+
+5) Save/Load checkpoints (JVM)
+- Checkpoints are automatically saved during advanced training under `checkpoints/advanced`.
+- To start from a specific checkpoint while training:
+```bash
+./gradlew :integration:runCli --args="--train-advanced --cycles 5 --load checkpoints/advanced/checkpoint_v3.json"
+```
+
+6) Monitor progress
+- Console shows batch metrics (loss, entropy, grad_norm), evaluation summaries, and checkpoint paths.
+- For deeper analysis, see tests: `TrainingDebuggerTest`, `TrainingValidatorTest`.
+
+7) Determinism
+- Seeds are centralized via `SeedManager`; NN init, replay sampling, and exploration are seeded.
+- Seed metadata is stored in checkpoints; seed summary prints at pipeline startup.
+
+### Traditional (module) test commands
 ```bash
 # Build and run tests
 ./verify-build.sh                  # Convenience script
@@ -40,15 +81,29 @@ Notes:
 ./gradlew :chess-engine:runDemo
 ```
 
-### Chess RL Training Demo
+### CLI (Baseline Evaluation and Training)
 ```bash
-# Run integration demos
-./gradlew :integration:runTrainingDemo      # Training pipeline
-./gradlew :integration:runIntegratedDemo    # Integrated self‑play
+# Evaluate agent vs baseline heuristic for N games (default N=5)
+./gradlew :integration:runCli --args="--eval-baseline --games 10"
+
+# Options:
+#   --max-steps M                  Limit steps per game (default 200)
+#   --colors white|black|alternate Play as White (default), Black, or alternate each game
+#   --seed S                       Set deterministic seed
+#   --load PATH                    Load a specific checkpoint before evaluating
+#   --load-best [--checkpoint-dir DIR] Load latest checkpoint from DIR (default checkpoints/advanced)
+
+# Examples:
+./gradlew :integration:runCli --args="--eval-baseline --games 20 --colors alternate --seed 12345"
+./gradlew :integration:runCli --args="--eval-baseline --games 10 --load-best"
+
+# Run advanced training for N cycles (resume best checkpoint if available)
+./gradlew :integration:runCli --args="--train-advanced --cycles 3 --resume-best"
+./gradlew :integration:runCli --args="--train-advanced --cycles 3 --seed 12345"
 ```
 
 ### Requirements
-- **JDK 17+** (required)
+- **JDK 21+** (required; toolchain targets Java 21)
 - **Gradle 8.4+** (included via wrapper)
 - **Native toolchain** (optional, for native compilation)
 
@@ -68,6 +123,14 @@ chess-rl-bot/
 ├── rl-framework/        # 🤖 RL Algorithms (DQN, Policy Gradient)
 └── integration/         # 🔗 Chess RL Training System
 ```
+
+### Integration Module Is JVM-Only (For Now)
+- The `integration` module is configured as Kotlin JVM only to speed up iteration on training and gameplay.
+- Kotlin/Native is temporarily disabled for integration to avoid platform API conflicts (e.g., `Thread`, `System`, `String.format`).
+- Recommended usage:
+  - Build/run only the integration module: `./gradlew :integration:build`
+  - Run JVM tests per module: `./gradlew :integration:jvmTest` (or `:nn-package:jvmTest`, `:chess-engine:jvmTest`)
+  - Avoid top-level `build` if Native toolchains are present; or exclude native tasks: `./gradlew build -x nativeTest`.
 
 **Design Principles:**
 - **Modular & Testable**: Each package independently developed and tested (166+ tests)
@@ -594,3 +657,50 @@ This project serves as a comprehensive reference for:
 
 Notes
 - We trimmed legacy UI/demo tests and added fast smoke tests (DQN learning, invalid‑action penalty). Performance tests are scaled down for CI.
+## 🧭 End‑to‑End Guide (E2E)
+
+1) Prereqs
+- Install JDK 17+ and ensure `java -version` works.
+- Optional: deterministic runs — set a master seed in your code using `SeedManager.initializeWithSeed(12345L)`.
+
+2) Build and test
+```bash
+./gradlew clean build
+```
+
+3) Start training (advanced pipeline)
+```bash
+# Initialize and train for 5 cycles
+./gradlew :integration:runCli --args="--train-advanced --cycles 5"
+```
+
+4) Checkpoints and resume
+- Checkpoints are written under `checkpoints/advanced` by default (configurable in `AdvancedSelfPlayConfig`).
+- To resume training from the best checkpoint:
+```bash
+./gradlew :integration:runCli --args="--train-advanced --cycles 5 --resume-best"
+```
+
+5) Evaluate vs baseline heuristic opponent
+```bash
+# Quick evaluation: agent vs baseline
+./gradlew :integration:runCli --args="--eval-baseline --games 10"
+
+# With options
+./gradlew :integration:runCli --args="--eval-baseline --games 20 --colors alternate --seed 12345"
+./gradlew :integration:runCli --args="--eval-baseline --games 10 --load-best --checkpoint-dir checkpoints/advanced"
+```
+- Output includes JSON-like summary with `games`, `avg_reward`, `win_rate`, etc.
+
+6) Monitor and debug (optional)
+- Pipelines print batch metrics (loss, entropy, grad_norm) and validation insights.
+- Use tests like `TrainingDebuggerTest` and `TrainingValidatorTest` as usage examples for deeper analysis.
+
+7) Determinism notes
+- Seeds are centralized via `SeedManager`; NN init, replay sampling, and exploration are seeded.
+- Seed metadata is saved in checkpoint metadata; logs include a seed summary at startup.
+
+8) Saving and progress control
+- Checkpoints are created at cycle boundaries; best checkpoints are auto‑tracked.
+- Advanced pipeline supports pause/resume via methods; CLI exposes basic train/evaluate flows.
+- To load a specific checkpoint when training: `--load PATH`

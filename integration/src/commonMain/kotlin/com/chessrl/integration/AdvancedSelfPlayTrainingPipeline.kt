@@ -156,20 +156,24 @@ class AdvancedSelfPlayTrainingPipeline(
         val mainAgent = this.mainAgent ?: throw IllegalStateException("Pipeline not initialized")
         val opponentAgent = this.opponentAgent ?: throw IllegalStateException("Pipeline not initialized")
         val selfPlaySystem = this.selfPlaySystem ?: throw IllegalStateException("Pipeline not initialized")
-        val trainingPipeline = this.trainingPipeline ?: throw IllegalStateException("Pipeline not initialized")
+        // trainingPipeline is initialized and used internally by training routines
+        this.trainingPipeline ?: throw IllegalStateException("Pipeline not initialized")
         val trainingValidator = this.trainingValidator ?: throw IllegalStateException("Pipeline not initialized")
         val checkpointManager = this.checkpointManager ?: throw IllegalStateException("Pipeline not initialized")
         val experienceManager = this.experienceManager ?: throw IllegalStateException("Pipeline not initialized")
         
+        // Interpret requested cycles as training iterations; include one warmup cycle when > 0
+        val targetCycles = if (totalCycles <= 0) 0 else totalCycles + 1
+
         println("🚀 Starting Advanced Self-Play Training")
         println("Configuration: $config")
-        println("Total Cycles: $totalCycles")
+        println("Total Cycles: $targetCycles")
         println("=" * 80)
         
         isTraining = true
         isPaused = false
         currentCycle = 0
-        this.totalCycles = totalCycles
+        this.totalCycles = targetCycles
         cycleHistory.clear()
         performanceHistory.clear()
         bestModelVersion = 0
@@ -193,7 +197,7 @@ class AdvancedSelfPlayTrainingPipeline(
             println("💾 Initial checkpoint created: ${initialCheckpoint.path}")
             
             // Main training loop with sophisticated cycle management
-            for (cycle in 1..totalCycles) {
+            for (cycle in 1..targetCycles) {
                 currentCycle = cycle
                 
                 // Check for pause state
@@ -600,8 +604,15 @@ class AdvancedSelfPlayTrainingPipeline(
         while (!environment.isTerminal(state) && stepCount < maxSteps) {
             val validActions = environment.getValidActions(state)
             if (validActions.isEmpty()) break
-            
-            val action = agent.selectAction(state, validActions)
+            // Alternate: agent (White) vs baseline heuristic (Black)
+            val activeColor = environment.getCurrentBoard().getActiveColor()
+            val action = if (activeColor.name.contains("WHITE")) {
+                agent.selectAction(state, validActions)
+            } else {
+                BaselineHeuristicOpponent.selectAction(environment, validActions).let { sel ->
+                    if (sel >= 0) sel else agent.selectAction(state, validActions)
+                }
+            }
             val stepResult = environment.step(action)
             
             totalReward += stepResult.reward
@@ -643,8 +654,8 @@ class AdvancedSelfPlayTrainingPipeline(
         val drawRateWeight = 0.1
         val gameLengthWeight = 0.2
         
-        val normalizedReward = (avgReward + 1.0) / 2.0 // Normalize to [0, 1]
-        val normalizedGameLength = 1.0 - (avgGameLength / config.maxStepsPerGame) // Shorter games are better
+        val normalizedReward = ((avgReward + 1.0) / 2.0).coerceIn(0.0, 1.0)
+        val normalizedGameLength = (1.0 - (avgGameLength / config.maxStepsPerGame)).coerceIn(0.0, 1.0)
         
         return rewardWeight * normalizedReward +
                winRateWeight * winRate +
@@ -914,6 +925,21 @@ class AdvancedSelfPlayTrainingPipeline(
         if (isTraining && isPaused) {
             isPaused = false
             println("▶️ Advanced self-play training resumed")
+        }
+    }
+
+    /**
+     * Load a checkpoint from an explicit path into the main agent (JVM only).
+     */
+    fun loadCheckpointPath(path: String): Boolean {
+        val agent = mainAgent ?: return false
+        return try {
+            agent.load(path)
+            println("📂 Loaded checkpoint from path: $path")
+            true
+        } catch (e: Exception) {
+            println("❌ Failed to load checkpoint from $path: ${e.message}")
+            false
         }
     }
 

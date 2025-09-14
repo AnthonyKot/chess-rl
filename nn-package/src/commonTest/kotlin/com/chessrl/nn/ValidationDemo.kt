@@ -582,3 +582,4 @@ class ValidationDemo {
     
     // getCurrentTimeMillis() is already available from the common package
 }
+@file:Suppress("UNUSED_VARIABLE")

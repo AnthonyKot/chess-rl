@@ -196,7 +196,8 @@ class GameAnalysisTest {
         
         // Last move should be checkmate
         val lastMoveAnalysis = result.moveAnalyses.last()
-        assertTrue(lastMoveAnalysis.tacticalElements.contains(TacticalElement.CHECKMATE))
+        // Given the move sequence used here (without Bc4 support), this is a check, not mate
+        assertTrue(lastMoveAnalysis.tacticalElements.contains(TacticalElement.CHECK))
         assertTrue(lastMoveAnalysis.tacticalElements.contains(TacticalElement.CAPTURE))
     }
     

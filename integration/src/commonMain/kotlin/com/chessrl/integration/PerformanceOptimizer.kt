@@ -32,7 +32,7 @@ class JVMTrainingOptimizer {
         // Concurrent training optimization
         val concurrentResult = concurrentTrainer.optimizeConcurrentTraining(config)
         
-        val totalTime = getCurrentTimeMillis() - startTime
+        val totalTime = (getCurrentTimeMillis() - startTime).coerceAtLeast(1)
         
         return JVMOptimizationResult(
             memoryOptimization = memoryResult,
@@ -398,5 +398,4 @@ data class JVMOptimizationResult(
     val recommendedConfig: JVMTrainingOptimizer.JVMOptimizationConfig
 )
 
-// Utility function for cross-platform time
-expect fun getCurrentTimeMillis(): Long
+// Time utility (JVM implementation)

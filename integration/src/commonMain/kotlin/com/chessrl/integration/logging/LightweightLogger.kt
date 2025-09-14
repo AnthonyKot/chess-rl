@@ -1,6 +1,7 @@
 package com.chessrl.integration.logging
 
 import com.chessrl.integration.getCurrentTimeMillis
+import kotlin.jvm.Volatile
 
 object Log {
     enum class Level { DEBUG, INFO, WARN, ERROR }
@@ -30,4 +31,3 @@ object Log {
         return String.format("%02d:%02d:%02d.%03d", h, m, s, msPart)
     }
 }
-

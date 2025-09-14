@@ -45,7 +45,7 @@ class GameStateDetector {
         val piece = board.getPieceAt(piecePosition) ?: return false
         
         return when (piece.type) {
-            PieceType.PAWN -> canPawnAttack(board, piecePosition, targetPosition, piece.color)
+            PieceType.PAWN -> canPawnAttack(piecePosition, targetPosition, piece.color)
             PieceType.ROOK -> canRookAttack(board, piecePosition, targetPosition)
             PieceType.BISHOP -> canBishopAttack(board, piecePosition, targetPosition)
             PieceType.KNIGHT -> canKnightAttack(piecePosition, targetPosition)
@@ -54,7 +54,7 @@ class GameStateDetector {
         }
     }
     
-    private fun canPawnAttack(board: ChessBoard, pawnPos: Position, targetPos: Position, pawnColor: PieceColor): Boolean {
+    private fun canPawnAttack(pawnPos: Position, targetPos: Position, pawnColor: PieceColor): Boolean {
         val direction = if (pawnColor == PieceColor.WHITE) 1 else -1
         val rankDiff = targetPos.rank - pawnPos.rank
         val fileDiff = kotlin.math.abs(targetPos.file - pawnPos.file)

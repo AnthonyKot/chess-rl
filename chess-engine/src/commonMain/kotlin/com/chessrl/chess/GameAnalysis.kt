@@ -33,7 +33,7 @@ class GameAnalyzer {
             moveAnalyses = moveAnalyses,
             gameStatistics = calculateGameStatistics(moveAnalyses),
             openingAnalysis = analyzeOpening(game.moves.take(10)),
-            endgameAnalysis = analyzeEndgame(game.moves.takeLast(10), board)
+            endgameAnalysis = analyzeEndgame(board)
         )
     }
     
@@ -52,7 +52,7 @@ class GameAnalyzer {
         board.fromFEN(beforePosition.toFEN())
         
         val tacticalElements = findTacticalElements(beforePosition, move, piece, capturedPiece)
-        val positionalFactors = evaluatePositionalFactors(beforePosition, afterPosition, move, piece)
+        val positionalFactors = evaluatePositionalFactors(beforePosition, afterPosition, piece)
         val moveQuality = assessMoveQuality(tacticalElements, positionalFactors, capturedPiece)
         
         return MoveAnalysis(
@@ -65,7 +65,7 @@ class GameAnalyzer {
             quality = moveQuality,
             materialChange = calculateMaterialChange(capturedPiece),
             createsThreats = findThreats(afterPosition, if (isWhiteMove) PieceColor.WHITE else PieceColor.BLACK),
-            defendsThreats = findDefendedThreats(beforePosition, afterPosition, move)
+            defendsThreats = findDefendedThreats()
         )
     }
     
@@ -110,7 +110,7 @@ class GameAnalyzer {
         }
         
         // Pin detection (simplified)
-        if (createsPinOrSkewer(board, move, piece)) {
+        if (createsPinOrSkewer(piece)) {
             elements.add(TacticalElement.PIN)
         }
         
@@ -125,7 +125,7 @@ class GameAnalyzer {
     /**
      * Evaluate positional factors
      */
-    private fun evaluatePositionalFactors(beforeBoard: ChessBoard, afterBoard: ChessBoard, move: Move, piece: Piece): PositionalFactors {
+    private fun evaluatePositionalFactors(beforeBoard: ChessBoard, afterBoard: ChessBoard, piece: Piece): PositionalFactors {
         return PositionalFactors(
             centralControl = evaluateCentralControl(afterBoard, piece.color) - evaluateCentralControl(beforeBoard, piece.color),
             kingSafety = evaluateKingSafety(afterBoard, piece.color) - evaluateKingSafety(beforeBoard, piece.color),
@@ -212,7 +212,7 @@ class GameAnalyzer {
     /**
      * Find defended threats
      */
-    private fun findDefendedThreats(beforeBoard: ChessBoard, afterBoard: ChessBoard, move: Move): List<String> {
+    private fun findDefendedThreats(): List<String> {
         // Simplified implementation - could be expanded
         return emptyList()
     }
@@ -220,7 +220,7 @@ class GameAnalyzer {
     /**
      * Check if move creates a pin or skewer (simplified)
      */
-    private fun createsPinOrSkewer(board: ChessBoard, move: Move, piece: Piece): Boolean {
+    private fun createsPinOrSkewer(piece: Piece): Boolean {
         // Simplified implementation for sliding pieces
         return piece.type in listOf(PieceType.BISHOP, PieceType.ROOK, PieceType.QUEEN)
     }
@@ -278,8 +278,7 @@ class GameAnalyzer {
      * Evaluate king safety (simplified)
      */
     private fun evaluateKingSafety(board: ChessBoard, color: PieceColor): Double {
-        val king = board.findKing(color) ?: return -10.0
-        val opponentColor = if (color == PieceColor.WHITE) PieceColor.BLACK else PieceColor.WHITE
+        board.findKing(color) ?: return -10.0
         
         var safety = 0.0
         
@@ -452,7 +451,7 @@ class GameAnalyzer {
     /**
      * Analyze endgame (simplified)
      */
-    private fun analyzeEndgame(endgameMoves: List<Move>, finalBoard: ChessBoard): EndgameAnalysis {
+    private fun analyzeEndgame(finalBoard: ChessBoard): EndgameAnalysis {
         val totalPieces = finalBoard.getPiecesOfColor(PieceColor.WHITE).size + 
                          finalBoard.getPiecesOfColor(PieceColor.BLACK).size
         
@@ -593,7 +592,7 @@ data class GameAnalysisResult(
             it.quality in listOf(MoveQuality.BRILLIANT, MoveQuality.EXCELLENT, MoveQuality.BLUNDER) 
         }
         
-        for ((index, analysis) in keyMoves.withIndex()) {
+        for (analysis in keyMoves) {
             val moveNumber = moveAnalyses.indexOf(analysis) + 1
             val colorStr = if (analysis.isWhiteMove) "White" else "Black"
             result.appendLine("$moveNumber. $colorStr: ${analysis.getSummary()}")

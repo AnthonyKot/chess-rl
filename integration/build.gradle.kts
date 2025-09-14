@@ -1,58 +1,52 @@
 plugins {
-    kotlin("multiplatform")
+    kotlin("jvm")
+    application
 }
 
-repositories {
-    mavenCentral()
-}
-
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
-    }
-}
+repositories { mavenCentral() }
 
 kotlin {
-    // JVM target for performance comparison
-    jvm {
-        withJava()
-        testRuns["test"].executionTask.configure {
-            useJUnitPlatform()
-        }
-    }
-    
-    // Native target for the current platform
-    val hostOs = System.getProperty("os.name")
-    val hostArch = System.getProperty("os.arch")
-    val isMingwX64 = hostOs.startsWith("Windows")
-    val nativeTarget = when {
-        hostOs == "Mac OS X" && (hostArch == "aarch64" || hostArch == "arm64") -> macosArm64("native")
-        hostOs == "Mac OS X" -> macosX64("native")
-        hostOs == "Linux" -> linuxX64("native")
-        isMingwX64 -> mingwX64("native")
-        else -> throw GradleException("Host OS is not supported in Kotlin/Native.")
-    }
+    jvmToolchain(21)
+}
 
-    sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation(project(":nn-package"))
-                implementation(project(":chess-engine"))
-                implementation(project(":rl-framework"))
-            }
-        }
-        val commonTest by getting {
-            dependencies {
-                implementation(kotlin("test"))
-            }
-        }
-        val jvmMain by getting
-        val jvmTest by getting {
-            dependencies {
-                implementation("org.junit.jupiter:junit-jupiter:5.8.2")
-            }
-        }
-        val nativeMain by getting
-        val nativeTest by getting
+sourceSets {
+    val main by getting {
+        kotlin.srcDirs("src/commonMain/kotlin", "src/jvmMain/kotlin")
+        resources.srcDirs("src/commonMain/resources", "src/jvmMain/resources")
+    }
+    val test by getting {
+        kotlin.srcDirs("src/commonTest/kotlin", "src/jvmTest/kotlin")
+        resources.srcDirs("src/commonTest/resources", "src/jvmTest/resources")
+    }
+}
+
+dependencies {
+    implementation(project(":nn-package"))
+    implementation(project(":chess-engine"))
+    implementation(project(":rl-framework"))
+
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.8.2")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+application {
+    mainClass.set("com.chessrl.integration.CLIRunner")
+}
+
+// Simple CLI runner task for consistency with docs
+tasks.register<JavaExec>("runCli") {
+    group = "application"
+    description = "Runs the Chess RL CLI"
+    mainClass.set("com.chessrl.integration.CLIRunner")
+    dependsOn("classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    val raw = System.getProperty("args")
+    if (raw != null) {
+        val cliArgs: List<String> = raw.split(" ").filter { it.isNotBlank() }
+        args(cliArgs)
     }
 }

@@ -192,7 +192,6 @@ class GameStateDetectionTest {
         board.setPieceAt(Position(6, 6), Piece(PieceType.KING, PieceColor.BLACK))
         
         // Create a board with high halfmove clock
-        val gameState = board.getGameState()
         board.clearBoard()
         board.setPieceAt(Position(4, 4), Piece(PieceType.KING, PieceColor.WHITE))
         board.setPieceAt(Position(6, 6), Piece(PieceType.KING, PieceColor.BLACK))

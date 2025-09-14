@@ -529,7 +529,7 @@ class NotationConverter {
     /**
      * Convert move list to different formats
      */
-    fun convertMoveList(moves: List<Move>, fromFormat: String, toFormat: String, board: ChessBoard? = null): List<String> {
+    fun convertMoveList(moves: List<Move>, toFormat: String, board: ChessBoard? = null): List<String> {
         val workingBoard = board?.copy() ?: ChessBoard()
         val result = mutableListOf<String>()
         

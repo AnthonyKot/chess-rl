@@ -80,37 +80,14 @@ else
     warning "chess-engine has no JVM tests task"
 fi
 
-# Try to run native tests only if Xcode is available
-if [ "$XCODE_AVAILABLE" = true ]; then
-    echo "   Running native tests..."
-    if ./gradlew nativeTest --quiet; then
-        success "Native tests passed"
-    else
-        warning "Native tests failed or had issues"
-    fi
-else
-    warning "Skipping native tests (Xcode not available)"
-fi
+# Native builds/tests are no longer supported; skip entirely
+warning "Skipping native tests (native target not supported)"
 
 echo ""
 echo "4. Building binaries..."
 
-# Build native binaries only if Xcode is available
-if [ "$XCODE_AVAILABLE" = true ]; then
-    echo "   Building native binaries..."
-    if ./gradlew nativeBinaries --quiet; then
-        success "Native binaries built successfully"
-        echo "   Built binaries:"
-        # List built binaries
-        find . -type f \( -name "*.kexe" -o -name "*Executable*" \) 2>/dev/null | while read -r binary; do
-            echo "     - $binary"
-        done
-    else
-        warning "Native binary build failed or had issues"
-    fi
-else
-    warning "Skipping native binary build (Xcode not available)"
-fi
+# Native binaries are not built in this project anymore
+warning "Skipping native binary build (native target not supported)"
 
 echo ""
 echo "5. Checking module dependencies..."
@@ -124,14 +101,10 @@ echo ""
 echo "Build verification complete. Summary:"
 echo "- ${GREEN}Kotlin compile${NC}"
 echo "- ${GREEN}NN JVM tests${NC} (and other JVM tests if present)"
-if [ "$XCODE_AVAILABLE" = true ]; then
-  echo "- ${GREEN}Native tests/build${NC} (macOS with Xcode)"
-else
-  echo "- ${YELLOW}Native steps skipped${NC} (no Xcode)"
-fi
+echo "- ${YELLOW}Native steps skipped${NC} (not supported)"
 
 echo ""
 echo "Tips:"
 echo "- Run nn-package tests only:    ./gradlew :nn-package:jvmTest"
 echo "- Run chess-engine demo:        ./gradlew :chess-engine:runDemo"
-echo "- Skip native tests everywhere: ./gradlew test --exclude-task nativeTest"
+echo "- Native tasks removed: no native builds/tests"

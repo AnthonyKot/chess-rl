@@ -428,3 +428,4 @@ class AdvancedOptimizersTest {
         assertTrue(prediction[0] >= 0.0 && prediction[0] <= 1.0, "Sigmoid output should be in [0,1]")
     }
 }
+@file:Suppress("USELESS_CAST")

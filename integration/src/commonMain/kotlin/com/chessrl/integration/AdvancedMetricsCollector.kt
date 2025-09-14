@@ -52,7 +52,7 @@ class AdvancedMetricsCollector(
         val gameStats = collectGameStatistics(selfPlayResults)
         
         // Performance metrics with statistical significance
-        val performanceMetrics = collectPerformanceMetrics(performanceResults, cycle)
+        val performanceMetrics = collectPerformanceMetrics(performanceResults)
         
         // Training metrics with detailed analysis
         val trainingMetrics = collectTrainingMetrics(trainingResults)
@@ -61,11 +61,11 @@ class AdvancedMetricsCollector(
         val qualityMetrics = collectGameQualityMetrics(selfPlayResults)
         
         // Efficiency metrics
-        val efficiencyMetrics = collectEfficiencyMetrics(cycle, timestamp)
+        val efficiencyMetrics = collectEfficiencyMetrics(timestamp)
         
         // Statistical significance analysis
         val statisticalSignificance = if (config.enableStatisticalSignificance) {
-            calculateStatisticalSignificance(performanceMetrics, cycle)
+            calculateStatisticalSignificance()
         } else null
         
         val metrics = TrainingCycleMetrics(
@@ -171,8 +171,7 @@ class AdvancedMetricsCollector(
      * Collect performance metrics with statistical significance
      */
     private fun collectPerformanceMetrics(
-        performanceResults: PerformanceEvaluationResult,
-        cycle: Int
+        performanceResults: PerformanceEvaluationResult
     ): PerformanceMetrics {
         
         val gameResults = performanceResults.gameResults
@@ -248,9 +247,8 @@ class AdvancedMetricsCollector(
     /**
      * Collect efficiency metrics
      */
-    private fun collectEfficiencyMetrics(cycle: Int, timestamp: Long): EfficiencyMetrics {
+    private fun collectEfficiencyMetrics(timestamp: Long): EfficiencyMetrics {
         val elapsedTime = timestamp - startTime
-        val cycleTime = if (cycle > 0) elapsedTime.toDouble() / cycle else 0.0
         
         // Calculate throughput metrics
         val totalGames = metricsHistory.sumOf { it.gamesPlayed }
@@ -258,11 +256,12 @@ class AdvancedMetricsCollector(
         val totalBatchUpdates = metricsHistory.sumOf { it.batchUpdates }
         
         val gamesPerSecond = if (elapsedTime > 0) totalGames.toDouble() / (elapsedTime / 1000.0) else 0.0
-        val experiencesPerSecond = if (elapsedTime > 0) totalExperiences.toDouble() / (elapsedTime / 1000.0) else 0.0
-        val batchUpdatesPerSecond = if (elapsedTime > 0) totalBatchUpdates.toDouble() / (elapsedTime / 1000.0) else 0.0
+        // These can be added to EfficiencyMetrics if needed:
+        // val experiencesPerSecond = if (elapsedTime > 0) totalExperiences.toDouble() / (elapsedTime / 1000.0) else 0.0
+        // val batchUpdatesPerSecond = if (elapsedTime > 0) totalBatchUpdates.toDouble() / (elapsedTime / 1000.0) else 0.0
         
         // Calculate training efficiency (performance improvement per unit time)
-        val trainingEfficiency = calculateTrainingEfficiency(cycle)
+        val trainingEfficiency = calculateTrainingEfficiency()
         
         // Estimate resource utilization (simplified)
         val resourceUtilization = estimateResourceUtilization()
@@ -277,10 +276,7 @@ class AdvancedMetricsCollector(
     /**
      * Calculate statistical significance of performance improvements
      */
-    private fun calculateStatisticalSignificance(
-        performanceMetrics: PerformanceMetrics,
-        cycle: Int
-    ): StatisticalSignificance? {
+    private fun calculateStatisticalSignificance(): StatisticalSignificance? {
         
         if (metricsHistory.size < 10) {
             return null // Need more data for statistical analysis
@@ -288,13 +284,14 @@ class AdvancedMetricsCollector(
         
         // Get baseline performance (first 10 cycles)
         val baselineMetrics = metricsHistory.take(10)
-        val baselineWinRate = baselineMetrics.map { it.winRate }.average()
-        val baselineReward = baselineMetrics.map { it.averageReward }.average()
+        // Baselines
+        // val baselineWinRate = baselineMetrics.map { it.winRate }.average()
+        // val baselineReward = baselineMetrics.map { it.averageReward }.average()
         
         // Get recent performance (last 10 cycles)
         val recentMetrics = metricsHistory.takeLast(10)
         val recentWinRate = recentMetrics.map { it.winRate }.average()
-        val recentReward = recentMetrics.map { it.averageReward }.average()
+        // val recentReward = recentMetrics.map { it.averageReward }.average()
         
         // Calculate effect size (Cohen's d)
         val winRateEffectSize = calculateCohenD(
@@ -356,7 +353,8 @@ class AdvancedMetricsCollector(
     private fun calculateMoveAccuracy(gameResult: SelfPlayGameResult): Double {
         // Simplified move accuracy calculation
         // In practice, would analyze each move against optimal play
-        return 0.7 + Random.nextDouble() * 0.3 // Placeholder: 70-100%
+        val outcomeBonus = if (gameResult.gameOutcome == GameOutcome.DRAW) -0.05 else 0.0
+        return (0.7 + Random.nextDouble() * 0.3 + outcomeBonus).coerceIn(0.0, 1.0)
     }
     
     /**
@@ -375,13 +373,14 @@ class AdvancedMetricsCollector(
     private fun calculateTacticalAccuracy(gameResult: SelfPlayGameResult): Double {
         // Simplified tactical accuracy calculation
         // In practice, would analyze tactical combinations and calculations
-        return 0.6 + Random.nextDouble() * 0.4 // Placeholder: 60-100%
+        val lengthFactor = min(gameResult.gameLength / 100.0, 1.0)
+        return (0.6 + Random.nextDouble() * 0.4 * (0.5 + 0.5 * lengthFactor)).coerceIn(0.0, 1.0)
     }
     
     /**
      * Calculate training efficiency
      */
-    private fun calculateTrainingEfficiency(cycle: Int): Double {
+    private fun calculateTrainingEfficiency(): Double {
         if (metricsHistory.size < 2) return 0.0
         
         val firstMetrics = metricsHistory.first()

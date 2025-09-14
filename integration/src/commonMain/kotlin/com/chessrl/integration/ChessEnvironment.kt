@@ -546,17 +546,13 @@ class ChessEnvironment(
                 reward = rewardConfig.drawReward
             }
             else -> {
-                // Ongoing game - apply position-based reward shaping if enabled
-                reward = positionEvaluator.evaluatePosition(chessBoard, movingColor, rewardConfig)
-                
-                // Add small rewards for captures and checks
+                // Ongoing game: use positional shaping only if enabled; otherwise no shaping
                 if (rewardConfig.enablePositionRewards) {
-                    if (isCapture(move)) {
-                        reward += 0.02 // Small bonus for captures
-                    }
-                    if (gameStateDetector.isInCheck(chessBoard, movingColor.opposite())) {
-                        reward += 0.01 // Small bonus for giving check
-                    }
+                    reward = positionEvaluator.evaluatePosition(chessBoard, movingColor, rewardConfig)
+                    if (isCapture(move)) reward += 0.02
+                    if (gameStateDetector.isInCheck(chessBoard, movingColor.opposite())) reward += 0.01
+                } else {
+                    reward = 0.0
                 }
             }
         }

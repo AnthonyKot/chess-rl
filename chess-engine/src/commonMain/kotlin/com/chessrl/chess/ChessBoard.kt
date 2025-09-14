@@ -792,7 +792,6 @@ data class MoveHistoryEntry(
      * Convert to algebraic notation with context
      */
     fun toAlgebraicNotation(): String {
-        val moveStr = move.toAlgebraic()
         val captureStr = if (capturedPiece != null) "x" else ""
         val pieceStr = if (piece.type == PieceType.PAWN) "" else piece.type.name.first().toString()
         

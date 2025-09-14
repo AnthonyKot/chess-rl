@@ -44,7 +44,7 @@ class NativeDeploymentOptimizer {
             NativeGameplayOptimizer.GameplayOptimizationResult(1.0, 0L, 0.0)
         }
         
-        val totalTime = getCurrentTimeMillis() - startTime
+        val totalTime = (getCurrentTimeMillis() - startTime).coerceAtLeast(1)
         
         return NativeOptimizationResult(
             inferenceOptimization = inferenceResult,

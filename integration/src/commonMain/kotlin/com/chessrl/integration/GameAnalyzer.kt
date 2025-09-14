@@ -54,8 +54,8 @@ class GameAnalyzer(
         // Decision making analysis
         val decisionAnalysis = analyzeDecisionMaking(gameResult)
         
-        // Learning insights
-        val learningInsights = extractLearningInsights(gameResult)
+        // Learning insights (computed; currently summarized separately)
+        val _learningInsights = extractLearningInsights(gameResult)
         
         // Move analysis (if enabled)
         val moveAnalyses = if (config.enableMoveAnalysis) {
@@ -95,8 +95,8 @@ class GameAnalyzer(
             noveltyScore = 0.0,
             difficultyLevel = 0.0,
             
-            // Detailed analysis (summary-level list expected here)
-            moveAnalyses = emptyList(),
+            // Detailed analysis (include computed move analyses when enabled)
+            moveAnalyses = moveAnalyses,
             criticalPositions = criticalPositions
         )
         
@@ -330,12 +330,12 @@ class GameAnalyzer(
     
     private fun analyzeGamePhases(gameResult: SelfPlayGameResult): GamePhaseAnalysis {
         val gameLength = gameResult.gameLength
-        
+
         // Simplified phase analysis based on game length
         val openingLength = minOf(gameLength, 15)
         val endgameStart = maxOf(gameLength - 20, openingLength + 1)
-        val middlegameLength = maxOf(0, endgameStart - openingLength)
-        val endgameLength = maxOf(0, gameLength - endgameStart)
+        val _middlegameLength = maxOf(0, endgameStart - openingLength)
+        val _endgameLength = maxOf(0, gameLength - endgameStart)
         
         return GamePhaseAnalysis(
             openingQuality = calculatePhaseQuality(gameResult, 0, openingLength),

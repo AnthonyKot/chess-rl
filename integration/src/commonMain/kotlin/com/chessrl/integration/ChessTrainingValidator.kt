@@ -106,7 +106,29 @@ class ChessTrainingValidator(
             recommendations.add("Focus training on tactical positions")
         }
         
-        // Aggregate-based checks only; per-game checks can be too strict for small samples
+        // Per-game checks (short games, low diversity)
+        val minMoves = gameResults.minOfOrNull { it.moveCount } ?: 0
+        if (minMoves.toDouble() < config.minGameLengthThreshold) {
+            issues.add(ChessValidationIssue(
+                type = ChessIssueType.GAMES_TOO_SHORT,
+                severity = IssueSeverity.MEDIUM,
+                message = "One or more games are too short (min: $minMoves)",
+                value = minMoves.toDouble()
+            ))
+        }
+
+        val anyLowDiversity = gameResults.any { res ->
+            val moves = res.moves
+            if (moves.isEmpty()) false else (moves.toSet().size.toDouble() / moves.size) < config.minMoveDiversityThreshold
+        }
+        if (anyLowDiversity) {
+            issues.add(ChessValidationIssue(
+                type = ChessIssueType.LOW_MOVE_DIVERSITY,
+                severity = IssueSeverity.HIGH,
+                message = "One or more games show low move diversity",
+                value = 0.0
+            ))
+        }
 
         // Record analysis
         val gameAnalysis = ChessGameAnalysis(

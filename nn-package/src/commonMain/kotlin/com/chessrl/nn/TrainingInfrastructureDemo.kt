@@ -213,16 +213,14 @@ object TrainingInfrastructureDemo {
         println("4. Hyperparameter Testing Demo")
         println("=" * 30)
         
-        // Create simple dataset for quick testing
-        val inputs = Array(100) { i ->
-            doubleArrayOf(sin(i * 0.1), cos(i * 0.1))
-        }
-        val targets = Array(100) { i ->
-            doubleArrayOf(sin(i * 0.1) + cos(i * 0.1))
-        }
+        // If needed, construct lightweight synthetic datasets here for quick trials.
+        // Example (commented):
+        // val inputs = Array(100) { i -> doubleArrayOf(sin(i * 0.1), cos(i * 0.1)) }
+        // val targets = Array(100) { i -> doubleArrayOf(sin(i * 0.1) + cos(i * 0.1)) }
         
-        val trainDataset = InMemoryDataset(inputs.sliceArray(0..79), targets.sliceArray(0..79))
-        val valDataset = InMemoryDataset(inputs.sliceArray(80..99), targets.sliceArray(80..99))
+        // Example dataset splits (kept for reference)
+        // val trainDataset = InMemoryDataset(inputs.sliceArray(0..79), targets.sliceArray(0..79))
+        // val valDataset = InMemoryDataset(inputs.sliceArray(80..99), targets.sliceArray(80..99))
         
         // Test different configurations
         val configs = listOf(
@@ -254,14 +252,14 @@ object TrainingInfrastructureDemo {
         println("Testing ${configs.size} hyperparameter configurations...")
         
         // Create a base network for testing
-        val baseNetwork = FeedforwardNetwork(
-            _layers = listOf(
-                DenseLayer(2, 10, ReLUActivation()),
-                DenseLayer(10, 1, LinearActivation())
-            ),
-            lossFunction = MSELoss(),
-            optimizer = SGDOptimizer(0.01)
-        )
+        // val baseNetwork = FeedforwardNetwork(
+        //     _layers = listOf(
+        //         DenseLayer(2, 10, ReLUActivation()),
+        //         DenseLayer(10, 1, LinearActivation())
+        //     ),
+        //     lossFunction = MSELoss(),
+        //     optimizer = SGDOptimizer(0.01)
+        // )
         
         // Simulate hyperparameter testing results (simplified)
         configs.forEachIndexed { index, config ->

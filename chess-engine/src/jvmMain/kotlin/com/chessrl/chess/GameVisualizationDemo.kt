@@ -145,7 +145,7 @@ fun demoGameAnalysis(game: PGNGame) {
         it.quality in listOf(MoveQuality.BRILLIANT, MoveQuality.EXCELLENT, MoveQuality.BLUNDER) 
     }
     
-    for ((index, analysis) in keyMoves.withIndex()) {
+    for (analysis in keyMoves) {
         val moveNumber = analysisResult.moveAnalyses.indexOf(analysis) + 1
         val colorStr = if (analysis.isWhiteMove) "White" else "Black"
         println("$moveNumber. $colorStr: ${analysis.getSummary()}")
@@ -154,7 +154,7 @@ fun demoGameAnalysis(game: PGNGame) {
     // Show tactical elements
     println("\nTACTICAL ELEMENTS FOUND:")
     val tacticalMoves = analysisResult.moveAnalyses.filter { it.tacticalElements.isNotEmpty() }
-    for ((index, analysis) in tacticalMoves.withIndex()) {
+    for (analysis in tacticalMoves) {
         val moveNumber = analysisResult.moveAnalyses.indexOf(analysis) + 1
         val elements = analysis.tacticalElements.joinToString(", ") { it.name.lowercase().replace("_", " ") }
         println("Move $moveNumber: ${analysis.move.toAlgebraic()} - $elements")

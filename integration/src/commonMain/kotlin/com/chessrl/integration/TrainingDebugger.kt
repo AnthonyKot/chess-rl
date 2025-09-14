@@ -301,7 +301,9 @@ class TrainingDebugger(
         val terminalRatio = experiences.count { it.done }.toDouble() / experiences.size
         
         val quality = when {
-            rewardSparsity > 0.9 && rewardVariance < 0.01 -> ExperienceQuality.POOR
+            // Very sparse or nearly no variation in rewards indicates poor-quality signal
+            rewardSparsity > 0.9 -> ExperienceQuality.POOR
+            rewardVariance < 0.01 && rewardSparsity > 0.2 -> ExperienceQuality.POOR
             rewardSparsity > 0.7 -> ExperienceQuality.LOW
             rewardVariance > 1.0 && terminalRatio > 0.1 -> ExperienceQuality.GOOD
             else -> ExperienceQuality.MODERATE
@@ -473,7 +475,7 @@ class TrainingDebugger(
                 "Try curriculum learning"
             )
             ConvergenceIssue.NORMAL_CONVERGENCE -> listOf(
-                "Continue current training approach"
+                "Training is converging normally; continue current approach"
             )
             ConvergenceIssue.INSUFFICIENT_DATA -> listOf(
                 "Continue training to gather more data"

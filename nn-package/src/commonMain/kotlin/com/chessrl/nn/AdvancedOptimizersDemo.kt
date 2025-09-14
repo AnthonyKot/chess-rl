@@ -129,7 +129,7 @@ object AdvancedOptimizersDemo {
         println("\n=== Learning Rate Scheduling Demonstration ===")
         
         // Simple classification dataset
-        val inputs = Array(200) { i ->
+        val inputs = Array(200) { _ ->
             val x1 = Random.nextGaussian()
             val x2 = Random.nextGaussian()
             doubleArrayOf(x1, x2)
@@ -189,7 +189,7 @@ object AdvancedOptimizersDemo {
         
         // Create a more complex dataset
         val dataSize = 500
-        val inputs = Array(dataSize) { i ->
+        val inputs = Array(dataSize) { _ ->
             val x1 = (Random.nextDouble() - 0.5) * 4.0
             val x2 = (Random.nextDouble() - 0.5) * 4.0
             doubleArrayOf(x1, x2)
