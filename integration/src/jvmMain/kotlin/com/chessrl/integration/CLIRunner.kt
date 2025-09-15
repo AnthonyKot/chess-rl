@@ -153,7 +153,18 @@ object CLIRunner {
     private fun trainAdvanced(args: List<String>) {
         val cycles = args.getAfter("--cycles")?.toIntOrNull() ?: 3
         val resumeBest = args.contains("--resume-best")
-        val pipeline = AdvancedSelfPlayTrainingPipeline()
+        // Use a more learnable default: shorter episodes + positional rewards
+        val tunedConfig = AdvancedSelfPlayConfig(
+            maxStepsPerGame = args.getAfter("--max-steps")?.toIntOrNull() ?: 100,
+            enablePositionRewards = true
+        )
+        // Helpful context for locating outputs
+        runCatching {
+            val cwd = java.nio.file.Paths.get("").toAbsolutePath().normalize().toString()
+            println("Working directory: $cwd")
+            println("Checkpoints directory (relative): ${tunedConfig.checkpointDirectory}")
+        }
+        val pipeline = AdvancedSelfPlayTrainingPipeline(tunedConfig)
         check(pipeline.initialize())
         args.getAfter("--load")?.let { path ->
             pipeline.loadCheckpointPath(path)

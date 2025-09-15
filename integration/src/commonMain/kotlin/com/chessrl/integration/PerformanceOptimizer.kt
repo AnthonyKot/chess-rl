@@ -148,7 +148,7 @@ class OptimizedBatchProcessor {
     )
     
     fun optimizeBatchProcessing(config: JVMTrainingOptimizer.JVMOptimizationConfig): BatchOptimizationResult {
-        val batchSizes = listOf(32, 64, 128)
+        val batchSizes = listOf(32, 64, 128, config.batchSize).distinct()
         val results = mutableMapOf<Int, BatchPerformance>()
         
         for (batchSize in batchSizes) {
@@ -254,7 +254,7 @@ class ConcurrentTrainingManager {
     )
     
     fun optimizeConcurrentTraining(config: JVMTrainingOptimizer.JVMOptimizationConfig): ConcurrentOptimizationResult {
-        val threadCounts = listOf(1, 2, 4, 8)
+        val threadCounts = listOf(1, 2, 4, 8, config.concurrentThreads).distinct()
         val results = mutableMapOf<Int, ConcurrentPerformance>()
         
         for (threadCount in threadCounts) {
@@ -316,7 +316,7 @@ class ConcurrentTrainingManager {
         }
         
         // Backward pass simulation
-        val gradient = sum * 0.01
+        val gradient = sum * 0.01 + threadId * 1e-9
         for (i in weights.indices) {
             weights[i] -= gradient * 0.001
         }
@@ -350,8 +350,9 @@ class ArrayPool {
         var reuses = 0
         
         // Simulate array usage patterns
+        val baseSize = 776 + (batchSize % 16)
         repeat(1000) {
-            val array = getArray(776)
+            val array = getArray(baseSize)
             if (array != null) {
                 reuses++
             } else {
@@ -359,13 +360,13 @@ class ArrayPool {
             }
             
             // Use array
-            val newArray = array ?: DoubleArray(776)
+            val newArray = array ?: DoubleArray(baseSize)
             for (i in newArray.indices) {
                 newArray[i] = Random.nextDouble()
             }
             
             // Return to pool
-            returnArray(776, newArray)
+            returnArray(baseSize, newArray)
         }
         
         val endTime = getCurrentTimeMillis()

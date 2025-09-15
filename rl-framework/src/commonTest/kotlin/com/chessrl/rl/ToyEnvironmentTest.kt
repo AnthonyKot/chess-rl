@@ -172,7 +172,7 @@ class ToyEnvironmentTest {
         
         // Try to move out of bounds (left from edge)
         env.reset()
-        val result3 = env.step(3) // left from (0,0)
+        env.step(3) // left from (0,0)
         assertEquals(Pair(0, 0), env.getAgentPosition()) // Should stay in place
     }
     
@@ -360,7 +360,6 @@ class ToyEnvironmentTest {
     @Test
     fun testRLValidationOnToyProblem() {
         val validator = RLValidator()
-        val bandit = MultiarmedBanditEnvironment(2, Random(123))
         
         // Simulate training metrics over time
         val trainingHistory = mutableListOf<RLMetrics>()
@@ -405,4 +404,3 @@ class ToyEnvironmentTest {
         assertTrue(validation.isValid) // Should be valid for normal training
     }
 }
-

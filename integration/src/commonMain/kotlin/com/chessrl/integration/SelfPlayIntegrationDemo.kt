@@ -141,7 +141,7 @@ object SelfPlayIntegrationDemo {
         
         // Test DQN Agent
         try {
-            val dqnAgent = RealChessAgentFactory.createRealDQNAgent(
+            RealChessAgentFactory.createRealDQNAgent(
                 inputSize = 50,
                 outputSize = 25,
                 hiddenLayers = listOf(32, 16),
@@ -166,7 +166,7 @@ object SelfPlayIntegrationDemo {
         
         // Test Policy Gradient Agent
         try {
-            val pgAgent = RealChessAgentFactory.createRealPolicyGradientAgent(
+            RealChessAgentFactory.createRealPolicyGradientAgent(
                 inputSize = 50,
                 outputSize = 25,
                 hiddenLayers = listOf(32, 16),

@@ -29,8 +29,8 @@ class PerformanceMonitor {
         val timestamp = getCurrentTimeMillis()
         
         val metrics = metricsCollector.collectCurrentMetrics()
-        val profiling = profiler.profileCurrentState()
-        val resources = resourceMonitor.getCurrentResourceUsage()
+        profiler.profileCurrentState()
+        resourceMonitor.getCurrentResourceUsage()
         
         val snapshot = PerformanceSnapshot(
             cycle = performanceHistory.size + 1,
@@ -443,7 +443,7 @@ class PerformanceBenchmarkSuite {
         }
         
         val endTime = getCurrentTimeMillis()
-        val duration = endTime - startTime
+        val duration = (endTime - startTime).coerceAtLeast(1)
         
         return BenchmarkResult(
             name = "Neural Network",
@@ -471,7 +471,7 @@ class PerformanceBenchmarkSuite {
         }
         
         val endTime = getCurrentTimeMillis()
-        val duration = endTime - startTime
+        val duration = (endTime - startTime).coerceAtLeast(1)
         
         return BenchmarkResult(
             name = "Chess Engine",
@@ -487,7 +487,6 @@ class PerformanceBenchmarkSuite {
         
         // Simulate RL operations
         repeat(1000) {
-            val state = DoubleArray(776) { Random.nextDouble() }
             val qValues = DoubleArray(4096) { Random.nextDouble() }
             
             // Q-learning update simulation
@@ -496,11 +495,11 @@ class PerformanceBenchmarkSuite {
             val target = reward + 0.99 * maxQ
             
             // Update simulation
-            val loss = (target - qValues[0]).pow(2)
+            (target - qValues[0]).pow(2)
         }
         
         val endTime = getCurrentTimeMillis()
-        val duration = endTime - startTime
+        val duration = (endTime - startTime).coerceAtLeast(1)
         
         return BenchmarkResult(
             name = "RL Algorithm",
@@ -517,22 +516,14 @@ class PerformanceBenchmarkSuite {
         // Simulate integration operations
         repeat(100) {
             // Simulate complete training step
-            val state = DoubleArray(776) { Random.nextDouble() }
             val action = Random.nextInt(4096)
+            // Simple arithmetic to simulate processing, read vars to avoid unused warnings
             val reward = Random.nextDouble(-1.0, 1.0)
-            val nextState = DoubleArray(776) { Random.nextDouble() }
-            
-            // Experience storage simulation
-            val experience = mapOf(
-                "state" to state,
-                "action" to action,
-                "reward" to reward,
-                "next_state" to nextState
-            )
+            if (action == -1 && reward < -1.0) { /* no-op */ }
         }
         
         val endTime = getCurrentTimeMillis()
-        val duration = endTime - startTime
+        val duration = (endTime - startTime).coerceAtLeast(1)
         
         return BenchmarkResult(
             name = "Integration",

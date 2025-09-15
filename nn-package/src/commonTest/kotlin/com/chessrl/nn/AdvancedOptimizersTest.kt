@@ -151,7 +151,7 @@ class AdvancedOptimizersTest {
         val network = FeedforwardNetwork(layers, MSELoss(), SGDOptimizer(), l1Reg)
         
         // Get initial weights
-        val initialWeights = (layers[0] as DenseLayer).getWeights()
+        val initialWeights = layers[0].getWeights()
         
         // Train with regularization
         network.train(simpleInputs, simpleTargets, epochs = 5, batchSize = 2)
@@ -161,7 +161,7 @@ class AdvancedOptimizersTest {
         assertTrue(regLoss >= 0.0, "Regularization loss should be non-negative")
         
         // Weights should be affected by regularization
-        val finalWeights = (layers[0] as DenseLayer).getWeights()
+        val finalWeights = layers[0].getWeights()
         var weightsChanged = false
         for (i in initialWeights.indices) {
             for (j in initialWeights[i].indices) {
@@ -428,4 +428,3 @@ class AdvancedOptimizersTest {
         assertTrue(prediction[0] >= 0.0 && prediction[0] <= 1.0, "Sigmoid output should be in [0,1]")
     }
 }
-@file:Suppress("USELESS_CAST")

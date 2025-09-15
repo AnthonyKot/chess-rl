@@ -104,7 +104,7 @@ class CircularClassificationTest {
             doubleArrayOf(-0.5, -0.87) // Class 2 region
         )
         
-        for ((idx, point) in testPoints.withIndex()) {
+        for (point in testPoints) {
             val prediction = network.predict(point)
             val predictedClass = prediction.indices.maxByOrNull { prediction[it] } ?: 0
             val confidence = prediction[predictedClass]
@@ -189,4 +189,3 @@ private fun Double.format(digits: Int): String {
     val rounded = kotlin.math.round(this * multiplier) / multiplier
     return rounded.toString()
 }
-@file:Suppress("UNUSED_VARIABLE")

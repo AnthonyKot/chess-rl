@@ -1,5 +1,56 @@
 # Chess RL Bot
 
+Recent Training Defaults and How to Verify/Roll Back
+
+This augments existing logging improvements; nothing was removed. The notes below summarize what was added, where it lives, how to verify, and how to revert.
+
+Summary of changes
+- DQN masking debug logs
+  - Code: `rl-framework/src/commonMain/kotlin/com/chessrl/rl/RLAlgorithms.kt` (DQNAlgorithm)
+  - Behavior: prints once when masking is set and on first masked target compute
+  - Verify in logs:
+    - `🧩 DQN next-state action masking enabled (provider set)`
+    - `🧩 DQN masking applied: valid next actions for sample=...`
+
+- Early exploration warmup (first cycles only)
+  - Config defaults: `explorationWarmupCycles=2`, `explorationWarmupRate=0.25`
+  - Location: `AdvancedSelfPlayConfig` in `integration/src/commonMain/kotlin/com/chessrl/integration/AdvancedSelfPlayTrainingPipeline.kt`
+  - Toggle: set `explorationWarmupCycles=0` to disable
+
+- Rollback warmup (skip rollback in first cycles)
+  - Config defaults: `rollbackWarmupCycles=2`, `enableModelRollback=true`
+  - Location: `AdvancedSelfPlayConfig` (same file)
+  - Toggle: set `rollbackWarmupCycles=0` or `enableModelRollback=false`
+
+- Step‑limit treated as draw (reporting only)
+  - Code: `integration/src/commonMain/kotlin/com/chessrl/integration/SelfPlaySystem.kt` in `processBatchResults`
+  - Behavior: when `terminationReason == STEP_LIMIT && gameOutcome == ONGOING`, count as `DRAW` in stats
+  - Toggle: remove that mapping in `processBatchResults`
+
+- Step‑limit terminal penalty (training signal)
+  - Config default: `stepLimitPenalty = -0.02`
+  - Location: `AdvancedSelfPlayConfig` (same file); applied in `performBatchUpdate`
+  - Toggle: set `stepLimitPenalty = 0.0`
+
+- Target sync visibility (tip)
+  - Default: `targetUpdateFrequency=100` in `integration/src/commonMain/kotlin/com/chessrl/integration/RealChessAgentFactory.kt`
+  - For dev runs, you can lower to `20` to surface sync logs sooner
+
+Run & verify
+- Basic run (3 cycles, deterministic):
+  - `./gradlew :integration:runCli --args="--train-advanced --cycles 3 --seed 12345"`
+  - Look for the two `🧩` lines above and `📊 Self-Play Progress` with non‑zero draw rate.
+- Longer run to see trends and possibly a target sync:
+  - `./gradlew :integration:runCli --args="--train-advanced --cycles 6 --seed 12345"`
+- Evaluation vs baseline:
+  - `./gradlew :integration:runCli --args="--eval-baseline --games 10"`
+
+How to rollback quickly
+- Warmups: set `explorationWarmupCycles=0`, `rollbackWarmupCycles=0` in `AdvancedSelfPlayConfig`.
+- Step‑limit penalty: set `stepLimitPenalty=0.0` in `AdvancedSelfPlayConfig`.
+- Step‑limit reported as draw: edit `SelfPlaySystem.processBatchResults` and remove the STEP_LIMIT→DRAW mapping.
+- Target sync cadence: restore `targetUpdateFrequency=100` (default) in `RealChessAgentFactory.createRealDQNAgent`.
+
 Production‑minded Kotlin Multiplatform reinforcement learning for chess. It bundles a full chess engine, a neural network package, RL algorithms (DQN + Policy Gradient), and an integration layer with self‑play, checkpoints, and a baseline opponent.
 
 ## 🚀 Quick Start (Practical)
@@ -704,3 +755,21 @@ Notes
 - Checkpoints are created at cycle boundaries; best checkpoints are auto‑tracked.
 - Advanced pipeline supports pause/resume via methods; CLI exposes basic train/evaluate flows.
 - To load a specific checkpoint when training: `--load PATH`
+TODO – Training appears non‑progressing (needs fixes)
+
+Observed during Advanced Self‑Play run:
+- All self‑play games hit the step limit (avg length ~200), with 0% wins/draws recorded.
+- Batch training metrics show near‑constant high entropy (~8.27 ≈ ln(4096)) and tiny gradients, indicating a near‑uniform policy and ineffective updates.
+- Final “best performance” remains 0.0, and model rollback selects the initial checkpoint.
+
+Likely root causes and fixes:
+- Missing DQN next‑state action masking: DQN targets should only consider Q‑values over valid next actions. Without masking, targets can be dominated by invalid actions, flattening learning. FIX: Provide `mainAgent.setNextActionProvider(environment::getValidActions)` so DQN masks next‑state Q‑values. (Wired in AdvancedSelfPlayTrainingPipeline.)
+- Sparse/undirected rewards: With only terminal rewards and high step limits, random play rarely reaches terminal states. Consider enabling positional shaping (`enablePositionRewards=true`) or adding a modest step penalty/bonus to encourage progress. Also consider reducing `maxStepsPerGame` initially.
+- Decisive outcomes: Persistently reaching the step limit suggests random play rarely mates or stalemates within 200 moves. Consider early‑draw adjudication, simpler opponents, or curriculum (smaller boards/opening book) to produce decisive signals early.
+- Policy still near‑uniform: Entropy ≈ ln(4096) implies the network outputs remain effectively uniform. Verify that the network output size matches the action space (4096) and that batch sizes/learning rate are reasonable. Try smaller hidden layers or pretraining with supervised move datasets to bootstrap.
+- Metric simulation vs. real updates: Ensure all training metrics reflect real agent updates (they do via `agent.trainBatch`), and that the same agent is used for self‑play. Keep `setNextActionProvider` wired for both DQN batch training and any evaluation flows.
+
+Next steps (high priority):
+- Start with smaller `maxStepsPerGame` (e.g., 80–100), enable `enablePositionRewards`, and confirm win/draw rates become non‑zero.
+- Verify `getValidActions(nextState)` masking is applied (already wired) by logging DQN target syncs and loss trending down.
+- Consider curriculum: begin from mid‑game or reduced action candidates to accelerate learning signals.

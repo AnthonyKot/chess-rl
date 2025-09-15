@@ -61,7 +61,7 @@ class TrainingIssueDetector(
         detectedIssues.addAll(detectStabilityIssues(currentMetrics, trainingHistory))
         
         // Game quality issues
-        detectedIssues.addAll(detectGameQualityIssues(currentMetrics, trainingHistory))
+        detectedIssues.addAll(detectGameQualityIssues(currentMetrics))
         
         // Convergence issues
         detectedIssues.addAll(detectConvergenceIssues(trainingHistory))
@@ -307,8 +307,7 @@ class TrainingIssueDetector(
      * Detect game quality issues
      */
     private fun detectGameQualityIssues(
-        metrics: TrainingCycleMetrics,
-        history: List<TrainingCycleMetrics>
+        metrics: TrainingCycleMetrics
     ): List<DetectedIssue> {
         val issues = mutableListOf<DetectedIssue>()
         
@@ -458,12 +457,12 @@ class TrainingIssueDetector(
     ): ComprehensiveDiagnosis {
         
         val diagnosis = ComprehensiveDiagnosis(
-            overallHealth = assessOverallHealth(trainingHistory, issueHistory),
+            overallHealth = assessOverallHealth(issueHistory),
             criticalIssues = identifyCriticalIssues(issueHistory),
             recurringIssues = identifyRecurringIssues(issueHistory),
-            rootCauseAnalysis = performRootCauseAnalysis(trainingHistory, issueHistory),
-            recommendedActions = generateDiagnosisRecommendations(trainingHistory, issueHistory),
-            prognosis = generatePrognosis(trainingHistory, issueHistory)
+            rootCauseAnalysis = performRootCauseAnalysis(issueHistory),
+            recommendedActions = generateDiagnosisRecommendations(issueHistory),
+            prognosis = generatePrognosis(trainingHistory)
         )
         
         return diagnosis
@@ -548,7 +547,6 @@ class TrainingIssueDetector(
     }
     
     private fun assessOverallHealth(
-        trainingHistory: List<TrainingCycleMetrics>,
         issueHistory: List<DetectedIssue>
     ): HealthAssessment {
         val recentIssues = issueHistory.takeLast(10)
@@ -593,7 +591,6 @@ class TrainingIssueDetector(
     }
     
     private fun performRootCauseAnalysis(
-        trainingHistory: List<TrainingCycleMetrics>,
         issueHistory: List<DetectedIssue>
     ): RootCauseAnalysis {
         // Simplified root cause analysis
@@ -615,7 +612,6 @@ class TrainingIssueDetector(
     }
     
     private fun generateDiagnosisRecommendations(
-        trainingHistory: List<TrainingCycleMetrics>,
         issueHistory: List<DetectedIssue>
     ): List<String> {
         val recommendations = mutableListOf<String>()
@@ -639,8 +635,7 @@ class TrainingIssueDetector(
     }
     
     private fun generatePrognosis(
-        trainingHistory: List<TrainingCycleMetrics>,
-        issueHistory: List<DetectedIssue>
+        trainingHistory: List<TrainingCycleMetrics>
     ): TrainingPrognosis {
         val recentPerformance = trainingHistory.takeLast(10).map { it.winRate }
         val performanceTrend = if (recentPerformance.size >= 2) calculateTrend(recentPerformance) else 0.0

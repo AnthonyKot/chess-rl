@@ -26,8 +26,7 @@ class TrainingReportGenerator(
      * Generate executive summary
      */
     fun generateExecutiveSummary(
-        trainingHistory: List<TrainingCycleMetrics>,
-        gameHistory: List<AnalyzedGame>
+        trainingHistory: List<TrainingCycleMetrics>
     ): ExecutiveSummary {
         
         if (trainingHistory.isEmpty()) {

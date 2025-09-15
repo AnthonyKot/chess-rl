@@ -316,10 +316,10 @@ class NativeGameplayOptimizer {
                 // Generate pseudo-legal moves for piece
                 val possibleMoves = when (piece % 6) {
                     1 -> generatePawnMoves(square)
-                    2 -> generateRookMoves(square, board)
+                    2 -> generateRookMoves(square)
                     3 -> generateKnightMoves(square)
-                    4 -> generateBishopMoves(square, board)
-                    5 -> generateQueenMoves(square, board)
+                    4 -> generateBishopMoves(square)
+                    5 -> generateQueenMoves(square)
                     0 -> generateKingMoves(square)
                     else -> emptyList()
                 }
@@ -339,7 +339,7 @@ class NativeGameplayOptimizer {
         }
         
         // Apply activation
-        evaluation = tanh(evaluation)
+        tanh(evaluation)
     }
     
     private fun optimizeMoveGeneration() {
@@ -373,7 +373,7 @@ class NativeGameplayOptimizer {
         return moves
     }
     
-    private fun generateRookMoves(square: Int, board: IntArray): List<Int> {
+    private fun generateRookMoves(square: Int): List<Int> {
         val moves = mutableListOf<Int>()
         val rank = square / 8
         val file = square % 8
@@ -409,7 +409,7 @@ class NativeGameplayOptimizer {
         return moves
     }
     
-    private fun generateBishopMoves(square: Int, board: IntArray): List<Int> {
+    private fun generateBishopMoves(square: Int): List<Int> {
         val moves = mutableListOf<Int>()
         val rank = square / 8
         val file = square % 8
@@ -425,8 +425,8 @@ class NativeGameplayOptimizer {
         return moves.take(13) // Limit for simulation
     }
     
-    private fun generateQueenMoves(square: Int, board: IntArray): List<Int> {
-        return generateRookMoves(square, board) + generateBishopMoves(square, board)
+    private fun generateQueenMoves(square: Int): List<Int> {
+        return generateRookMoves(square) + generateBishopMoves(square)
     }
     
     private fun generateKingMoves(square: Int): List<Int> {

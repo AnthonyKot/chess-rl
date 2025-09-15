@@ -39,10 +39,10 @@ class SelfPlayController(
             println("🔧 Initializing Self-Play Controller")
             
             // Create main training agent
-            mainAgent = createAgent("main")
+            mainAgent = createAgent()
             
             // Create opponent agent (initially a copy of main agent)
-            opponentAgent = createAgent("opponent")
+            opponentAgent = createAgent()
             
             // Create self-play system
             selfPlaySystem = SelfPlaySystem(
@@ -236,7 +236,7 @@ class SelfPlayController(
         
         // Add experiences to the training pipeline's agent
         // In a full implementation, we would integrate more directly with the pipeline
-        val agent = trainingPipeline.let { pipeline ->
+        val agent = trainingPipeline.let { _ ->
             // Access the agent through reflection or provide a getter method
             // For now, we'll simulate the training process
             mainAgent!!
@@ -395,7 +395,7 @@ class SelfPlayController(
      * Update opponent strategy based on training progress
      */
     private fun updateOpponentStrategy(iteration: Int, iterationResult: SelfPlayIterationResult) {
-        val opponentAgent = this.opponentAgent ?: return
+        if (this.opponentAgent == null) return
         
         when (config.opponentUpdateStrategy) {
             OpponentUpdateStrategy.COPY_MAIN -> {
@@ -500,7 +500,7 @@ class SelfPlayController(
     /**
      * Create an agent with specified configuration
      */
-    private fun createAgent(name: String): ChessAgent {
+    private fun createAgent(): ChessAgent {
         return when (config.agentType) {
             AgentType.DQN -> {
                 ChessAgentFactory.createDQNAgent(
@@ -578,7 +578,7 @@ data class SelfPlayControllerConfig(
     // Self-play configuration
     val gamesPerIteration: Int = 20,
     val maxConcurrentGames: Int = 4,
-    val maxStepsPerGame: Int = 200,
+    val maxStepsPerGame: Int = 100,
     
     // Training configuration
     val batchSize: Int = 64,
@@ -589,7 +589,7 @@ data class SelfPlayControllerConfig(
     val winReward: Double = 1.0,
     val lossReward: Double = -1.0,
     val drawReward: Double = 0.0,
-    val enablePositionRewards: Boolean = false,
+    val enablePositionRewards: Boolean = true,
     
     // Experience management
     val experienceCleanupStrategy: ExperienceCleanupStrategy = ExperienceCleanupStrategy.OLDEST_FIRST,

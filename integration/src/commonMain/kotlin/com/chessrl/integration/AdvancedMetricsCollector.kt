@@ -252,8 +252,6 @@ class AdvancedMetricsCollector(
         
         // Calculate throughput metrics
         val totalGames = metricsHistory.sumOf { it.gamesPlayed }
-        val totalExperiences = metricsHistory.sumOf { it.experiencesCollected }
-        val totalBatchUpdates = metricsHistory.sumOf { it.batchUpdates }
         
         val gamesPerSecond = if (elapsedTime > 0) totalGames.toDouble() / (elapsedTime / 1000.0) else 0.0
         // These can be added to EfficiencyMetrics if needed:

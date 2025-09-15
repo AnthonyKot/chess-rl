@@ -25,9 +25,8 @@ class SyntheticValidationTest {
         assertEquals(1, inputs[0].size)
         assertEquals(1, targets[0].size)
         
-        // Verify polynomial relationship: y = x^2 + 2x + 0.5
+        // Verify polynomial relationship: y = x^2 + 2x + 0.5 (for x near 1.0)
         val x = 1.0
-        val expectedY = 1.0 * x * x + 2.0 * x + 0.5 // = 3.5
         
         // Find input close to 1.0
         var closestIdx = 0
@@ -216,7 +215,7 @@ class SyntheticValidationTest {
             random = Random(42)
         )
         
-        val (train, test) = SyntheticDatasets.trainTestSplit(inputs, targets, 0.8, Random(42))
+        val (train, _) = SyntheticDatasets.trainTestSplit(inputs, targets, 0.8, Random(42))
         
         // Create network with hidden layer (XOR requires non-linearity)
         val layers = listOf(
@@ -417,4 +416,3 @@ class SyntheticValidationTest {
         assertTrue(miniBatchGradientVariance >= 0.0)
     }
 }
-@file:Suppress("UNUSED_VARIABLE")

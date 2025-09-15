@@ -115,7 +115,7 @@ class SelfPlaySystem(
         
         val games = mutableListOf<SelfPlayGame>()
         
-        repeat(batchSize) { gameIndex ->
+        repeat(batchSize) { _ ->
             val gameId = ++gameCount
             
             // Create independent environments for each game
@@ -179,7 +179,11 @@ class SelfPlaySystem(
             totalGamesCompleted++
             
             // Track game outcomes
-            val outcome = result.gameOutcome
+            // Treat step-limit terminations as draws for reporting purposes
+            val outcome = if (
+                result.terminationReason == EpisodeTerminationReason.STEP_LIMIT &&
+                result.gameOutcome == GameOutcome.ONGOING
+            ) GameOutcome.DRAW else result.gameOutcome
             gameOutcomes[outcome] = gameOutcomes.getOrDefault(outcome, 0) + 1
             
             // Process experiences with enhanced metadata
@@ -424,7 +428,6 @@ class SelfPlayGame(
         while (!environment.isTerminal(state) && stepCount < config.maxStepsPerGame) {
             // Determine current player
             val currentAgent = if (stepCount % 2 == 0) whiteAgent else blackAgent
-            val currentColor = if (stepCount % 2 == 0) PieceColor.WHITE else PieceColor.BLACK
             
             // Get valid actions
             val validActions = environment.getValidActions(state)
@@ -433,8 +436,13 @@ class SelfPlayGame(
                 break
             }
             
-            // Agent selects action
-            val action = currentAgent.selectAction(state, validActions)
+            // Agent selects action; allow heuristic agent to use baseline evaluator
+            val action = if (currentAgent is HeuristicChessAgent) {
+                val sel = BaselineHeuristicOpponent.selectAction(environment, validActions)
+                if (sel >= 0) sel else currentAgent.selectAction(state, validActions)
+            } else {
+                currentAgent.selectAction(state, validActions)
+            }
             
             // Take step in environment
             val stepResult = environment.step(action)
@@ -464,11 +472,15 @@ class SelfPlayGame(
         val gameDuration = endTime - startTime
         
         // Determine game outcome and termination reason
-        val gameOutcome = parseGameOutcome(gameResult)
         val terminationReason = when {
             gameResult.contains("mate") || gameResult.contains("draw") -> EpisodeTerminationReason.GAME_ENDED
             stepCount >= config.maxStepsPerGame -> EpisodeTerminationReason.STEP_LIMIT
             else -> EpisodeTerminationReason.MANUAL
+        }
+        val gameOutcome = if (terminationReason == EpisodeTerminationReason.STEP_LIMIT) {
+            GameOutcome.DRAW
+        } else {
+            parseGameOutcome(gameResult)
         }
         
         // Get chess metrics
@@ -567,12 +579,15 @@ data class EnhancedExperience(
      * Convert to basic experience for training
      */
     fun toBasicExperience(): Experience<DoubleArray, Int> {
+        val terminalByStepLimit =
+            terminationReason == EpisodeTerminationReason.STEP_LIMIT &&
+            moveNumber == chessMetrics.gameLength
         return Experience(
             state = state,
             action = action,
             reward = reward,
             nextState = nextState,
-            done = done
+            done = done || terminalByStepLimit
         )
     }
 }

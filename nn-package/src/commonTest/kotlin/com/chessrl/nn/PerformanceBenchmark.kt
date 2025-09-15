@@ -33,7 +33,7 @@ class PerformanceBenchmark {
         val iterations = 1000
         val time = measureTime {
             repeat(iterations) {
-                val network = FeedforwardNetwork(
+                FeedforwardNetwork(
                     _layers = listOf(
                         DenseLayer(10, 20, ReLUActivation()),
                         DenseLayer(20, 10, ReLUActivation()),
@@ -67,7 +67,7 @@ class PerformanceBenchmark {
         val time = measureTime {
             repeat(iterations) {
                 val output = network.forward(input)
-                val loss = MSELoss().computeLoss(output, target)
+                MSELoss().computeLoss(output, target)
                 val gradient = MSELoss().computeGradient(output, target)
                 network.backward(gradient)
             }
@@ -93,11 +93,9 @@ class PerformanceBenchmark {
                 val batchInputs = Array(batchSize) { inputs[it % inputs.size] }
                 val batchTargets = Array(batchSize) { targets[it % targets.size] }
                 
-                var totalLoss = 0.0
-                
                 for (i in 0 until batchSize) {
                     val output = network.forward(batchInputs[i])
-                    totalLoss += MSELoss().computeLoss(output, batchTargets[i])
+                    MSELoss().computeLoss(output, batchTargets[i])
                     network.backward(batchTargets[i])
                 }
                 
@@ -132,11 +130,9 @@ class PerformanceBenchmark {
                 val batchInputs = Array(batchSize) { inputs[it % inputs.size] }
                 val batchTargets = Array(batchSize) { targets[it % targets.size] }
                 
-                var totalLoss = 0.0
-                
                 for (i in 0 until batchSize) {
                     val output = network.forward(batchInputs[i])
-                    totalLoss += MSELoss().computeLoss(output, batchTargets[i])
+                    MSELoss().computeLoss(output, batchTargets[i])
                     network.backward(batchTargets[i])
                 }
                 
@@ -218,4 +214,3 @@ private fun Double.formatLocal(digits: Int): String {
     val rounded = kotlin.math.round(this * multiplier) / multiplier
     return rounded.toString()
 }
-@file:Suppress("UNUSED_VARIABLE")

@@ -89,7 +89,7 @@ class HyperparameterSearchSpace {
         
         // Generate random search candidates
         repeat(count - 1) {
-            candidates.add(generateRandomCandidate(baseConfig))
+            candidates.add(generateRandomCandidate())
         }
         
         // Add some systematic variations
@@ -98,9 +98,7 @@ class HyperparameterSearchSpace {
         return candidates.take(count)
     }
     
-    private fun generateRandomCandidate(
-        base: HyperparameterOptimizer.HyperparameterConfig
-    ): HyperparameterOptimizer.HyperparameterConfig {
+    private fun generateRandomCandidate(): HyperparameterOptimizer.HyperparameterConfig {
         return HyperparameterOptimizer.HyperparameterConfig(
             learningRate = sampleLearningRate(),
             batchSize = sampleBatchSize(),
@@ -389,7 +387,7 @@ class ABTester {
         val variance = results.map { (it - mean).pow(2) }.average()
         val standardError = sqrt(variance / trials)
         val tStatistic = mean / standardError
-        val pValue = calculatePValue(tStatistic, trials - 1)
+        val pValue = calculatePValue(tStatistic)
         
         return ABTestMetrics(
             meanPerformance = mean,
@@ -410,7 +408,7 @@ class ABTester {
         return basePerformance + learningRateEffect + batchSizeEffect + explorationEffect + noise
     }
     
-    private fun calculatePValue(tStatistic: Double, degreesOfFreedom: Int): Double {
+    private fun calculatePValue(tStatistic: Double): Double {
         // Simplified p-value calculation (in real implementation, use proper statistical library)
         val absT = abs(tStatistic)
         return max(0.001, 1.0 / (1.0 + absT))

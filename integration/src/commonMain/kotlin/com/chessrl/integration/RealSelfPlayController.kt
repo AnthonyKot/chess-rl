@@ -19,7 +19,12 @@ class RealSelfPlayController(
     private val experienceBuffer = com.chessrl.rl.CircularExperienceBuffer<DoubleArray, Int>(maxSize = 10000)
     
     // Chess components
-    private val chessEnvironment = ChessEnvironment()
+    private val chessEnvironment = ChessEnvironment(
+        rewardConfig = ChessRewardConfig(
+            enablePositionRewards = true,
+            maxGameLength = 100
+        )
+    )
     private val stateEncoder = ChessStateEncoder()
     private val actionEncoder = ChessActionEncoder()
     
@@ -84,7 +89,7 @@ class RealSelfPlayController(
             val gamesPlayed = generateSelfPlayGames(sessionConfig.gamesPerIteration)
             
             // Phase 2: Collect experiences from games
-            val experiencesCollected = collectExperiences(gamesPlayed)
+            collectExperiences(gamesPlayed)
             
             // Phase 3: Train neural networks if we have enough experiences
             if (experienceBuffer.size() >= 32) {
@@ -103,7 +108,7 @@ class RealSelfPlayController(
             }
             
             // Check for early stopping conditions
-            if (shouldStopTraining(episodeCount)) {
+            if (shouldStopTraining()) {
                 break
             }
         }
@@ -132,7 +137,7 @@ class RealSelfPlayController(
         val moves = mutableListOf<GameMove>()
         val experiences = mutableListOf<Experience<DoubleArray, Int>>()
         var moveCount = 0
-        val maxMoves = 200 // Prevent infinite games
+        val maxMoves = 100 // Prevent infinite games
         
         // Reset environment
         var currentState = chessEnvironment.reset()
@@ -153,7 +158,7 @@ class RealSelfPlayController(
             val selectedAction = currentAgent.selectAction(currentState, validActions)
             val selectedMove = actionEncoder.decodeAction(selectedAction)
             
-            if (selectedMove == null || selectedMove !in validMoves) {
+            if (selectedMove !in validMoves) {
                 // Fallback to random valid move if agent selection is invalid
                 val randomMove = validMoves.random()
                 val randomAction = actionEncoder.encodeMove(randomMove)
@@ -267,8 +272,8 @@ class RealSelfPlayController(
             return
         }
         
-        // Sample experiences for training
-        val batch = experienceBuffer.sample(32)
+        // Sample experiences for training (currently not used directly)
+        experienceBuffer.sample(32)
         
         // Train both agents (they share the same architecture but have separate networks)
         whiteAgent?.let { agent ->
@@ -298,7 +303,7 @@ class RealSelfPlayController(
     /**
      * Check if training should stop early
      */
-    private fun shouldStopTraining(episodeCount: Int): Boolean {
+    private fun shouldStopTraining(): Boolean {
         // Simple convergence check - could be made more sophisticated
         if (gameResults.size < 100) return false
         

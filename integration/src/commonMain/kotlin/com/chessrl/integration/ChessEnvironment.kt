@@ -194,6 +194,8 @@ data class ChessRewardConfig(
     val winReward: Double = 1.0,
     val lossReward: Double = -1.0,
     val drawReward: Double = 0.0,
+    // Small per-step penalty to discourage excessively long games
+    val stepPenalty: Double = -0.001,
     val invalidMoveReward: Double = -0.1,
     val gameLengthNormalization: Boolean = true,
     val maxGameLength: Int = 200,
@@ -546,14 +548,15 @@ class ChessEnvironment(
                 reward = rewardConfig.drawReward
             }
             else -> {
-                // Ongoing game: use positional shaping only if enabled; otherwise no shaping
-                if (rewardConfig.enablePositionRewards) {
-                    reward = positionEvaluator.evaluatePosition(chessBoard, movingColor, rewardConfig)
-                    if (isCapture(move)) reward += 0.02
-                    if (gameStateDetector.isInCheck(chessBoard, movingColor.opposite())) reward += 0.01
-                } else {
-                    reward = 0.0
-                }
+                // Ongoing game: positional shaping and step penalty
+                reward = if (rewardConfig.enablePositionRewards) {
+                    var r = positionEvaluator.evaluatePosition(chessBoard, movingColor, rewardConfig)
+                    if (isCapture(move)) r += 0.02
+                    if (gameStateDetector.isInCheck(chessBoard, movingColor.opposite())) r += 0.01
+                    r
+                } else 0.0
+                // Apply per-step penalty to discourage very long episodes
+                reward += rewardConfig.stepPenalty
             }
         }
         

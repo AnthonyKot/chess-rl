@@ -55,7 +55,7 @@ class ExperienceBufferAnalyzer(
         
         // Calculate overall quality score
         val qualityScore = calculateOverallQuality(
-            rewardAnalysis, stateAnalysis, actionAnalysis, temporalAnalysis, diversityAnalysis
+            rewardAnalysis, stateAnalysis, temporalAnalysis, diversityAnalysis
         )
         
         // Identify quality issues
@@ -101,7 +101,7 @@ class ExperienceBufferAnalyzer(
         } else null
         
         val correlationAnalysis = if (analysisDepth == AnalysisDepth.COMPREHENSIVE) {
-            analyzeCorrelations(experiences)
+            analyzeCorrelations()
         } else null
         
         return ExperienceBufferInspectionResult(
@@ -140,7 +140,7 @@ class ExperienceBufferAnalyzer(
         }
         
         val rankings = generateRankings(comparisons)
-        val insights = generateComparisonInsights(bufferAnalyses, comparisons)
+        val insights = generateComparisonInsights(comparisons)
         
         return BufferComparisonResult(
             bufferNames = buffers.keys.toList(),
@@ -253,7 +253,7 @@ class ExperienceBufferAnalyzer(
         }
         
         // Detect sequence anomalies
-        val sequenceAnomalies = detectSequenceAnomalies(experiences, anomalyThreshold)
+        val sequenceAnomalies = detectSequenceAnomalies(experiences)
         anomalies.addAll(sequenceAnomalies)
         
         // Categorize anomalies by severity
@@ -396,7 +396,6 @@ class ExperienceBufferAnalyzer(
     private fun calculateOverallQuality(
         rewardAnalysis: RewardAnalysis,
         stateAnalysis: StateAnalysis,
-        _actionAnalysis: ActionAnalysis,
         temporalAnalysis: TemporalAnalysis,
         diversityAnalysis: DiversityAnalysis
     ): Double {
@@ -547,13 +546,13 @@ class ExperienceBufferAnalyzer(
         val detailedResult = performDetailedInspection(experiences)
         
         // Advanced statistical analysis
-        val statisticalAnalysis = performStatisticalAnalysis(experiences)
+        val statisticalAnalysis = performStatisticalAnalysis()
         
         // Clustering analysis
-        val clusteringAnalysis = performClusteringAnalysis(experiences)
+        val clusteringAnalysis = performClusteringAnalysis()
         
         // Information theory analysis
-        val informationAnalysis = performInformationAnalysis(experiences)
+        val informationAnalysis = performInformationAnalysis()
         
         return ComprehensiveInspectionResult(
             detailedInspection = detailedResult,
@@ -654,8 +653,7 @@ class ExperienceBufferAnalyzer(
     }
     
     private fun detectSequenceAnomalies(
-        experiences: List<Experience<DoubleArray, Int>>,
-        _threshold: Double
+        experiences: List<Experience<DoubleArray, Int>>
     ): List<ExperienceAnomaly> {
         
         val anomalies = mutableListOf<ExperienceAnomaly>()
@@ -689,7 +687,7 @@ class ExperienceBufferAnalyzer(
         )
     }
     
-    private fun analyzeCorrelations(_experiences: List<Experience<DoubleArray, Int>>): CorrelationAnalysis {
+    private fun analyzeCorrelations(): CorrelationAnalysis {
         // Simplified correlation analysis
         return CorrelationAnalysis(
             stateActionCorrelation = 0.0,
@@ -705,7 +703,6 @@ class ExperienceBufferAnalyzer(
     }
     
     private fun generateComparisonInsights(
-        _analyses: Map<String, ExperienceBufferAnalysis>,
         comparisons: Map<ComparisonMetric, Map<String, Double>>
     ): List<String> {
         
@@ -823,7 +820,7 @@ class ExperienceBufferAnalyzer(
         )
     }
     
-    private fun performStatisticalAnalysis(_experiences: List<Experience<DoubleArray, Int>>): StatisticalAnalysis {
+    private fun performStatisticalAnalysis(): StatisticalAnalysis {
         return StatisticalAnalysis(
             normalityTests = emptyMap(),
             correlationMatrix = emptyMap(),
@@ -831,7 +828,7 @@ class ExperienceBufferAnalyzer(
         )
     }
     
-    private fun performClusteringAnalysis(_experiences: List<Experience<DoubleArray, Int>>): ClusteringAnalysis {
+    private fun performClusteringAnalysis(): ClusteringAnalysis {
         return ClusteringAnalysis(
             clusterCount = 0,
             clusterSizes = emptyList(),
@@ -839,7 +836,7 @@ class ExperienceBufferAnalyzer(
         )
     }
     
-    private fun performInformationAnalysis(_experiences: List<Experience<DoubleArray, Int>>): InformationAnalysis {
+    private fun performInformationAnalysis(): InformationAnalysis {
         return InformationAnalysis(
             mutualInformation = 0.0,
             entropy = 0.0,

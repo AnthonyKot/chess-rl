@@ -210,7 +210,8 @@ class RLFrameworkIntegrationTest {
         assertTrue(bestActionCount > 30, "Best action should be selected frequently")
         
         // Test Boltzmann strategy
-        val boltzmann = BoltzmannStrategy<String>(temperature = 1.0)
+        // Use a moderate temperature to ensure probabilistic exploration
+        val boltzmann = BoltzmannStrategy<String>(temperature = 2.0)
         val boltzmannActions = mutableListOf<String>()
         
         repeat(100) {

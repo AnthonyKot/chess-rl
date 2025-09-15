@@ -362,7 +362,7 @@ class NeuralNetworkTest {
         val target = doubleArrayOf(0.5)
         
         // Forward pass
-        val output = network.forward(input)
+        network.forward(input)
         
         // Backward pass
         val lossArray = network.backward(target)
@@ -490,4 +490,3 @@ class NeuralNetworkTest {
         assertTrue(initialLoss >= 0.0 && initialLoss.isFinite(), "Initial loss should be non-negative and finite")
     }
 }
-@file:Suppress("UNUSED_VARIABLE")

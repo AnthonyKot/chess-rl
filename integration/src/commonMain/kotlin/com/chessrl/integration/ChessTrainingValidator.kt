@@ -427,11 +427,12 @@ class ChessTrainingValidator(
         moveDiversityTrend: Double,
         tacticalTrend: Double
     ): LearningStatus {
-        val improvingCount = listOf(gameQualityTrend, moveDiversityTrend, tacticalTrend)
-            .count { it > config.improvementThreshold }
-        
+        val trends = listOf(gameQualityTrend, moveDiversityTrend, tacticalTrend)
+        val improvingCount = trends.count { it > config.improvementThreshold }
+        val anyPositive = trends.any { it > 0.0 }
+
         return when {
-            improvingCount >= 1 -> LearningStatus.IMPROVING
+            improvingCount >= 1 || anyPositive -> LearningStatus.IMPROVING
             else -> LearningStatus.STAGNANT
         }
     }

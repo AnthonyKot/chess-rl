@@ -120,7 +120,8 @@ class TrainingValidator(
         val lossStability = calculateStability(losses)
         
         // Determine convergence status
-        val status = determineConvergenceStatus(rewardTrend, lossTrend, rewardStability, lossStability)
+        val avgReward = rewards.average()
+        val status = determineConvergenceStatus(rewardTrend, lossTrend, rewardStability, lossStability, avgReward)
         val confidence = calculateConvergenceConfidence(rewardStability, lossStability)
         val trendDirection = determineTrendDirection(rewardTrend)
         var stabilityScore = (rewardStability + lossStability) / 2.0
@@ -464,16 +465,17 @@ class TrainingValidator(
         rewardTrend: Double,
         lossTrend: Double,
         rewardStability: Double,
-        lossStability: Double
+        lossStability: Double,
+        avgReward: Double
     ): com.chessrl.rl.ConvergenceStatus {
         val isStable = rewardStability > config.stabilityThreshold && lossStability > config.stabilityThreshold
         val isImproving = rewardTrend > config.improvementThreshold
         val isLossDecreasing = lossTrend < -config.improvementThreshold
-        
+
         return when {
             isStable && (isImproving || isLossDecreasing) -> com.chessrl.rl.ConvergenceStatus.CONVERGED
+            isStable && avgReward > 0.55 -> com.chessrl.rl.ConvergenceStatus.CONVERGED
             isImproving || isLossDecreasing -> com.chessrl.rl.ConvergenceStatus.IMPROVING
-            isStable -> com.chessrl.rl.ConvergenceStatus.CONVERGED
             else -> com.chessrl.rl.ConvergenceStatus.STAGNANT
         }
     }

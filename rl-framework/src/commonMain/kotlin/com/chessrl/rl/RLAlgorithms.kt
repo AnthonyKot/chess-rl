@@ -113,6 +113,8 @@ class DQNAlgorithm(
     private var explorationStrategy: ExplorationStrategy<Int> = EpsilonGreedyStrategy(0.1)
     private var lastMetrics = RLMetrics(0, 0.0, 0.0, 0.0, 0.0, policyEntropy = 0.0, gradientNorm = 0.0)
     private var nextActionProvider: ((DoubleArray) -> List<Int>)? = null
+    private var printedMaskingEnabled = false
+    private var printedMaskSampleInfo = false
 
     /**
      * Provide a function that returns the list of valid next-state actions for masking.
@@ -120,6 +122,10 @@ class DQNAlgorithm(
      */
     fun setNextActionProvider(provider: (DoubleArray) -> List<Int>) {
         nextActionProvider = provider
+        if (!printedMaskingEnabled) {
+            println("🧩 DQN next-state action masking enabled (provider set)")
+            printedMaskingEnabled = true
+        }
     }
     
     override fun updatePolicy(experiences: List<Experience<DoubleArray, Int>>): PolicyUpdateResult {
@@ -229,6 +235,10 @@ class DQNAlgorithm(
                 require(nextQValues.isNotEmpty()) { "targetNetwork.forward returned empty vector" }
                 val maskedMax = nextActionProvider?.let { provider ->
                     val valid = provider.invoke(experience.nextState)
+                    if (!printedMaskSampleInfo) {
+                        println("🧩 DQN masking applied: valid next actions for sample=${valid.size}")
+                        printedMaskSampleInfo = true
+                    }
                     if (valid.isEmpty()) {
                         // No valid actions – treat as terminal-like
                         0.0

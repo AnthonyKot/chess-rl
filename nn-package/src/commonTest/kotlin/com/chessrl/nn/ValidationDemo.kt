@@ -28,7 +28,7 @@ class ValidationDemo {
             random = Random(42)
         )
         
-        val (xorTrain, xorTest) = SyntheticDatasets.trainTestSplit(xorInputs, xorTargets, 0.8, Random(42))
+        val (xorTrain, _) = SyntheticDatasets.trainTestSplit(xorInputs, xorTargets, 0.8, Random(42))
         
         val xorNetwork = FeedforwardNetwork(
             _layers = listOf(
@@ -582,4 +582,3 @@ class ValidationDemo {
     
     // getCurrentTimeMillis() is already available from the common package
 }
-@file:Suppress("UNUSED_VARIABLE")

@@ -23,7 +23,6 @@ class CheckpointResumeJvmTest {
 
         // Prepare a dummy chess-like state and a small action subset
         val stateSize = 776
-        val actionSpace = 4096
         val state = DoubleArray(stateSize) { i -> if (i % 7 == 0) 1.0 else 0.0 }
         val actions = (0 until 16).toList()
 
@@ -97,4 +96,3 @@ class CheckpointResumeJvmTest {
         assertTrue(restoredMatches, "Predictions after load should match pre-checkpoint values")
     }
 }
-

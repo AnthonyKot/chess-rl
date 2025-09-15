@@ -130,6 +130,11 @@ class AdvancedSelfPlayTrainingPipeline(
                     samplingStrategy = SamplingStrategy.MIXED
                 )
             )
+
+            // Provide valid-action masking to DQN for next-state target computation
+            try {
+                mainAgent?.setNextActionProvider { s -> environment.getValidActions(s) }
+            } catch (_: Throwable) { /* optional */ }
             
             // Initialize adaptive scheduling
             currentGamesPerCycle = config.initialGamesPerCycle
@@ -199,6 +204,16 @@ class AdvancedSelfPlayTrainingPipeline(
             // Main training loop with sophisticated cycle management
             for (cycle in 1..targetCycles) {
                 currentCycle = cycle
+                // Apply exploration warmup for early cycles (temporary higher exploration)
+                if (config.explorationWarmupCycles > 0) {
+                    if (cycle <= config.explorationWarmupCycles) {
+                        runCatching { mainAgent.setExplorationRate(config.explorationWarmupRate) }
+                        runCatching { opponentAgent.setExplorationRate(config.explorationWarmupRate) }
+                    } else {
+                        runCatching { mainAgent.setExplorationRate(config.explorationRate) }
+                        runCatching { opponentAgent.setExplorationRate(config.explorationRate) }
+                    }
+                }
                 
                 // Check for pause state
                 while (isPaused && isTraining) {
@@ -219,6 +234,24 @@ class AdvancedSelfPlayTrainingPipeline(
                 
                 cycleHistory.add(cycleResult)
                 performanceHistory.add(cycleResult.performance.averageReward)
+
+                // Sanity-check buffer after first cycle using ExperienceBufferAnalyzer
+                if (cycle == 1) {
+                    try {
+                        val analyzer = ExperienceBufferAnalyzer()
+                        val basic = cycleResult.selfPlayResults.experiences.map { it.toBasicExperience() }
+                        val inspection = analyzer.inspectBuffer(basic, AnalysisDepth.STANDARD)
+                        val termRatio = inspection.detailedAnalysis?.standardInspection?.terminalRatio
+                            ?: 0.0
+                        val rewardVar = inspection.basicAnalysis.rewardAnalysis.variance
+                        println("   🔎 Buffer sanity-check (cycle 1): terminalRatio=${"%.3f".format(termRatio)}, rewardVar=${"%.4f".format(rewardVar)})")
+                        if (termRatio <= 0.0 || rewardVar <= 0.0) {
+                            println("   ⚠️ Sanity-check: experiences show no terminal transitions or zero reward variance. Consider reducing maxSteps or enabling shaping.")
+                        }
+                    } catch (e: Exception) {
+                        println("   ⚠️ Buffer sanity-check failed: ${e.message}")
+                    }
+                }
                 
                 // Update best model if performance improved
                 if (cycleResult.performance.averageReward > getBestPerformance()) {
@@ -345,9 +378,13 @@ class AdvancedSelfPlayTrainingPipeline(
         
         // Phase 1: Self-play game generation with adaptive scheduling
         println("🎮 Phase 1: Self-play generation (${currentGamesPerCycle} games)")
+        val black = if (cycle <= config.opponentWarmupCycles) {
+            println("   🤖 Warmup: using heuristic opponent for cycle $cycle")
+            HeuristicChessAgent(opponentAgent.getConfig())
+        } else opponentAgent
         val selfPlayResults = selfPlaySystem.runSelfPlayGames(
             whiteAgent = mainAgent,
-            blackAgent = opponentAgent,
+            blackAgent = black,
             numGames = currentGamesPerCycle
         )
         
@@ -490,7 +527,23 @@ class AdvancedSelfPlayTrainingPipeline(
         val agent = mainAgent!!
         
         // Convert enhanced experiences to basic experiences for training
-        val basicExperiences = experiences.map { it.toBasicExperience() }
+        val basicExperiences = experiences.map { ex ->
+            if (
+                ex.terminationReason == EpisodeTerminationReason.STEP_LIMIT &&
+                ex.moveNumber == ex.chessMetrics.gameLength
+            ) {
+                // Apply a small terminal penalty and mark as done for step-limit games
+                Experience(
+                    state = ex.state,
+                    action = ex.action,
+                    reward = ex.reward + config.stepLimitPenalty,
+                    nextState = ex.nextState,
+                    done = true
+                )
+            } else {
+                ex.toBasicExperience()
+            }
+        }
         
         // Train using agent's batch API and return real update metrics
         return agent.trainBatch(basicExperiences)
@@ -541,8 +594,17 @@ class AdvancedSelfPlayTrainingPipeline(
         val evaluationGames = config.evaluationGamesPerCycle
         val gameResults = mutableListOf<EvaluationGameResult>()
         
-        // Create evaluation environment
-        val evalEnvironment = ChessEnvironment()
+        // Create evaluation environment aligned with training rewards
+        val evalEnvironment = ChessEnvironment(
+            rewardConfig = ChessRewardConfig(
+                winReward = config.winReward,
+                lossReward = config.lossReward,
+                drawReward = config.drawReward,
+                stepPenalty = config.stepLimitPenalty,
+                enablePositionRewards = config.enablePositionRewards,
+                maxGameLength = config.maxStepsPerGame
+            )
+        )
         
         repeat(evaluationGames) { gameIndex ->
             try {
@@ -733,6 +795,7 @@ class AdvancedSelfPlayTrainingPipeline(
      */
     private fun shouldConsiderRollback(): Boolean {
         if (!config.enableModelRollback) return false
+        if (config.rollbackWarmupCycles > 0 && currentCycle <= config.rollbackWarmupCycles) return false
         
         val recentPerformance = performanceHistory.takeLast(config.rollbackWindow)
         if (recentPerformance.size < config.rollbackWindow) return false
@@ -1040,6 +1103,9 @@ data class AdvancedSelfPlayConfig(
     val hiddenLayers: List<Int> = listOf(512, 256, 128),
     val learningRate: Double = 0.001,
     val explorationRate: Double = 0.1,
+    // Early-cycle exploration warmup
+    val explorationWarmupCycles: Int = 2,
+    val explorationWarmupRate: Double = 0.25,
     
     // Self-play configuration
     val initialGamesPerCycle: Int = 20,
@@ -1086,12 +1152,18 @@ data class AdvancedSelfPlayConfig(
     val enableModelRollback: Boolean = true,
     val rollbackWindow: Int = 3,
     val rollbackThreshold: Double = 0.1,
+    val rollbackWarmupCycles: Int = 2,
+
+    // Penalties and rewards
+    val stepLimitPenalty: Double = -0.05,
     
     // Opponent strategy
     val opponentUpdateStrategy: OpponentUpdateStrategy = OpponentUpdateStrategy.COPY_MAIN,
     val opponentUpdateFrequency: Int = 3,
     val opponentHistoryLag: Int = 5,
     val opponentAdaptationThreshold: Double = 0.7,
+    // Use a fixed heuristic opponent for the first N cycles to generate decisive outcomes
+    val opponentWarmupCycles: Int = 2,
     
     // Convergence detection
     val enableEarlyStopping: Boolean = true,

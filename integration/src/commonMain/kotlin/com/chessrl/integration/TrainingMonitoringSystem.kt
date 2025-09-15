@@ -188,7 +188,7 @@ class TrainingMonitoringSystem(
             is MonitoringCommand.ShowTrends -> CommandResult.Success("Trends", showTrends(command.metric, command.window))
             is MonitoringCommand.DiagnoseIssues -> CommandResult.Success("Diagnostics", diagnoseIssues())
             is MonitoringCommand.ExportData -> CommandResult.Success("Exported", exportData(command.format, command.path))
-            is MonitoringCommand.Configure -> CommandResult.Success("Reconfigured", updateConfiguration(command.newConfig))
+            is MonitoringCommand.Configure -> CommandResult.Success("Reconfigured", updateConfiguration())
         }
     }
     
@@ -205,7 +205,7 @@ class TrainingMonitoringSystem(
         val reportStartTime = getCurrentTimeMillis()
         
         // Generate all report sections
-        val executiveSummary = reportGenerator.generateExecutiveSummary(trainingHistory, gameHistory)
+        val executiveSummary = reportGenerator.generateExecutiveSummary(trainingHistory)
         val performanceAnalysis = reportGenerator.generatePerformanceAnalysis(performanceHistory)
         val gameQualityAnalysis = reportGenerator.generateGameQualityAnalysis(gameHistory)
         val trainingEfficiencyAnalysis = reportGenerator.generateEfficiencyAnalysis(trainingHistory)
@@ -691,7 +691,7 @@ class TrainingMonitoringSystem(
         }
     }
     
-    private fun updateConfiguration(newConfig: MonitoringConfig): CommandResult {
+    private fun updateConfiguration(): CommandResult {
         // Update configuration (simplified)
         return CommandResult.Success("Configuration updated")
     }

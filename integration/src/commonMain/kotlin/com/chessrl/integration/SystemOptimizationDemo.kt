@@ -21,7 +21,7 @@ class SystemOptimizationDemo {
             hyperparameterBudget = 20
         )
         
-        val optimizationResult = coordinator.performSystemOptimization(optimizationConfig)
+        coordinator.performSystemOptimization(optimizationConfig)
         
         // 2. Generate optimization guidelines
         println("\n2. Generating optimization guidelines...")
