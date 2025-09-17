@@ -197,9 +197,9 @@ class OptimizedBatchProcessor {
     private fun initializeBatchCache(batchSize: Int) {
         if (!batchCache.containsKey(batchSize)) {
             batchCache[batchSize] = BatchCache(
-                inputArrays = Array(batchSize) { DoubleArray(776) },
+                inputArrays = Array(batchSize) { DoubleArray(ChessStateEncoder.TOTAL_FEATURES) },
                 outputArrays = Array(batchSize) { DoubleArray(4096) },
-                gradientArrays = Array(batchSize) { DoubleArray(776) }
+                gradientArrays = Array(batchSize) { DoubleArray(ChessStateEncoder.TOTAL_FEATURES) }
             )
         }
     }
@@ -306,7 +306,7 @@ class ConcurrentTrainingManager {
     
     private fun simulateTrainingIteration(threadId: Int) {
         // Simulate neural network training iteration
-        val input = DoubleArray(776) { Random.nextDouble() }
+        val input = DoubleArray(ChessStateEncoder.TOTAL_FEATURES) { Random.nextDouble() }
         val weights = DoubleArray(1000) { Random.nextDouble() }
         
         // Forward pass simulation
@@ -350,7 +350,7 @@ class ArrayPool {
         var reuses = 0
         
         // Simulate array usage patterns
-        val baseSize = 776 + (batchSize % 16)
+        val baseSize = ChessStateEncoder.TOTAL_FEATURES + (batchSize % 16)
         repeat(1000) {
             val array = getArray(baseSize)
             if (array != null) {

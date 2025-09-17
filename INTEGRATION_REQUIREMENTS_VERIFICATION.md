@@ -1,5 +1,7 @@
 # Integration Requirements Verification
 
+> Note: Archived/verification document. For up‑to‑date usage and commands, refer to README.md and DQN.md.
+
 ## Overview
 
 This document provides comprehensive verification that all **Required Integration Improvements** have been properly implemented and are working correctly in the Chess RL Self-Play System.

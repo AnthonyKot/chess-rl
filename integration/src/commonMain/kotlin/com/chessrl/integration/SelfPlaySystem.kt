@@ -3,6 +3,9 @@ package com.chessrl.integration
 import com.chessrl.rl.*
 import com.chessrl.chess.PieceColor
 import kotlin.random.Random
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 /**
  * Concurrent self-play system for chess RL training
@@ -43,6 +46,7 @@ class SelfPlaySystem(
         isRunning = true
         val startTime = getCurrentTimeMillis()
         
+        var executor: java.util.concurrent.ExecutorService? = null
         try {
             // Initialize tracking
             experienceBuffer.clear()
@@ -51,6 +55,9 @@ class SelfPlaySystem(
             totalGamesCompleted = 0
             totalExperiencesCollected = 0
             
+            // Prepare a fixed thread pool for per-game execution
+            executor = Executors.newFixedThreadPool(config.maxConcurrentGames)
+
             // Run games in batches to manage concurrency
             var gamesRemaining = numGames
             
@@ -63,7 +70,7 @@ class SelfPlaySystem(
                 val gamesBatch = startGamesBatch(whiteAgent, blackAgent, batchSize)
                 
                 // Wait for all games in batch to complete
-                val batchResults = waitForBatchCompletion(gamesBatch)
+                val batchResults = waitForBatchCompletion(gamesBatch, executor)
                 
                 // Process results
                 processBatchResults(batchResults)
@@ -101,6 +108,7 @@ class SelfPlaySystem(
         } finally {
             isRunning = false
             activeGames.clear()
+            executor?.shutdownNow()
         }
     }
     
@@ -124,6 +132,7 @@ class SelfPlaySystem(
                     winReward = config.winReward,
                     lossReward = config.lossReward,
                     drawReward = config.drawReward,
+                    stepPenalty = -0.001,
                     enablePositionRewards = config.enablePositionRewards
                 )
             )
@@ -147,25 +156,30 @@ class SelfPlaySystem(
     /**
      * Wait for all games in batch to complete and collect results
      */
-    private fun waitForBatchCompletion(games: List<SelfPlayGame>): List<SelfPlayGameResult> {
-        val results = mutableListOf<SelfPlayGameResult>()
-        
-        // In a real concurrent implementation, this would use coroutines or threads
-        // For now, we'll run games sequentially but simulate concurrent behavior
-        for (game in games) {
-            try {
-                val result = game.playGame()
-                results.add(result)
-                
-                // Remove from active games
-                activeGames.remove(game.gameId)
-                
-            } catch (e: Exception) {
-                println("⚠️ Game ${game.gameId} failed: ${e.message}")
-                activeGames.remove(game.gameId)
+    private fun waitForBatchCompletion(games: List<SelfPlayGame>, executor: java.util.concurrent.ExecutorService): List<SelfPlayGameResult> {
+        val tasks = games.map { game ->
+            Callable {
+                try {
+                    val result = game.playGame()
+                    // Remove from active games after completion
+                    synchronized(activeGames) { activeGames.remove(game.gameId) }
+                    result
+                } catch (e: Exception) {
+                    println("⚠️ Game ${game.gameId} failed: ${e.message}")
+                    synchronized(activeGames) { activeGames.remove(game.gameId) }
+                    null
+                }
             }
         }
-        
+        val futures: List<Future<SelfPlayGameResult?>> = tasks.map { executor.submit(it) }
+        val results = mutableListOf<SelfPlayGameResult>()
+        for (f in futures) {
+            try {
+                f.get()?.let { results.add(it) }
+            } catch (ie: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+        }
         return results
     }
     
@@ -178,9 +192,9 @@ class SelfPlaySystem(
             gameResults.add(result)
             totalGamesCompleted++
             
-            // Track game outcomes
-            // Treat step-limit terminations as draws for reporting purposes
+            // Track game outcomes (optionally treat step-limit as draw for reporting)
             val outcome = if (
+                config.treatStepLimitAsDrawForReporting &&
                 result.terminationReason == EpisodeTerminationReason.STEP_LIMIT &&
                 result.gameOutcome == GameOutcome.ONGOING
             ) GameOutcome.DRAW else result.gameOutcome
@@ -439,9 +453,9 @@ class SelfPlayGame(
             // Agent selects action; allow heuristic agent to use baseline evaluator
             val action = if (currentAgent is HeuristicChessAgent) {
                 val sel = BaselineHeuristicOpponent.selectAction(environment, validActions)
-                if (sel >= 0) sel else currentAgent.selectAction(state, validActions)
+                if (sel >= 0) sel else synchronized(currentAgent) { currentAgent.selectAction(state, validActions) }
             } else {
-                currentAgent.selectAction(state, validActions)
+                synchronized(currentAgent) { currentAgent.selectAction(state, validActions) }
             }
             
             // Take step in environment
@@ -457,6 +471,12 @@ class SelfPlayGame(
             )
             
             experiences.add(experience)
+
+            // Register valid actions for the resulting next state to enable correct DQN masking during replay
+            runCatching {
+                val nextValid = environment.getValidActions(stepResult.nextState)
+                ValidActionRegistry.put(stepResult.nextState, nextValid)
+            }
             
             // Update state
             state = stepResult.nextState
@@ -477,11 +497,13 @@ class SelfPlayGame(
             stepCount >= config.maxStepsPerGame -> EpisodeTerminationReason.STEP_LIMIT
             else -> EpisodeTerminationReason.MANUAL
         }
-        val gameOutcome = if (terminationReason == EpisodeTerminationReason.STEP_LIMIT) {
-            GameOutcome.DRAW
-        } else {
-            parseGameOutcome(gameResult)
+        // Apply explicit step-limit penalty to the final transition so the agent learns to avoid caps
+        if (terminationReason == EpisodeTerminationReason.STEP_LIMIT && experiences.isNotEmpty()) {
+            val last = experiences.last()
+            val penalized = last.copy(reward = last.reward + config.stepLimitPenalty, done = true)
+            experiences[experiences.lastIndex] = penalized
         }
+        val gameOutcome = if (terminationReason == EpisodeTerminationReason.STEP_LIMIT && config.treatStepLimitAsDrawForReporting) GameOutcome.DRAW else parseGameOutcome(gameResult)
         
         // Get chess metrics
         val chessMetrics = environment.getChessMetrics()
@@ -526,13 +548,18 @@ data class SelfPlayConfig(
     val lossReward: Double = -1.0,
     val drawReward: Double = 0.0,
     val enablePositionRewards: Boolean = false,
+    // Additional penalty applied when a game hits the step limit (final transition)
+    val stepLimitPenalty: Double = -0.05,
     
     // Experience collection
     val maxExperienceBufferSize: Int = 50000,
     val experienceCleanupStrategy: ExperienceCleanupStrategy = ExperienceCleanupStrategy.OLDEST_FIRST,
     
     // Monitoring
-    val progressReportInterval: Int = 10
+    val progressReportInterval: Int = 10,
+    
+    // Reporting behavior
+    val treatStepLimitAsDrawForReporting: Boolean = true
 )
 
 /**

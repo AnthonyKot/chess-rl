@@ -1,5 +1,7 @@
 # Training Visualization System
 
+> Note: Archived/overview document. For practical, supported flows use the integration CLI described in README.md.
+
 ## Overview
 
 The Training Visualization System provides sophisticated real-time visualization and monitoring for Chess RL training with interactive dashboards, game analysis, learning curve visualization, and comprehensive performance monitoring.

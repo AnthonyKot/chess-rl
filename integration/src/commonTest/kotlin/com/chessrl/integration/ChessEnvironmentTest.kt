@@ -15,7 +15,7 @@ class ChessEnvironmentTest {
         val state = encoder.encode(board)
         
         assertEquals(ChessStateEncoder.TOTAL_FEATURES, state.size)
-        assertEquals(776, state.size) // 768 + 4 + 1 + 1 + 1 + 1
+        assertEquals(ChessStateEncoder.TOTAL_FEATURES, state.size)
     }
     
     @Test
@@ -46,23 +46,26 @@ class ChessEnvironmentTest {
         // Check game state features (starting at index 768)
         val gameStateStart = 768
         
-        // All castling rights should be true (1.0)
-        assertEquals(1.0, state[gameStateStart], "White kingside castling")
-        assertEquals(1.0, state[gameStateStart + 1], "White queenside castling")
-        assertEquals(1.0, state[gameStateStart + 2], "Black kingside castling")
-        assertEquals(1.0, state[gameStateStart + 3], "Black queenside castling")
+        // Active color first: 1.0 for White, 0.0 for Black
+        assertEquals(1.0, state[gameStateStart], "White to move should be 1.0")
         
-        // No en passant target
-        assertEquals(-1.0, state[gameStateStart + 4], "No en passant target")
+        // Castling rights (KQkq) next
+        assertEquals(1.0, state[gameStateStart + 1], "White kingside castling")
+        assertEquals(1.0, state[gameStateStart + 2], "White queenside castling")
+        assertEquals(1.0, state[gameStateStart + 3], "Black kingside castling")
+        assertEquals(1.0, state[gameStateStart + 4], "Black queenside castling")
         
-        // White to move
-        assertEquals(0.0, state[gameStateStart + 5], "White to move")
+        // En passant one-hot block should be all zeros in starting position
+        val epStart = gameStateStart + 5
+        val epEnd = epStart + 64
+        val epSum = (epStart until epEnd).sumOf { state[it] }
+        assertEquals(0.0, epSum, 1e-9, "No en passant target should be encoded as zero one-hot")
         
         // Halfmove clock = 0
-        assertEquals(0.0, state[gameStateStart + 6], "Initial halfmove clock")
+        assertEquals(0.0, state[epEnd], "Initial halfmove clock")
         
         // Fullmove number = 1
-        assertEquals(1.0 / 200.0, state[gameStateStart + 7], "Initial fullmove number")
+        assertEquals(1.0 / 200.0, state[epEnd + 1], "Initial fullmove number")
     }
     
     @Test
@@ -86,9 +89,9 @@ class ChessEnvironmentTest {
         val e4Index = whitePawnPlaneStart + 3 * 8 + 4
         assertEquals(1.0, state[e4Index], "White pawn should be on e4 after move")
         
-        // Active color should be black
+        // Active color should be black (0.0)
         val gameStateStart = 768
-        assertEquals(1.0, state[gameStateStart + 5], "Black to move after white's move")
+        assertEquals(0.0, state[gameStateStart], "Black to move after white's move")
     }
     
     @Test
@@ -219,7 +222,7 @@ class ChessEnvironmentTest {
         val env = ChessEnvironment()
         env.reset()
         
-        val validActions = env.getValidActions(DoubleArray(776))
+        val validActions = env.getValidActions(DoubleArray(ChessStateEncoder.TOTAL_FEATURES))
         
         // Starting position should have 20 legal moves
         assertEquals(20, validActions.size)
@@ -244,7 +247,7 @@ class ChessEnvironmentTest {
         val foolsMatePosition = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3"
         assertTrue(env.loadFromFEN(foolsMatePosition))
         
-        assertTrue(env.isTerminal(DoubleArray(776)), "Should detect checkmate as terminal")
+        assertTrue(env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)), "Should detect checkmate as terminal")
         assertEquals(GameStatus.BLACK_WINS, env.getGameStatus())
     }
     
@@ -272,7 +275,7 @@ class ChessEnvironmentTest {
         assertFalse(isInCheck, "Black king should not be in check for stalemate")
         assertEquals(0, legalMoves.size, "Black should have no legal moves")
         
-        assertTrue(env.isTerminal(DoubleArray(776)), "Should detect stalemate as terminal")
+        assertTrue(env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)), "Should detect stalemate as terminal")
         assertEquals(GameStatus.DRAW_STALEMATE, env.getGameStatus())
     }
     
@@ -281,7 +284,7 @@ class ChessEnvironmentTest {
         val env = ChessEnvironment()
         env.reset()
         
-        assertFalse(env.isTerminal(DoubleArray(776)), "Starting position should not be terminal")
+        assertFalse(env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)), "Starting position should not be terminal")
         assertEquals(GameStatus.ONGOING, env.getGameStatus())
     }
     
@@ -297,9 +300,13 @@ class ChessEnvironmentTest {
         val state = encoder.encode(env.getCurrentBoard())
         val gameStateStart = 768
         
-        // En passant target should be d-file (file 3), normalized to 3/7 ≈ 0.43
-        val expectedEnPassant = 3.0 / 7.0
-        assertEquals(expectedEnPassant, state[gameStateStart + 4], 0.01, "En passant target should be encoded")
+        // En passant one-hot block should have a 1.0 at d6 (rank 5, file 3)
+        val epStart = gameStateStart + 5
+        val epIndex = 5 * 8 + 3
+        for (i in 0 until 64) {
+            val expected = if (i == epIndex) 1.0 else 0.0
+            assertEquals(expected, state[epStart + i], "En passant one-hot at index $i")
+        }
     }
     
     @Test
@@ -314,11 +321,11 @@ class ChessEnvironmentTest {
         val state = encoder.encode(env.getCurrentBoard())
         val gameStateStart = 768
         
-        // Only white kingside and black queenside castling should be available
-        assertEquals(1.0, state[gameStateStart], "White kingside castling")
-        assertEquals(0.0, state[gameStateStart + 1], "White queenside castling")
-        assertEquals(0.0, state[gameStateStart + 2], "Black kingside castling")
-        assertEquals(1.0, state[gameStateStart + 3], "Black queenside castling")
+        // Only white kingside and black queenside castling should be available (castling starts at +1)
+        assertEquals(1.0, state[gameStateStart + 1], "White kingside castling")
+        assertEquals(0.0, state[gameStateStart + 2], "White queenside castling")
+        assertEquals(0.0, state[gameStateStart + 3], "Black kingside castling")
+        assertEquals(1.0, state[gameStateStart + 4], "Black queenside castling")
     }
     
     @Test
@@ -363,7 +370,7 @@ class ChessEnvironmentTest {
         env.step(e7e5)
         
         // Verify game is still ongoing
-        assertFalse(env.isTerminal(DoubleArray(776)))
+        assertFalse(env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)))
         assertEquals(GameStatus.ONGOING, env.getGameStatus())
     }
     
@@ -376,7 +383,7 @@ class ChessEnvironmentTest {
         assertTrue(env.loadFromFEN(checkmatePosition))
         
         // The position should already be checkmate
-        assertTrue(env.isTerminal(DoubleArray(776)), "Game should be over")
+        assertTrue(env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)), "Game should be over")
         assertEquals(GameStatus.BLACK_WINS, env.getGameStatus(), "Black should have won")
     }
     
@@ -392,7 +399,7 @@ class ChessEnvironmentTest {
         
         // This position is already checkmate, so let's test the reward calculation
         // by checking the game status directly
-        assertTrue(env.isTerminal(DoubleArray(776)), "Game should be over")
+        assertTrue(env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)), "Game should be over")
         assertEquals(GameStatus.BLACK_WINS, env.getGameStatus(), "Black should have won")
         
         // Test with a simpler approach - just verify the reward configuration works
@@ -425,8 +432,8 @@ class ChessEnvironmentTest {
         
         // Make 50 moves (simulate long game)
         repeat(50) {
-            val validActions = env.getValidActions(DoubleArray(776))
-            if (validActions.isNotEmpty() && !env.isTerminal(DoubleArray(776))) {
+            val validActions = env.getValidActions(DoubleArray(ChessStateEncoder.TOTAL_FEATURES))
+            if (validActions.isNotEmpty() && !env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES))) {
                 env.step(validActions.first())
             }
         }
@@ -590,7 +597,7 @@ class ChessEnvironmentTest {
         conservativeEnv.reset()
         
         // Both should work with their respective configurations
-        assertFalse(aggressiveEnv.isTerminal(DoubleArray(776)))
-        assertFalse(conservativeEnv.isTerminal(DoubleArray(776)))
+        assertFalse(aggressiveEnv.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)))
+        assertFalse(conservativeEnv.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)))
     }
 }

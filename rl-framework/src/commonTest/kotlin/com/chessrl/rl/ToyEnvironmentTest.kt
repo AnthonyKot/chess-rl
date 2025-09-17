@@ -302,60 +302,7 @@ class ToyEnvironmentTest {
         assertTrue(agent.getExplorationRate() <= 0.3) // Should have decayed
     }
     
-    @Test
-    fun testPolicyGradientOnBandit() {
-        val bandit = MultiarmedBanditEnvironment(3, Random(42)) // Fixed seed for reproducibility
-        
-        // Create policy gradient components
-        val policyNetwork = SimpleNeuralNetwork(1, 3)
-        val pg = PolicyGradientAlgorithm(policyNetwork)
-        val exploration = BoltzmannStrategy<Int>(1.0, 0.99, 0.1)
-        
-        val agent = NeuralNetworkAgent(pg, exploration)
-        
-        // Run episodes
-        val episodeRewards = mutableListOf<Double>()
-        val numEpisodes = 3
-        
-        for (episode in 1..numEpisodes) {
-            var state = bandit.reset()
-            var episodeReward = 0.0
-            val episodeExperiences = mutableListOf<Experience<DoubleArray, Int>>()
-            
-            while (!bandit.isTerminal(state)) {
-                val validActions = bandit.getValidActions(state)
-                val action = agent.selectAction(state, validActions)
-                val result = bandit.step(action)
-                
-                val experience = Experience(
-                    state = state,
-                    action = action,
-                    reward = result.reward,
-                    nextState = result.nextState,
-                    done = result.done
-                )
-                
-                episodeExperiences.add(experience)
-                state = result.nextState
-                episodeReward += result.reward
-            }
-            
-            // Learn from complete episode
-            if (episodeExperiences.isNotEmpty()) {
-                val updateResult = pg.updatePolicy(episodeExperiences)
-                assertTrue(updateResult.loss.isFinite())
-                assertTrue(updateResult.policyEntropy >= 0.0)
-            }
-            
-            episodeRewards.add(episodeReward)
-            agent.updateExploration(episode)
-        }
-        
-        // Basic sanity checks
-        assertTrue(episodeRewards.all { it.isFinite() })
-        assertTrue(episodeRewards.all { it >= 0.0 }) // Rewards should be non-negative
-        assertTrue(agent.getExplorationRate() <= 1.0) // Temperature should have decayed
-    }
+    // Policy Gradient bandit test removed
     
     @Test
     fun testRLValidationOnToyProblem() {

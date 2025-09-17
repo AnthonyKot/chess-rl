@@ -25,10 +25,9 @@ The Chess RL Debugging System provides production-ready debugging and validation
 Run the complete test suite to verify all functionality:
 
 ```bash
-cd integration
-./gradlew jvmTest --tests "*ChessTrainingPipelineTest*"
-./gradlew jvmTest --tests "*SelfPlayIntegrationTest*"
-./gradlew jvmTest --tests "*TrainingMonitoringSystemTest*"
+./gradlew :integration:test --tests "*ChessTrainingPipelineTest*"
+./gradlew :integration:test --tests "*SelfPlayIntegrationTest*"
+./gradlew :integration:test --tests "*TrainingMonitoringSystemTest*"
 ```
 
 This covers pipeline runs, self‑play flow, and monitoring snapshots that are present in the repo today.
@@ -39,20 +38,28 @@ If you prefer to run tests manually:
 
 ```bash
 # Run individual component tests that are available
-./gradlew test --tests "com.chessrl.integration.ChessTrainingPipelineTest"
-./gradlew test --tests "com.chessrl.integration.SelfPlayIntegrationTest"
-./gradlew test --tests "com.chessrl.integration.TrainingMonitoringSystemTest"
-./gradlew test --tests "com.chessrl.integration.ExperienceBufferAnalyzerTest"
+./gradlew :integration:test --tests "com.chessrl.integration.ChessTrainingPipelineTest"
+./gradlew :integration:test --tests "com.chessrl.integration.SelfPlayIntegrationTest"
+./gradlew :integration:test --tests "com.chessrl.integration.TrainingMonitoringSystemTest"
+./gradlew :integration:test --tests "com.chessrl.integration.ExperienceBufferAnalyzerTest"
 ```
 
-### Option 3: Interactive Demo
+### Option 3: CLI Demos (Current)
 
-Run available demos:
+Run the current CLI flows:
 
 ```bash
-./gradlew :integration:runTrainingDemo         # Training pipeline walkthrough
-./gradlew :integration:runIntegratedDemo       # Integrated self‑play demo
+# Evaluate agent vs baseline heuristic
+./gradlew :integration:runCli -Dargs="--eval-baseline --games 20 --eval-epsilon 0.0"
+
+# Evaluate Minimax vs Baseline (non‑NN vs non‑NN)
+./gradlew :integration:runCli -Dargs="--eval-non-nn --white minimax --black heuristic --games 20 --depth 2"
+
+# Train advanced DQN (optionally warm‑start from imitation)
+./gradlew :integration:runCli -Dargs="--train-advanced --cycles 3 --hidden 512,256 --load ../chess-engine/data/imitation_qnet.json"
 ```
+
+Note: Pass CLI args via `-Dargs="..."`.
 
 ## 📋 E2E Test Coverage
 

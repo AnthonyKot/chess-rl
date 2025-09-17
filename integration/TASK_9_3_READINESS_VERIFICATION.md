@@ -1,5 +1,7 @@
 # Task 9.3 Readiness Verification Checklist
 
+> Note: Archived checklist. For practical usage, commands, and current pipeline, see README.md and DQN.md.
+
 ## Overview
 
 Before implementing "Comprehensive training monitoring and analysis system" (Task 9.3), we need to verify that all dependencies from Tasks 9.1 and 9.2 are properly implemented and integrated to minimize blocking risks.

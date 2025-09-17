@@ -125,8 +125,8 @@ class NativeInferenceOptimizer {
     
     private fun simulateNeuralNetworkInference() {
         // Simulate chess position evaluation
-        val input = DoubleArray(776) { Random.nextDouble() }
-        val weights1 = DoubleArray(776 * 512) { Random.nextDouble() }
+        val input = DoubleArray(ChessStateEncoder.TOTAL_FEATURES) { Random.nextDouble() }
+        val weights1 = DoubleArray(ChessStateEncoder.TOTAL_FEATURES * 512) { Random.nextDouble() }
         val weights2 = DoubleArray(512 * 4096) { Random.nextDouble() }
         
         // Layer 1
@@ -330,7 +330,7 @@ class NativeGameplayOptimizer {
     
     private fun simulatePositionEvaluation() {
         // Simulate neural network position evaluation
-        val position = DoubleArray(776) { Random.nextDouble() }
+        val position = DoubleArray(ChessStateEncoder.TOTAL_FEATURES) { Random.nextDouble() }
         var evaluation = 0.0
         
         // Simple evaluation simulation

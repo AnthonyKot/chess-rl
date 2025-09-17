@@ -13,13 +13,15 @@ object RealChessAgentFactory {
      * Create a DQN agent with real neural networks
      */
     fun createRealDQNAgent(
-        inputSize: Int = 776, // Chess state features
+        inputSize: Int = ChessStateEncoder.TOTAL_FEATURES, // Chess state features
         outputSize: Int = 4096, // Chess action space
         hiddenLayers: List<Int> = listOf(512, 256, 128),
         learningRate: Double = 0.001,
         explorationRate: Double = 0.1,
         batchSize: Int = 32,
-        maxBufferSize: Int = 10000
+        maxBufferSize: Int = 10000,
+        targetUpdateFrequency: Int = 100,
+        doubleDqn: Boolean = false
     ): RealChessAgent {
         // Seeded randoms if available
         val nnRandom = try { SeedManager.getNeuralNetworkRandom() } catch (_: Throwable) { kotlin.random.Random.Default }
@@ -98,8 +100,9 @@ object RealChessAgentFactory {
             targetNetwork = RealNeuralNetworkWrapper(targetNetwork),
             experienceReplay = experienceReplay,
             gamma = 0.99,
-            targetUpdateFrequency = 100,
-            batchSize = batchSize
+            targetUpdateFrequency = targetUpdateFrequency,
+            batchSize = batchSize,
+            doubleDQN = doubleDqn
         )
         
         // Create exploration strategy
@@ -116,9 +119,8 @@ object RealChessAgentFactory {
     /**
      * Create a Policy Gradient agent with real neural networks
      */
-    @Suppress("UNUSED_PARAMETER")
     fun createRealPolicyGradientAgent(
-        inputSize: Int = 776,
+        inputSize: Int = ChessStateEncoder.TOTAL_FEATURES,
         outputSize: Int = 4096,
         hiddenLayers: List<Int> = listOf(512, 256, 128),
         learningRate: Double = 0.001,
@@ -127,7 +129,7 @@ object RealChessAgentFactory {
     ): RealChessAgent {
         // Create policy network
         val policyNetworkLayers = mutableListOf<Layer>()
-        
+
         var currentInputSize = inputSize
         for (hiddenSize in hiddenLayers) {
             policyNetworkLayers.add(
@@ -139,7 +141,7 @@ object RealChessAgentFactory {
             )
             currentInputSize = hiddenSize
         }
-        
+
         // Output layer with softmax-friendly linear activation
         policyNetworkLayers.add(
             DenseLayer(
@@ -148,24 +150,24 @@ object RealChessAgentFactory {
                 activation = LinearActivation()
             )
         )
-        
+
         val policyNetwork = FeedforwardNetwork(
             _layers = policyNetworkLayers,
             lossFunction = MSELoss(),
             optimizer = AdamOptimizer(learningRate = learningRate),
             regularization = L2Regularization(lambda = 0.001)
         )
-        
+
         // Create policy gradient algorithm
         val pgAlgorithm = PolicyGradientAlgorithm(
             policyNetwork = RealNeuralNetworkWrapper(policyNetwork),
             valueNetwork = null, // No baseline for simplicity
             gamma = 0.99
         )
-        
+
         // Create exploration strategy
         val explorationStrategy = BoltzmannStrategy<Int>(temperature)
-        
+
         return RealChessAgent(
             algorithm = pgAlgorithm,
             explorationStrategy = explorationStrategy,
@@ -178,7 +180,7 @@ object RealChessAgentFactory {
      * Create a seeded DQN agent with deterministic neural network initialization
      */
     fun createSeededDQNAgent(
-        inputSize: Int = 776,
+        inputSize: Int = ChessStateEncoder.TOTAL_FEATURES,
         outputSize: Int = 4096,
         hiddenLayers: List<Int> = listOf(512, 256, 128),
         learningRate: Double = 0.001,
@@ -188,7 +190,8 @@ object RealChessAgentFactory {
         neuralNetworkRandom: kotlin.random.Random,
         explorationRandom: kotlin.random.Random,
         replayBufferRandom: kotlin.random.Random,
-        weightInitType: String = "he"
+        weightInitType: String = "he",
+        targetUpdateFrequency: Int = 100
     ): RealChessAgent {
         
         // Create main Q-network with seeded initialization
@@ -272,7 +275,7 @@ object RealChessAgentFactory {
             targetNetwork = RealNeuralNetworkWrapper(targetNetwork),
             experienceReplay = experienceReplay,
             gamma = 0.99,
-            targetUpdateFrequency = 100,
+            targetUpdateFrequency = targetUpdateFrequency,
             batchSize = batchSize
         )
         
@@ -293,9 +296,8 @@ object RealChessAgentFactory {
     /**
      * Create a seeded Policy Gradient agent with deterministic neural network initialization
      */
-    @Suppress("UNUSED_PARAMETER")
     fun createSeededPolicyGradientAgent(
-        inputSize: Int = 776,
+        inputSize: Int = ChessStateEncoder.TOTAL_FEATURES,
         outputSize: Int = 4096,
         hiddenLayers: List<Int> = listOf(512, 256, 128),
         learningRate: Double = 0.001,
@@ -443,39 +445,12 @@ class RealChessAgent(
         // Track episode reward regardless of algorithm type
         episodeReward += experience.reward
 
-        when (algorithm) {
-            is DQNAlgorithm -> {
-                // Off-policy: do not duplicate experiences in an agent-level buffer.
-                // Let the algorithm manage its own replay and training cadence.
-                lastUpdate = algorithm.updatePolicy(listOf(experience))
-                if (experience.done) {
-                    episodeCount++
-                    totalReward += episodeReward
-                    episodeReward = 0.0
-                }
-            }
-            is PolicyGradientAlgorithm -> {
-                // On-policy: keep per-episode buffer and update at episode end (or when large enough)
-                experienceBuffer.add(experience)
-                if (experience.done || experienceBuffer.size >= 32) {
-                    lastUpdate = algorithm.updatePolicy(experienceBuffer.toList())
-                    experienceBuffer.clear()
-                    if (experience.done) {
-                        episodeCount++
-                        totalReward += episodeReward
-                        episodeReward = 0.0
-                    }
-                }
-            }
-            else -> {
-                // Default: treat like off-policy, avoid agent-level buffering
-                lastUpdate = algorithm.updatePolicy(listOf(experience))
-                if (experience.done) {
-                    episodeCount++
-                    totalReward += episodeReward
-                    episodeReward = 0.0
-                }
-            }
+        // Treat as off-policy (DQN-style)
+        lastUpdate = algorithm.updatePolicy(listOf(experience))
+        if (experience.done) {
+            episodeCount++
+            totalReward += episodeReward
+            episodeReward = 0.0
         }
     }
     
@@ -489,11 +464,7 @@ class RealChessAgent(
     
     fun getTrainingMetrics(): SimpleRLMetrics {
         val averageReward = if (episodeCount > 0) totalReward / episodeCount else 0.0
-        val bufferSize = when (algorithm) {
-            is DQNAlgorithm -> algorithm.getReplaySize()
-            is PolicyGradientAlgorithm -> experienceBuffer.size
-            else -> 0
-        }
+        val bufferSize = if (algorithm is DQNAlgorithm) algorithm.getReplaySize() else 0
         return SimpleRLMetrics(
             averageReward = averageReward,
             explorationRate = explorationStrategy.getExplorationRate(),
@@ -519,6 +490,14 @@ class RealChessAgent(
     
     fun load(path: String) {
         qNetwork.load(path)
+        // After loading main network, sync to target if present
+        try {
+            if (targetNetwork != null) {
+                val src = RealNeuralNetworkWrapper(qNetwork)
+                val dst = RealNeuralNetworkWrapper(targetNetwork)
+                src.copyWeightsTo(dst)
+            }
+        } catch (_: Throwable) { /* best-effort sync */ }
     }
     
     fun reset() {

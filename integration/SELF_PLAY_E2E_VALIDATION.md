@@ -1,5 +1,7 @@
 # Self-Play System E2E Validation Report
 
+> Note: Archived validation report. For current tests and CLI usage, see README.md and DQN.md.
+
 ## Overview
 
 This document provides comprehensive end-to-end validation results for the Chess RL Bot self-play system implementation. The validation demonstrates that the self-play system works correctly in realistic training scenarios and integrates seamlessly with existing components.

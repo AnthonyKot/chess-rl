@@ -1,5 +1,7 @@
 # Advanced Self-Play Training Pipeline Integration - Task 9.2 Implementation Summary
 
+> Note: Archived summary. For current usage and supported commands, refer to README.md and DQN.md.
+
 ## Overview
 
 Successfully implemented task 9.2: "Integrate self-play with advanced training pipeline and validation" with sophisticated learning cycle management, advanced checkpointing, and comprehensive experience buffer management for production-ready chess RL training.

@@ -104,7 +104,8 @@ class DQNAlgorithm(
     private val experienceReplay: ExperienceReplay<DoubleArray, Int>,
     private val gamma: Double = 0.99,
     private val targetUpdateFrequency: Int = 100,
-    private val batchSize: Int = 32
+    private val batchSize: Int = 32,
+    private val doubleDQN: Boolean = false
 ) : RLAlgorithm<DoubleArray, Int> {
     
     private var updateCount = 0
@@ -156,7 +157,13 @@ class DQNAlgorithm(
             require(batch[i].action in qValues.indices) {
                 "Action index ${batch[i].action} out of bounds for Q-values size ${qValues.size}"
             }
-            qValues[batch[i].action] = qTargets[i]
+            // Avoid loss dilution across 4k outputs by scaling the action's target delta.
+            // target[action] = pred[action] + scale * (qTarget - pred[action])
+            val a = batch[i].action
+            val pred = qValues[a]
+            val delta = qTargets[i] - pred
+            val scale = qValues.size.toDouble().coerceAtLeast(1.0)
+            qValues[a] = pred + scale * delta
             qValues
         }
         
@@ -231,29 +238,30 @@ class DQNAlgorithm(
             if (experience.done) {
                 experience.reward
             } else {
-                val nextQValues = targetNetwork.forward(experience.nextState)
-                require(nextQValues.isNotEmpty()) { "targetNetwork.forward returned empty vector" }
-                val maskedMax = nextActionProvider?.let { provider ->
-                    val valid = provider.invoke(experience.nextState)
-                    if (!printedMaskSampleInfo) {
-                        println("🧩 DQN masking applied: valid next actions for sample=${valid.size}")
-                        printedMaskSampleInfo = true
+                val valid = nextActionProvider?.invoke(experience.nextState)
+                    ?: (0 until (qNetwork.forward(experience.nextState).size)).toList()
+                if (!printedMaskSampleInfo) {
+                    println("🧩 DQN masking applied: valid next actions for sample=${valid.size}")
+                    printedMaskSampleInfo = true
+                }
+                if (valid.isEmpty()) return@DoubleArray experience.reward
+
+                // Double DQN: action selection with online net, evaluation with target net
+                val evalNet = targetNetwork
+                val selNet = if (doubleDQN) qNetwork else targetNetwork
+                val selQ = selNet.forward(experience.nextState)
+                require(selQ.isNotEmpty()) { "selection network forward returned empty vector" }
+                var bestA = valid.first()
+                var bestVal = Double.NEGATIVE_INFINITY
+                for (a in valid) {
+                    if (a in selQ.indices) {
+                        val v = selQ[a]
+                        if (v > bestVal) { bestVal = v; bestA = a }
                     }
-                    if (valid.isEmpty()) {
-                        // No valid actions – treat as terminal-like
-                        0.0
-                    } else {
-                        var maxVal = Double.NEGATIVE_INFINITY
-                        for (a in valid) {
-                            require(a >= 0) { "Valid action contains negative index" }
-                            if (a in nextQValues.indices) {
-                                if (nextQValues[a] > maxVal) maxVal = nextQValues[a]
-                            }
-                        }
-                        if (maxVal == Double.NEGATIVE_INFINITY) 0.0 else maxVal
-                    }
-                } ?: (nextQValues.maxOrNull() ?: 0.0)
-                experience.reward + gamma * maskedMax
+                }
+                val evalQ = evalNet.forward(experience.nextState)
+                val nextVal = if (bestA in evalQ.indices) evalQ[bestA] else 0.0
+                experience.reward + gamma * nextVal
             }
         }
     }
@@ -284,22 +292,22 @@ class DQNAlgorithm(
     }
     
     private fun calculatePolicyEntropy(batch: List<Experience<DoubleArray, Int>>): Double {
-        // Calculate entropy of the policy (higher = more exploration)
+        // Calculate entropy of the policy over VALID actions when available (more informative for chess)
         var totalEntropy = 0.0
-        
         for (experience in batch) {
             val qValues = qNetwork.forward(experience.state)
-            val probabilities = softmax(qValues)
-            
-            var entropy = 0.0
-            for (prob in probabilities) {
-                if (prob > 0.0) {
-                    entropy -= prob * ln(prob)
-                }
+            val valid = nextActionProvider?.invoke(experience.state)
+            val probs = if (valid != null && valid.isNotEmpty()) {
+                // Softmax over valid actions only
+                val vals = DoubleArray(valid.size) { i -> qValues.getOrElse(valid[i]) { 0.0 } }
+                softmax(vals)
+            } else {
+                softmax(qValues)
             }
+            var entropy = 0.0
+            for (p in probs) if (p > 0.0) entropy -= p * ln(p)
             totalEntropy += entropy
         }
-        
         return totalEntropy / batch.size
     }
     

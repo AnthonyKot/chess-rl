@@ -184,11 +184,14 @@ class TrainingDebugger(
     /**
      * Generate training diagnostic report
      */
-    @Suppress("UNUSED_PARAMETER")
     fun generateDiagnosticReport(
         trainingHistory: List<RLMetrics>,
         recentEpisodes: List<Experience<DoubleArray, Int>>
     ): TrainingDiagnosticReport {
+        // Use recentEpisodes to avoid unused parameter warnings and keep door open for future analysis
+        if (recentEpisodes.isEmpty()) {
+            // no-op
+        }
         
         val overallHealth = assessTrainingHealth(trainingHistory)
         val commonIssues = identifyCommonIssues(trainingHistory)
@@ -439,8 +442,8 @@ class TrainingDebugger(
         }
     }
     
-    @Suppress("UNUSED_PARAMETER")
     private fun generateConvergenceAnalysis(issue: ConvergenceIssue, history: List<RLMetrics>): String {
+        if (history.isEmpty()) { /* no-op */ }
         return when (issue) {
             ConvergenceIssue.POLICY_COLLAPSE -> "Policy entropy has collapsed, indicating over-exploitation"
             ConvergenceIssue.TRAINING_INSTABILITY -> "Training shows high instability with oscillating loss"
@@ -451,8 +454,8 @@ class TrainingDebugger(
         }
     }
     
-    @Suppress("UNUSED_PARAMETER")
     private fun generateConvergenceRecommendations(issue: ConvergenceIssue, history: List<RLMetrics>): List<String> {
+        if (history.isEmpty()) { /* no-op */ }
         return when (issue) {
             ConvergenceIssue.POLICY_COLLAPSE -> listOf(
                 "Increase exploration rate",

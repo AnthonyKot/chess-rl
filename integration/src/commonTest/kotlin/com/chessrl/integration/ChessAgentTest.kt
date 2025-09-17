@@ -20,14 +20,7 @@ class ChessAgentTest {
         
         assertNotNull(dqnAgent)
         
-        // Test policy gradient agent creation
-        val pgAgent = ChessAgentFactory.createPolicyGradientAgent(
-            hiddenLayers = listOf(64, 32),
-            learningRate = 0.01,
-            temperature = 1.0
-        )
-        
-        assertNotNull(pgAgent)
+        // Policy gradient path removed; DQN is the supported agent
     }
     
     @Test
@@ -129,30 +122,7 @@ class ChessAgentTest {
     }
     
     // Removed training-loop specific test (older API); covered by pipeline tests elsewhere
-    fun testAgentActionProbabilities() {
-        val agent = ChessAgentFactory.createPolicyGradientAgent(
-            hiddenLayers = listOf(32, 16),
-            learningRate = 0.01,
-            temperature = 1.0
-        )
-        
-        val state = DoubleArray(ChessStateEncoder.TOTAL_FEATURES) { 0.0 }
-        val validActions = listOf(0, 1, 2, 3, 4)
-        
-        val probabilities = agent.getActionProbabilities(state, validActions)
-        
-        // Should have probabilities for all valid actions
-        assertEquals(validActions.size, probabilities.size)
-        
-        // Probabilities should sum to approximately 1.0
-        val totalProbability = probabilities.values.sum()
-        assertEquals(1.0, totalProbability, 0.01)
-        
-        // All probabilities should be non-negative
-        for (prob in probabilities.values) {
-            assertTrue(prob >= 0.0)
-        }
-    }
+    fun testAgentActionProbabilities() { /* removed */ }
     
     @Test
     fun testAgentQValues() {

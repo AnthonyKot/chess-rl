@@ -1,0 +1,131 @@
+profiles:
+  dqn_default:
+    enablePositionRewards: true
+    maxStepsPerGame: 100
+    maxConcurrentGames: 8
+    explorationRate: 0.2
+    explorationWarmupCycles: 2
+    explorationWarmupRate: 0.25
+    rollbackWarmupCycles: 2
+    enableModelRollback: true
+    batchSize: 64
+    checkpointDirectory: checkpoints/advanced
+    checkpointInterval: 5
+    autoCleanupOnFinish: true
+    keepBest: true
+    keepLastN: 2
+    keepEveryN: 5
+    treatStepLimitAsDraw: true
+    targetUpdateFrequency: 100
+
+  dqn_sparse:
+    enablePositionRewards: false
+    maxStepsPerGame: 200
+    maxConcurrentGames: 8
+    explorationRate: 0.1
+    rollbackWarmupCycles: 2
+    enableModelRollback: false
+    stepLimitPenalty: -0.02
+    batchSize: 64
+    checkpointInterval: 5
+    autoCleanupOnFinish: true
+    keepBest: false
+    keepLastN: 1
+    treatStepLimitAsDraw: false
+    targetUpdateFrequency: 100
+
+  dqn_debug_masking:
+    enablePositionRewards: true
+    maxStepsPerGame: 80
+    maxConcurrentGames: 8
+    explorationRate: 0.15
+    explorationWarmupCycles: 1
+    explorationWarmupRate: 0.2
+    rollbackWarmupCycles: 1
+    batchSize: 64
+    checkpointDirectory: checkpoints/advanced
+    checkpointInterval: 2
+    autoCleanupOnFinish: true
+    keepBest: true
+    keepLastN: 2
+    treatStepLimitAsDraw: true
+    targetUpdateFrequency: 20
+    enableDoubleDQN: true
+    drawReward: -0.02
+
+  dqn_unlock:
+    # Short-horizon anti-draw profile to unlock learning
+    hiddenLayers: 512,256,128
+    enableDoubleDQN: true
+    maxStepsPerGame: 60
+    maxConcurrentGames: 8
+    explorationRate: 0.20
+    explorationWarmupCycles: 8
+    explorationWarmupRate: 0.35
+    opponentWarmupCycles: 8
+    opponentUpdateStrategy: HISTORICAL
+    opponentUpdateFrequency: 1
+    opponentHistoryLag: 1
+    enablePositionRewards: false
+    drawReward: -0.2
+    stepLimitPenalty: -1.0
+    batchSize: 64
+    targetUpdateFrequency: 20
+    checkpointDirectory: checkpoints/advanced
+    checkpointInterval: 2
+    autoCleanupOnFinish: true
+    keepBest: true
+    keepLastN: 2
+    treatStepLimitAsDraw: true
+
+  dqn_expand:
+    # Longer horizon after unlock; softer anti-draw, mild shaping
+    hiddenLayers: 512,256,128
+    enableDoubleDQN: true
+    maxStepsPerGame: 140
+    maxConcurrentGames: 8
+    explorationRate: 0.10
+    explorationWarmupCycles: 2
+    explorationWarmupRate: 0.20
+    opponentWarmupCycles: 2
+    opponentUpdateStrategy: HISTORICAL
+    opponentUpdateFrequency: 1
+    opponentHistoryLag: 1
+    enablePositionRewards: true
+    drawReward: -0.1
+    stepLimitPenalty: -0.2
+    batchSize: 64
+    targetUpdateFrequency: 60
+    checkpointDirectory: checkpoints/advanced
+    checkpointInterval: 2
+    autoCleanupOnFinish: true
+    keepBest: true
+    keepLastN: 2
+    treatStepLimitAsDraw: true
+
+  dqn_imitation_bootstrap:
+    # Warm-start DQN from an imitation checkpoint trained on chess-engine move examples
+    hiddenLayers: 512,256,128
+    enablePositionRewards: false
+    maxStepsPerGame: 180
+    maxConcurrentGames: 8
+    explorationRate: 0.20
+    explorationWarmupCycles: 4
+    explorationWarmupRate: 0.35
+    batchSize: 64
+    checkpointDirectory: checkpoints/advanced
+    checkpointInterval: 2
+    autoCleanupOnFinish: true
+    keepBest: true
+    keepLastN: 2
+    treatStepLimitAsDraw: true
+    targetUpdateFrequency: 20
+    opponentWarmupCycles: 4
+    opponentUpdateStrategy: HISTORICAL
+    opponentUpdateFrequency: 3
+    opponentHistoryLag: 4
+    enableDoubleDQN: true
+    drawReward: -0.2
+    stepLimitPenalty: -1.0
+    # New: model path to load at start if --load not provided
+    loadModelPath: ../chess-engine/data/imitation_qnet.json

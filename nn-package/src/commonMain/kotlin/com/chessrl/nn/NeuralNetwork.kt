@@ -469,6 +469,63 @@ class CrossEntropyLoss : LossFunction {
 }
 
 /**
+ * Softmax Cross Entropy loss that treats the predicted vector as logits and
+ * applies a numerically stable softmax internally before computing CE.
+ * The target is expected to be a probability distribution (sums to 1 over its support).
+ */
+class SoftmaxCrossEntropyLoss : LossFunction {
+    override fun computeLoss(predicted: DoubleArray, target: DoubleArray): Double {
+        require(predicted.size == target.size) { "Predicted and target arrays must have same size" }
+        // Numerically stable softmax: shift by max
+        var maxVal = Double.NEGATIVE_INFINITY
+        for (v in predicted) if (v > maxVal) maxVal = v
+        var sumExp = 0.0
+        val expVals = DoubleArray(predicted.size) { i ->
+            val ev = kotlin.math.exp(predicted[i] - maxVal)
+            sumExp += ev
+            ev
+        }
+        var ce = 0.0
+        val denom = if (sumExp == 0.0) 1.0 else sumExp
+        var support = 0
+        for (i in predicted.indices) {
+            val p = expVals[i] / denom
+            val t = target[i]
+            if (t > 0.0) {
+                support++
+                val pp = p.coerceIn(1e-15, 1.0 - 1e-15)
+                ce -= t * ln(pp)
+            }
+        }
+        val norm = if (support > 0) support.toDouble() else predicted.size.toDouble()
+        return ce / norm
+    }
+
+    override fun computeGradient(predicted: DoubleArray, target: DoubleArray): DoubleArray {
+        require(predicted.size == target.size) { "Predicted and target arrays must have same size" }
+        // Softmax
+        var maxVal = Double.NEGATIVE_INFINITY
+        for (v in predicted) if (v > maxVal) maxVal = v
+        var sumExp = 0.0
+        val expVals = DoubleArray(predicted.size) { i ->
+            val ev = kotlin.math.exp(predicted[i] - maxVal)
+            sumExp += ev
+            ev
+        }
+        val denom = if (sumExp == 0.0) 1.0 else sumExp
+        val grad = DoubleArray(predicted.size)
+        var support = 0
+        for (i in predicted.indices) if (target[i] > 0.0) support++
+        val invN = 1.0 / (if (support > 0) support.toDouble() else predicted.size.toDouble())
+        for (i in predicted.indices) {
+            val p = expVals[i] / denom
+            grad[i] = (p - target[i]) * invN
+        }
+        return grad
+    }
+}
+
+/**
  * Huber loss function (robust to outliers)
  */
 class HuberLoss(private val delta: Double = 1.0) : LossFunction {

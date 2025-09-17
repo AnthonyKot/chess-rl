@@ -1,5 +1,7 @@
 # Chess RL Training Pipeline Implementation
 
+> Note: This document is a deeper dive. For current quick-start, profiles, and warm-start instructions, see README.md and DQN.md.
+
 ## Overview
 
 This document describes the implementation of task 8.2: "Implement end-to-end training pipeline with efficient batching" for the Chess RL Bot project. The implementation provides a comprehensive training system that orchestrates the complete process from experience collection to neural network updates with efficient batching and monitoring.
@@ -173,7 +175,7 @@ The implementation optimizes batch training for chess RL:
 
 ### Chess-Specific Optimizations
 
-- **State Encoding**: Efficient 776-feature chess position encoding
+- **State Encoding**: 839‑feature chess position encoding (12 piece planes + side to move + castling + en passant one‑hot 64 + clocks)
 - **Action Space**: 4096 action space with legal move filtering
 - **Reward Shaping**: Optional position-based reward signals
 - **Game Metrics**: Comprehensive chess-specific performance tracking

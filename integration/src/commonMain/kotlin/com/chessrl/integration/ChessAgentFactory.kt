@@ -16,41 +16,24 @@ object ChessAgentFactory {
         hiddenLayers: List<Int> = listOf(512, 256, 128),
         learningRate: Double = 0.001,
         explorationRate: Double = 0.1,
-        config: ChessAgentConfig = ChessAgentConfig()
+        config: ChessAgentConfig = ChessAgentConfig(),
+        enableDoubleDQN: Boolean = false
     ): ChessAgent {
         return RealChessAgentFactory.createRealDQNAgent(
-            inputSize = 776, // Chess state features
+            inputSize = ChessStateEncoder.TOTAL_FEATURES, // Chess state features
             outputSize = 4096, // Chess action space
             hiddenLayers = hiddenLayers,
             learningRate = learningRate,
             explorationRate = explorationRate,
             batchSize = config.batchSize,
-            maxBufferSize = config.maxBufferSize
+            maxBufferSize = config.maxBufferSize,
+            targetUpdateFrequency = config.targetUpdateFrequency,
+            doubleDqn = enableDoubleDQN
         ).let { realAgent ->
             ChessAgentAdapter(realAgent, config)
         }
     }
     
-    /**
-     * Create a Policy Gradient agent with default configuration
-     */
-    fun createPolicyGradientAgent(
-        hiddenLayers: List<Int> = listOf(512, 256, 128),
-        learningRate: Double = 0.001,
-        temperature: Double = 1.0,
-        config: ChessAgentConfig = ChessAgentConfig()
-    ): ChessAgent {
-        return RealChessAgentFactory.createRealPolicyGradientAgent(
-            inputSize = 776,
-            outputSize = 4096,
-            hiddenLayers = hiddenLayers,
-            learningRate = learningRate,
-            temperature = temperature,
-            batchSize = config.batchSize
-        ).let { realAgent ->
-            ChessAgentAdapter(realAgent, config)
-        }
-    }
     
     /**
      * Create a seeded DQN agent for deterministic training
@@ -63,7 +46,7 @@ object ChessAgentFactory {
         seedManager: SeedManager = SeedManager.getInstance()
     ): ChessAgent {
         return RealChessAgentFactory.createSeededDQNAgent(
-            inputSize = 776,
+            inputSize = ChessStateEncoder.TOTAL_FEATURES,
             outputSize = 4096,
             hiddenLayers = hiddenLayers,
             learningRate = learningRate,
@@ -78,29 +61,6 @@ object ChessAgentFactory {
         }
     }
     
-    /**
-     * Create a seeded Policy Gradient agent for deterministic training
-     */
-    fun createSeededPolicyGradientAgent(
-        hiddenLayers: List<Int> = listOf(512, 256, 128),
-        learningRate: Double = 0.001,
-        temperature: Double = 1.0,
-        config: ChessAgentConfig = ChessAgentConfig(),
-        seedManager: SeedManager = SeedManager.getInstance()
-    ): ChessAgent {
-        return RealChessAgentFactory.createSeededPolicyGradientAgent(
-            inputSize = 776,
-            outputSize = 4096,
-            hiddenLayers = hiddenLayers,
-            learningRate = learningRate,
-            temperature = temperature,
-            batchSize = config.batchSize,
-            neuralNetworkRandom = seedManager.getNeuralNetworkRandom(),
-            explorationRandom = seedManager.getExplorationRandom()
-        ).let { realAgent ->
-            ChessAgentAdapter(realAgent, config)
-        }
-    }
 }
 
 /**

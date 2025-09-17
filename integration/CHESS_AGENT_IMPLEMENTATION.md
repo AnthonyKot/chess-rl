@@ -74,11 +74,16 @@ Comprehensive test suite validating the complete integration:
 
 ## Technical Integration Points
 
+> Note: For the latest training setup and profile-based warm start (imitation bootstrap), see README.md and DQN.md.
+
 ### Neural Network Integration
 
-- **State Encoding**: Chess positions encoded as 776-dimensional vectors
+- **State Encoding**: Chess positions encoded as 839‑dimensional vectors
   - 768 features for piece positions (8×8×12 planes)
-  - 8 features for game state (castling, en passant, clocks, active color)
+  - 1 feature for side to move (White=1, Black=0)
+  - 4 features for castling rights (KQkq)
+  - 64 features for en passant target (square one‑hot)
+  - 2 features for clocks (halfmove/fullmove normalized)
 - **Action Space**: 4096 possible actions (64×64 from-to square combinations)
 - **Network Architecture**: Configurable hidden layers with ReLU activation
 - **Output Layer**: Linear activation for Q-values or policy logits

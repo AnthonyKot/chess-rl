@@ -1,3 +1,7 @@
+▌Can we teach model to play as good as some simple strategy, which let's say look 2-3 moves formward and use figures value for position estimate and make a move. Seems like self playing doesn't work/learn very fast. I suggest to create special mode to
+▌create baseline model which learn from such simple strategy, by adding reward for selecting simple strategy move 
+
+
 # TODO — Focused Core vs. Later Enhancements
 
 Purpose: Run a reliable self-learning chess experiment by focusing on the minimal, correct core. Temporarily detach over‑engineered or unfinished layers. Each detached area below lists where to return and what to align before re‑enabling.

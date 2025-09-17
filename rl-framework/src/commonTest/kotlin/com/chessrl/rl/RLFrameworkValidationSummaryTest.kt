@@ -31,7 +31,7 @@ class RLFrameworkValidationSummaryTest {
         
         println("\n=== All RL Framework Validation Tests Passed ===")
         println("✓ Toy environments (GridWorld, Multi-armed Bandit) work correctly")
-        println("✓ RL algorithms (DQN, Policy Gradient) execute without errors")
+        println("✓ RL algorithms (DQN) execute without errors")
         println("✓ Exploration strategies maintain action diversity")
         println("✓ Logging and debugging tools capture training metrics")
         println("✓ Convergence detection identifies training patterns")
@@ -121,20 +121,7 @@ class RLFrameworkValidationSummaryTest {
         
         println("  ✓ DQN algorithm executes correctly")
         
-        // Test Policy Gradient Algorithm
-        val policyNetwork = SimpleNeuralNetwork(4, 4, Random(123)) // Match input/output sizes
-        val pg = PolicyGradientAlgorithm(policyNetwork)
-        
-        val pgUpdateResult = pg.updatePolicy(experiences.take(5))
-        assertTrue(pgUpdateResult.loss.isFinite())
-        assertTrue(pgUpdateResult.policyEntropy >= 0.0)
-        
-        val actionProbs = pg.getActionProbabilities(state, listOf(0, 1, 2, 3)) // Match network output size
-        assertEquals(4, actionProbs.size)
-        val totalProb = actionProbs.values.sum()
-        assertEquals(1.0, totalProb, 0.01) // Should sum to approximately 1.0
-        
-        println("  ✓ Policy Gradient algorithm executes correctly")
+        // Policy Gradient validation removed
     }
     
     private fun validateExplorationStrategies() {

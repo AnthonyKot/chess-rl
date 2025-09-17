@@ -115,7 +115,11 @@ class ChessTrainingPipeline(
 
     init {
         // Provide next-state valid actions to agent for algorithms that can consume it (e.g., DQN masking)
-        runCatching { agent.setNextActionProvider(environment::getValidActions) }
+        runCatching {
+            agent.setNextActionProvider { s ->
+                ValidActionRegistry.get(s) ?: environment.getValidActions(s)
+            }
+        }
     }
     
     /**

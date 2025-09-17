@@ -501,42 +501,15 @@ class SelfPlayController(
      * Create an agent with specified configuration
      */
     private fun createAgent(): ChessAgent {
-        return when (config.agentType) {
-            AgentType.DQN -> {
-                ChessAgentFactory.createDQNAgent(
-                    hiddenLayers = config.hiddenLayers,
-                    learningRate = config.learningRate,
-                    explorationRate = config.explorationRate,
-                    config = ChessAgentConfig(
-                        batchSize = config.batchSize,
-                        maxBufferSize = config.maxExperienceBufferSize
-                    )
-                )
-            }
-            AgentType.POLICY_GRADIENT -> {
-                ChessAgentFactory.createPolicyGradientAgent(
-                    hiddenLayers = config.hiddenLayers,
-                    learningRate = config.learningRate,
-                    temperature = config.temperature,
-                    config = ChessAgentConfig(
-                        batchSize = config.batchSize,
-                        maxBufferSize = config.maxExperienceBufferSize
-                    )
-                )
-            }
-            AgentType.ACTOR_CRITIC -> {
-                // Temporary mapping: use policy gradient agent for actor-critic until AC is implemented
-                ChessAgentFactory.createPolicyGradientAgent(
-                    hiddenLayers = config.hiddenLayers,
-                    learningRate = config.learningRate,
-                    temperature = config.temperature,
-                    config = ChessAgentConfig(
-                        batchSize = config.batchSize,
-                        maxBufferSize = config.maxExperienceBufferSize
-                    )
-                )
-            }
-        }
+        return ChessAgentFactory.createDQNAgent(
+            hiddenLayers = config.hiddenLayers,
+            learningRate = config.learningRate,
+            explorationRate = config.explorationRate,
+            config = ChessAgentConfig(
+                batchSize = config.batchSize,
+                maxBufferSize = config.maxExperienceBufferSize
+            )
+        )
     }
     
     /**

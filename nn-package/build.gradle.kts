@@ -17,7 +17,12 @@ kotlin {
         val commonMain by getting
         val commonTest by getting { dependencies { implementation(kotlin("test")) } }
         val jvmMain by getting
-        val jvmTest by getting
+        val jvmTest by getting {
+            dependencies {
+                implementation(kotlin("test-junit5"))
+                runtimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+            }
+        }
     }
 }
 

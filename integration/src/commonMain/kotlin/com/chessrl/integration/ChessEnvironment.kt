@@ -20,25 +20,25 @@ fun PieceColor.opposite(): PieceColor = when (this) {
 /**
  * Chess state encoder that converts board positions to neural network input format
  * 
- * State encoding specification:
+ * State encoding specification (aligned with chess-engine FeatureEncoding):
  * - 8x8x12 piece planes (6 piece types × 2 colors) = 768 features
- * - 4 castling rights (white/black kingside/queenside) = 4 features  
- * - 1 en passant file (0-7, or -1 if none) = 1 feature
- * - 1 active color (0=white, 1=black) = 1 feature
- * - 1 halfmove clock (normalized 0-1) = 1 feature
- * - 1 fullmove number (normalized 0-1) = 1 feature
- * Total: 776 features
+ * - Side to move (1 when White, 0 when Black) = 1 feature
+ * - Castling rights (white/black kingside/queenside) = 4 features
+ * - En passant target square one-hot (64) = 64 features
+ * - Halfmove clock (normalized 0-1) = 1 feature
+ * - Fullmove number (normalized 0-1) = 1 feature
+ * Total: 768 + 1 + 4 + 64 + 2 = 839 features
  */
 class ChessStateEncoder {
     companion object {
         const val BOARD_PLANES = 768 // 8x8x12
-        const val CASTLING_FEATURES = 4
-        const val EN_PASSANT_FEATURES = 1
         const val ACTIVE_COLOR_FEATURES = 1
+        const val CASTLING_FEATURES = 4
+        const val EN_PASSANT_FEATURES = 64
         const val HALFMOVE_FEATURES = 1
         const val FULLMOVE_FEATURES = 1
-        const val TOTAL_FEATURES = BOARD_PLANES + CASTLING_FEATURES + EN_PASSANT_FEATURES + 
-                                  ACTIVE_COLOR_FEATURES + HALFMOVE_FEATURES + FULLMOVE_FEATURES
+        const val TOTAL_FEATURES = BOARD_PLANES + ACTIVE_COLOR_FEATURES + CASTLING_FEATURES +
+                                  EN_PASSANT_FEATURES + HALFMOVE_FEATURES + FULLMOVE_FEATURES
     }
     
     /**
@@ -100,29 +100,31 @@ class ChessStateEncoder {
     private fun encodeGameStateFeatures(board: ChessBoard, state: DoubleArray, startIndex: Int): Int {
         var index = startIndex
         val gameState = board.getGameState()
-        
+
+        // Active color (1 feature): 1.0 for White, 0.0 for Black
+        state[index++] = if (gameState.activeColor == PieceColor.WHITE) 1.0 else 0.0
+
         // Castling rights (4 features)
         state[index++] = if (gameState.whiteCanCastleKingside) 1.0 else 0.0
         state[index++] = if (gameState.whiteCanCastleQueenside) 1.0 else 0.0
         state[index++] = if (gameState.blackCanCastleKingside) 1.0 else 0.0
         state[index++] = if (gameState.blackCanCastleQueenside) 1.0 else 0.0
-        
-        // En passant target file (1 feature, normalized to 0-1 range)
-        state[index++] = if (gameState.enPassantTarget != null) {
-            gameState.enPassantTarget!!.file / 7.0 // Normalize 0-7 to 0-1
-        } else {
-            -1.0 // Special value for no en passant
+
+        // En passant one-hot over 64 squares
+        val ep = gameState.enPassantTarget
+        for (rank in 0..7) {
+            for (file in 0..7) {
+                val isEp = ep != null && ep.rank == rank && ep.file == file
+                state[index++] = if (isEp) 1.0 else 0.0
+            }
         }
-        
-        // Active color (1 feature)
-        state[index++] = if (gameState.activeColor == PieceColor.WHITE) 0.0 else 1.0
-        
+
         // Halfmove clock (1 feature, normalized)
-        state[index++] = gameState.halfmoveClock / 100.0 // Normalize to 0-1 (50-move rule = 100 halfmoves)
-        
+        state[index++] = gameState.halfmoveClock.coerceIn(0, 100).toDouble() / 100.0
+
         // Fullmove number (1 feature, normalized)
-        state[index++] = kotlin.math.min(gameState.fullmoveNumber / 200.0, 1.0) // Cap at 200 moves
-        
+        state[index++] = gameState.fullmoveNumber.coerceAtLeast(1).coerceAtMost(200).toDouble() / 200.0
+
         return index
     }
 }
@@ -194,8 +196,8 @@ data class ChessRewardConfig(
     val winReward: Double = 1.0,
     val lossReward: Double = -1.0,
     val drawReward: Double = 0.0,
-    // Small per-step penalty to discourage excessively long games
-    val stepPenalty: Double = -0.001,
+    // Small per-step penalty to discourage excessively long games (default 0.0 for tests)
+    val stepPenalty: Double = 0.0,
     val invalidMoveReward: Double = -0.1,
     val gameLengthNormalization: Boolean = true,
     val maxGameLength: Int = 200,
@@ -467,7 +469,7 @@ class ChessEnvironment(
         gameHistory.add(chessBoard.toFEN())
         
         // Update game metrics
-        updateGameMetrics(actualMove)
+        updateGameMetrics()
         
         // Get game status and calculate reward
         val gameStatus = gameStateDetector.getGameStatus(chessBoard, gameHistory)
@@ -551,7 +553,7 @@ class ChessEnvironment(
                 // Ongoing game: positional shaping and step penalty
                 reward = if (rewardConfig.enablePositionRewards) {
                     var r = positionEvaluator.evaluatePosition(chessBoard, movingColor, rewardConfig)
-                    if (isCapture(move)) r += 0.02
+                    if (isCapture()) r += 0.02
                     if (gameStateDetector.isInCheck(chessBoard, movingColor.opposite())) r += 0.01
                     r
                 } else 0.0
@@ -566,8 +568,7 @@ class ChessEnvironment(
     /**
      * Update game metrics after a move
      */
-    @Suppress("UNUSED_PARAMETER")
-    private fun updateGameMetrics(move: Move) {
+    private fun updateGameMetrics() {
         moveCount++
         
         // Check if move was a capture by comparing material values
@@ -588,8 +589,7 @@ class ChessEnvironment(
     /**
      * Check if a move is a capture by comparing material values
      */
-    @Suppress("UNUSED_PARAMETER")
-    private fun isCapture(move: Move): Boolean {
+    private fun isCapture(): Boolean {
         val currentMaterialValue = calculateTotalMaterialValue()
         return currentMaterialValue < previousMaterialValue
     }

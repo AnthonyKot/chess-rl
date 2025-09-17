@@ -1,5 +1,7 @@
 # Self-Play System Implementation Summary
 
+> Note: Archived summary. For current configuration and CLI usage, see README.md and DQN.md.
+
 ## Overview
 
 Successfully implemented Task 9.1: "Create robust self-play game engine with concurrent execution" for the Chess RL Bot system. This implementation provides a comprehensive self-play training system with advanced experience collection, concurrent game execution, and sophisticated training management.

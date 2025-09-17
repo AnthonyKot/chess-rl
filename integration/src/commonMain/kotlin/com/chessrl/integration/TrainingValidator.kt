@@ -304,7 +304,6 @@ class TrainingValidator(
     
     // Private helper methods
     
-    @Suppress("UNUSED_PARAMETER")
     private fun validateNumericalStability(
         updateResult: PolicyUpdateResult,
         issues: MutableList<ValidationIssue>,
@@ -317,6 +316,7 @@ class TrainingValidator(
                 message = "Loss is NaN or Infinite: ${updateResult.loss}",
                 value = updateResult.loss
             ))
+            warnings.add("Loss produced non-finite value; check learning rate/initialization")
         }
         
         if (updateResult.gradientNorm.isNaN() || updateResult.gradientNorm.isInfinite()) {
@@ -326,6 +326,7 @@ class TrainingValidator(
                 message = "Gradient norm is NaN or Infinite: ${updateResult.gradientNorm}",
                 value = updateResult.gradientNorm
             ))
+            warnings.add("Gradient norm is non-finite; consider gradient clipping or smaller steps")
         }
     }
     
@@ -410,7 +411,6 @@ class TrainingValidator(
         }
     }
     
-    @Suppress("UNUSED_PARAMETER")
     private fun validateQValues(
         qMean: Double,
         targetMean: Double,

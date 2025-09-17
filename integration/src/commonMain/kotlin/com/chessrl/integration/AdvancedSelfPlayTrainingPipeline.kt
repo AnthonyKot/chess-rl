@@ -13,7 +13,8 @@ import kotlin.random.Random
  * model versioning, and automated recovery mechanisms.
  */
 class AdvancedSelfPlayTrainingPipeline(
-    private val config: AdvancedSelfPlayConfig = AdvancedSelfPlayConfig()
+    private val config: AdvancedSelfPlayConfig = AdvancedSelfPlayConfig(),
+    private val agentType: AgentType = AgentType.DQN
 ) {
     
     // Core components
@@ -102,9 +103,11 @@ class AdvancedSelfPlayTrainingPipeline(
                     lossReward = config.lossReward,
                     drawReward = config.drawReward,
                     enablePositionRewards = config.enablePositionRewards,
+                    stepLimitPenalty = config.stepLimitPenalty,
                     maxExperienceBufferSize = config.maxExperienceBufferSize,
                     experienceCleanupStrategy = config.experienceCleanupStrategy,
-                    progressReportInterval = config.progressReportInterval
+                    progressReportInterval = config.progressReportInterval,
+                    treatStepLimitAsDrawForReporting = config.treatStepLimitAsDrawForReporting
                 )
             )
             
@@ -114,6 +117,7 @@ class AdvancedSelfPlayTrainingPipeline(
                     winReward = config.winReward,
                     lossReward = config.lossReward,
                     drawReward = config.drawReward,
+                    stepPenalty = -0.001,
                     enablePositionRewards = config.enablePositionRewards
                 )
             )
@@ -131,9 +135,12 @@ class AdvancedSelfPlayTrainingPipeline(
                 )
             )
 
-            // Provide valid-action masking to DQN for next-state target computation
+            // Provide valid-action masking to DQN for next-state target computation.
+            // Prefer registry values captured at experience generation; fallback to env.
             try {
-                mainAgent?.setNextActionProvider { s -> environment.getValidActions(s) }
+                mainAgent?.setNextActionProvider { s ->
+                    ValidActionRegistry.get(s) ?: environment.getValidActions(s)
+                }
             } catch (_: Throwable) { /* optional */ }
             
             // Initialize adaptive scheduling
@@ -210,8 +217,15 @@ class AdvancedSelfPlayTrainingPipeline(
                         runCatching { mainAgent.setExplorationRate(config.explorationWarmupRate) }
                         runCatching { opponentAgent.setExplorationRate(config.explorationWarmupRate) }
                     } else {
-                        runCatching { mainAgent.setExplorationRate(config.explorationRate) }
-                        runCatching { opponentAgent.setExplorationRate(config.explorationRate) }
+                        // Optional epsilon decay after warmup if configured; otherwise fixed explorationRate
+                        val eps = computeDecayedEpsilon(cycle)
+                        if (eps != null) {
+                            runCatching { mainAgent.setExplorationRate(eps) }
+                            runCatching { opponentAgent.setExplorationRate(eps) }
+                        } else {
+                            runCatching { mainAgent.setExplorationRate(config.explorationRate) }
+                            runCatching { opponentAgent.setExplorationRate(config.explorationRate) }
+                        }
                     }
                 }
                 
@@ -333,6 +347,12 @@ class AdvancedSelfPlayTrainingPipeline(
                     description = "Final model after training completion"
                 )
             )
+            // Optional post-run cleanup using retention policy
+            if (config.autoCleanupOnFinish) {
+                println("🧹 Performing post-run checkpoint cleanup (retention: keepBest=${config.retention.keepBest}, keepLastN=${config.retention.keepLastN}, keepEveryN=${config.retention.keepEveryN})")
+                val cleanup = checkpointManager.cleanupByRetention(config.retention)
+                println("   Cleanup: deleted=${cleanup.checkpointsDeleted}, sizeFreed=${cleanup.sizeFreed}, remaining=${cleanup.checkpointsAfter}")
+            }
             
             println("\n🏁 Advanced Self-Play Training Completed!")
             println("Total cycles: $currentCycle")
@@ -375,6 +395,8 @@ class AdvancedSelfPlayTrainingPipeline(
     ): TrainingCycleResult {
         
         val cycleStartTime = getCurrentTimeMillis()
+        // Clear any stale masks from previous cycles
+        ValidActionRegistry.clear()
         
         // Phase 1: Self-play game generation with adaptive scheduling
         println("🎮 Phase 1: Self-play generation (${currentGamesPerCycle} games)")
@@ -479,7 +501,8 @@ class AdvancedSelfPlayTrainingPipeline(
                 val emaG = validationResult.smoothedGradientNorm ?: rawG
                 val rawH = updateResult.policyEntropy
                 val emaH = validationResult.smoothedPolicyEntropy ?: rawH
-                println("   Batch $batchIndex metrics: loss=${"%.4f".format(updateResult.loss)}, grad=${"%.4f".format(rawG)} (ema=${"%.4f".format(emaG)}), entropy=${"%.4f".format(rawH)} (ema=${"%.4f".format(emaH)})")
+                val tdMean = (updateResult.targetValueMean ?: 0.0) - (updateResult.qValueMean ?: 0.0)
+                println("   Batch $batchIndex metrics: loss=${"%.4f".format(updateResult.loss)}, grad=${"%.4f".format(rawG)} (ema=${"%.4f".format(emaG)}), entropy=${"%.4f".format(rawH)} (ema=${"%.4f".format(emaH)}), td=${"%.4f".format(tdMean)})")
                 
                 batchResults.add(
                     ValidatedBatchResult(
@@ -600,7 +623,7 @@ class AdvancedSelfPlayTrainingPipeline(
                 winReward = config.winReward,
                 lossReward = config.lossReward,
                 drawReward = config.drawReward,
-                stepPenalty = config.stepLimitPenalty,
+                stepPenalty = -0.001,
                 enablePositionRewards = config.enablePositionRewards,
                 maxGameLength = config.maxStepsPerGame
             )
@@ -846,14 +869,34 @@ class AdvancedSelfPlayTrainingPipeline(
                 if (cycle % config.opponentUpdateFrequency == 0) {
                     // Copy main agent's weights to opponent
                     println("   🔄 Updating opponent: copying main agent weights")
-                    // In practice, would copy neural network weights
+                    try {
+                        val src = mainAgent as? ChessAgentAdapter
+                        val dst = opponentAgent as? ChessAgentAdapter
+                        if (src != null && dst != null) {
+                            // Best-effort: save main to temp and load into opponent
+                            val tmpPath = "checkpoints/tmp_copy_qnet.json"
+                            src.save(tmpPath)
+                            dst.load(tmpPath)
+                        }
+                    } catch (_: Throwable) { /* best-effort */ }
                 }
             }
             OpponentUpdateStrategy.HISTORICAL -> {
                 if (cycle % config.opponentUpdateFrequency == 0) {
                     // Use a historical version of the main agent
-                    val historicalVersion = maxOf(1, cycle - config.opponentHistoryLag)
+                    val historicalVersion = maxOf(0, cycle - config.opponentHistoryLag)
                     println("   🔄 Updating opponent: using historical version $historicalVersion")
+                    val cm = checkpointManager
+                    val opp = opponentAgent
+                    if (cm != null && opp != null) {
+                        val info = cm.getCheckpoint(historicalVersion)
+                        if (info != null) {
+                            cm.loadCheckpoint(info, opp)
+                        } else {
+                            // Fallback to best available
+                            cm.getBestCheckpoint()?.let { cm.loadCheckpoint(it, opp) }
+                        }
+                    }
                 }
             }
             OpponentUpdateStrategy.ADAPTIVE -> {
@@ -911,6 +954,22 @@ class AdvancedSelfPlayTrainingPipeline(
             val convergenceStatus = convergenceDetector.checkConvergence(performanceHistory)
             println("   Convergence: ${convergenceStatus.status} (${convergenceStatus.confidence})")
         }
+    }
+
+    /**
+     * Compute decayed epsilon based on configured schedule and current cycle.
+     * Returns null when decay is disabled or not yet applicable.
+     */
+    private fun computeDecayedEpsilon(cycle: Int): Double? {
+        val start = config.epsDecayStart
+        val end = config.epsDecayEnd
+        val total = config.epsDecayCycles
+        if (start == null || end == null || total == null || total <= 0) return null
+        val warmup = config.explorationWarmupCycles
+        val step = (cycle - warmup).coerceAtLeast(0)
+        if (step <= 0) return start
+        val t = (step.toDouble() / total.toDouble()).coerceIn(0.0, 1.0)
+        return start + t * (end - start)
     }
     
     /**
@@ -1068,30 +1127,58 @@ class AdvancedSelfPlayTrainingPipeline(
      * Create main training agent
      */
     private fun createMainAgent(): ChessAgent {
-        return ChessAgentFactory.createDQNAgent(
-            hiddenLayers = config.hiddenLayers,
-            learningRate = config.learningRate,
-            explorationRate = config.explorationRate,
-            config = ChessAgentConfig(
-                batchSize = config.batchSize,
-                maxBufferSize = config.maxExperienceBufferSize
+        return when (agentType) {
+            AgentType.DQN, AgentType.POLICY_GRADIENT, AgentType.ACTOR_CRITIC -> ChessAgentFactory.createDQNAgent(
+                hiddenLayers = config.hiddenLayers,
+                learningRate = config.learningRate,
+                explorationRate = config.explorationRate,
+                config = ChessAgentConfig(
+                    batchSize = config.batchSize,
+                    maxBufferSize = config.maxExperienceBufferSize,
+                    targetUpdateFrequency = config.targetUpdateFrequency
+                ),
+                enableDoubleDQN = config.enableDoubleDQN
             )
-        )
+            else -> ChessAgentFactory.createDQNAgent(
+                hiddenLayers = config.hiddenLayers,
+                learningRate = config.learningRate,
+                explorationRate = config.explorationRate,
+                config = ChessAgentConfig(
+                    batchSize = config.batchSize,
+                    maxBufferSize = config.maxExperienceBufferSize,
+                    targetUpdateFrequency = config.targetUpdateFrequency
+                )
+            )
+        }
     }
     
     /**
      * Create opponent agent
      */
     private fun createOpponentAgent(): ChessAgent {
-        return ChessAgentFactory.createDQNAgent(
-            hiddenLayers = config.hiddenLayers,
-            learningRate = config.learningRate,
-            explorationRate = config.explorationRate,
-            config = ChessAgentConfig(
-                batchSize = config.batchSize,
-                maxBufferSize = config.maxExperienceBufferSize
+        return when (agentType) {
+            AgentType.DQN, AgentType.POLICY_GRADIENT, AgentType.ACTOR_CRITIC -> ChessAgentFactory.createDQNAgent(
+                hiddenLayers = config.hiddenLayers,
+                learningRate = config.learningRate,
+                explorationRate = config.explorationRate,
+                config = ChessAgentConfig(
+                    batchSize = config.batchSize,
+                    maxBufferSize = config.maxExperienceBufferSize,
+                    targetUpdateFrequency = config.targetUpdateFrequency
+                ),
+                enableDoubleDQN = config.enableDoubleDQN
             )
-        )
+            else -> ChessAgentFactory.createDQNAgent(
+                hiddenLayers = config.hiddenLayers,
+                learningRate = config.learningRate,
+                explorationRate = config.explorationRate,
+                config = ChessAgentConfig(
+                    batchSize = config.batchSize,
+                    maxBufferSize = config.maxExperienceBufferSize,
+                    targetUpdateFrequency = config.targetUpdateFrequency
+                )
+            )
+        }
     }
 }
 
@@ -1103,9 +1190,17 @@ data class AdvancedSelfPlayConfig(
     val hiddenLayers: List<Int> = listOf(512, 256, 128),
     val learningRate: Double = 0.001,
     val explorationRate: Double = 0.1,
+    // DQN target network update frequency (updates every N policy updates)
+    val targetUpdateFrequency: Int = 100,
+    // Enable Double DQN target selection
+    val enableDoubleDQN: Boolean = false,
     // Early-cycle exploration warmup
     val explorationWarmupCycles: Int = 2,
     val explorationWarmupRate: Double = 0.25,
+    // Optional epsilon decay after warmup (disabled when null)
+    val epsDecayStart: Double? = null,
+    val epsDecayEnd: Double? = null,
+    val epsDecayCycles: Int? = null,
     
     // Self-play configuration
     val initialGamesPerCycle: Int = 20,
@@ -1136,6 +1231,8 @@ data class AdvancedSelfPlayConfig(
     val lossReward: Double = -1.0,
     val drawReward: Double = 0.0,
     val enablePositionRewards: Boolean = false,
+    // Reporting behavior
+    val treatStepLimitAsDrawForReporting: Boolean = true,
     
     // Adaptive scheduling
     val adaptiveSchedulingWindow: Int = 5,
@@ -1182,6 +1279,10 @@ data class AdvancedSelfPlayConfig(
     // Monitoring and reporting
     val progressReportInterval: Int = 5,
     val cycleReportInterval: Int = 5
+    ,
+    // Checkpoint retention and cleanup
+    val autoCleanupOnFinish: Boolean = true,
+    val retention: CheckpointRetention = CheckpointRetention(keepBest = true, keepLastN = 2, keepEveryN = null)
 )
 
 /**

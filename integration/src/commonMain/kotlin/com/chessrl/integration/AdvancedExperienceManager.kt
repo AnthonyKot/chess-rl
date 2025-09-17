@@ -42,13 +42,13 @@ class AdvancedExperienceManager(
         
         // Quality assessment and filtering
         val qualityAssessment = assessExperienceQuality(newExperiences, gameResults)
-        val filteredExperiences = filterExperiencesByQuality(newExperiences, qualityAssessment)
+        val filteredExperiences = filterExperiencesByQuality(newExperiences)
         
         // Add to appropriate buffers
         val bufferUpdates = addToBuffers(filteredExperiences)
         
         // Update statistics
-        updateStatistics(newExperiences, filteredExperiences, qualityAssessment)
+        updateStatistics(newExperiences, filteredExperiences)
         
         // Memory management
         val memoryManagement = performMemoryManagement()
@@ -164,7 +164,7 @@ class AdvancedExperienceManager(
     ): QualityAssessment {
         
         val qualityScores = experiences.map { experience ->
-            calculateEnhancedQualityScore(experience, gameResults)
+            calculateEnhancedQualityScore(experience)
         }
         
         val averageQuality = qualityScores.average()
@@ -182,10 +182,8 @@ class AdvancedExperienceManager(
     /**
      * Calculate enhanced quality score for an experience
      */
-    @Suppress("UNUSED_PARAMETER")
     private fun calculateEnhancedQualityScore(
-        experience: EnhancedExperience,
-        gameResults: List<SelfPlayGameResult>
+        experience: EnhancedExperience
     ): Double {
         var qualityScore = experience.qualityScore // Base quality score
         
@@ -242,14 +240,12 @@ class AdvancedExperienceManager(
     /**
      * Filter experiences by quality threshold
      */
-    @Suppress("UNUSED_PARAMETER")
     private fun filterExperiencesByQuality(
-        experiences: List<EnhancedExperience>,
-        qualityAssessment: QualityAssessment
+        experiences: List<EnhancedExperience>
     ): List<EnhancedExperience> {
         
         return experiences.filter { experience ->
-            val enhancedQuality = calculateEnhancedQualityScore(experience, emptyList())
+            val enhancedQuality = calculateEnhancedQualityScore(experience)
             enhancedQuality >= config.qualityThreshold
         }
     }
@@ -297,11 +293,9 @@ class AdvancedExperienceManager(
     /**
      * Update processing statistics
      */
-    @Suppress("UNUSED_PARAMETER")
     private fun updateStatistics(
         newExperiences: List<EnhancedExperience>,
-        filteredExperiences: List<EnhancedExperience>,
-        qualityAssessment: QualityAssessment
+        filteredExperiences: List<EnhancedExperience>
     ) {
         totalExperiencesProcessed += newExperiences.size
         totalExperiencesDiscarded += (newExperiences.size - filteredExperiences.size)

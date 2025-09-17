@@ -1,164 +1,7 @@
 # Chess RL Bot
 
-Recent Training Defaults and How to Verify/Roll Back
-
-This augments existing logging improvements; nothing was removed. The notes below summarize what was added, where it lives, how to verify, and how to revert.
-
-Summary of changes
-- DQN masking debug logs
-  - Code: `rl-framework/src/commonMain/kotlin/com/chessrl/rl/RLAlgorithms.kt` (DQNAlgorithm)
-  - Behavior: prints once when masking is set and on first masked target compute
-  - Verify in logs:
-    - `🧩 DQN next-state action masking enabled (provider set)`
-    - `🧩 DQN masking applied: valid next actions for sample=...`
-
-- Early exploration warmup (first cycles only)
-  - Config defaults: `explorationWarmupCycles=2`, `explorationWarmupRate=0.25`
-  - Location: `AdvancedSelfPlayConfig` in `integration/src/commonMain/kotlin/com/chessrl/integration/AdvancedSelfPlayTrainingPipeline.kt`
-  - Toggle: set `explorationWarmupCycles=0` to disable
-
-- Rollback warmup (skip rollback in first cycles)
-  - Config defaults: `rollbackWarmupCycles=2`, `enableModelRollback=true`
-  - Location: `AdvancedSelfPlayConfig` (same file)
-  - Toggle: set `rollbackWarmupCycles=0` or `enableModelRollback=false`
-
-- Step‑limit treated as draw (reporting only)
-  - Code: `integration/src/commonMain/kotlin/com/chessrl/integration/SelfPlaySystem.kt` in `processBatchResults`
-  - Behavior: when `terminationReason == STEP_LIMIT && gameOutcome == ONGOING`, count as `DRAW` in stats
-  - Toggle: remove that mapping in `processBatchResults`
-
-- Step‑limit terminal penalty (training signal)
-  - Config default: `stepLimitPenalty = -0.02`
-  - Location: `AdvancedSelfPlayConfig` (same file); applied in `performBatchUpdate`
-  - Toggle: set `stepLimitPenalty = 0.0`
-
-- Target sync visibility (tip)
-  - Default: `targetUpdateFrequency=100` in `integration/src/commonMain/kotlin/com/chessrl/integration/RealChessAgentFactory.kt`
-  - For dev runs, you can lower to `20` to surface sync logs sooner
-
-Run & verify
-- Basic run (3 cycles, deterministic):
-  - `./gradlew :integration:runCli --args="--train-advanced --cycles 3 --seed 12345"`
-  - Look for the two `🧩` lines above and `📊 Self-Play Progress` with non‑zero draw rate.
-- Longer run to see trends and possibly a target sync:
-  - `./gradlew :integration:runCli --args="--train-advanced --cycles 6 --seed 12345"`
-- Evaluation vs baseline:
-  - `./gradlew :integration:runCli --args="--eval-baseline --games 10"`
-
-How to rollback quickly
-- Warmups: set `explorationWarmupCycles=0`, `rollbackWarmupCycles=0` in `AdvancedSelfPlayConfig`.
-- Step‑limit penalty: set `stepLimitPenalty=0.0` in `AdvancedSelfPlayConfig`.
-- Step‑limit reported as draw: edit `SelfPlaySystem.processBatchResults` and remove the STEP_LIMIT→DRAW mapping.
-- Target sync cadence: restore `targetUpdateFrequency=100` (default) in `RealChessAgentFactory.createRealDQNAgent`.
 
 Production‑minded Kotlin Multiplatform reinforcement learning for chess. It bundles a full chess engine, a neural network package, RL algorithms (DQN + Policy Gradient), and an integration layer with self‑play, checkpoints, and a baseline opponent.
-
-## 🚀 Quick Start (Practical)
-
-1) Requirements
-- JDK 21+ (toolchain targets Java 21)
-- Gradle (wrapper provided)
-
-2) Build + test everything
-```bash
-./gradlew clean build
-```
-
-3) Train (advanced pipeline)
-```bash
-# Train 5 cycles
-./gradlew :integration:runCli --args="--train-advanced --cycles 5"
-
-# Resume best checkpoint and train 5 more cycles
-./gradlew :integration:runCli --args="--train-advanced --cycles 5 --resume-best"
-
-# Deterministic run
-./gradlew :integration:runCli --args="--train-advanced --cycles 5 --seed 12345"
-```
-
-4) Evaluate vs baseline heuristic
-```bash
-# Agent vs baseline for 10 games
-./gradlew :integration:runCli --args="--eval-baseline --games 10"
-
-# Options
-./gradlew :integration:runCli --args="--eval-baseline --games 20 --colors alternate --seed 42"
-./gradlew :integration:runCli --args="--eval-baseline --games 10 --load-best --checkpoint-dir checkpoints/advanced"
-```
-
-5) Save/Load checkpoints (JVM)
-- Checkpoints are automatically saved during advanced training under `checkpoints/advanced`.
-- To start from a specific checkpoint while training:
-```bash
-./gradlew :integration:runCli --args="--train-advanced --cycles 5 --load checkpoints/advanced/checkpoint_v3.json"
-```
-
-6) Monitor progress
-- Console shows batch metrics (loss, entropy, grad_norm), evaluation summaries, and checkpoint paths.
-- For deeper analysis, see tests: `TrainingDebuggerTest`, `TrainingValidatorTest`.
-
-7) Determinism
-- Seeds are centralized via `SeedManager`; NN init, replay sampling, and exploration are seeded.
-- Seed metadata is stored in checkpoints; seed summary prints at pipeline startup.
-
-### Traditional (module) test commands
-```bash
-# Build and run tests
-./verify-build.sh                  # Convenience script
-./gradlew test                     # All modules
-
-# Useful subsets
-./gradlew chess-engine:jvmTest     # Chess engine tests
-./gradlew nn-package:jvmTest       # Neural network tests
-./gradlew rl-framework:jvmTest     # RL framework tests
-./gradlew integration:jvmTest      # Integration tests (pipeline/self‑play/monitoring)
-```
-
-### Performance Benchmarking
-```bash
-# Compare JVM vs Native performance (JVM is 5-8x faster for training)
-./benchmark-performance.sh
-
-# JVM-only benchmarks (works on all platforms)
-./benchmark-jvm-only.sh
-```
-Notes:
-- Scripts pin consistent JVM flags (`-Xms1g -Xmx1g -XX:+UseG1GC -XX:MaxGCPauseMillis=100`) and record environment metadata to `benchmark-results/**/metadata.txt`.
-- Benchmarks include warmup iterations to stabilize JIT/caches and print runtime/hardware details in results.
-
-### Chess Engine Demo
-```bash
-# Interactive chess engine demonstration
-./gradlew :chess-engine:runDemo
-```
-
-### CLI (Baseline Evaluation and Training)
-```bash
-# Evaluate agent vs baseline heuristic for N games (default N=5)
-./gradlew :integration:runCli --args="--eval-baseline --games 10"
-
-# Options:
-#   --max-steps M                  Limit steps per game (default 200)
-#   --colors white|black|alternate Play as White (default), Black, or alternate each game
-#   --seed S                       Set deterministic seed
-#   --load PATH                    Load a specific checkpoint before evaluating
-#   --load-best [--checkpoint-dir DIR] Load latest checkpoint from DIR (default checkpoints/advanced)
-
-# Examples:
-./gradlew :integration:runCli --args="--eval-baseline --games 20 --colors alternate --seed 12345"
-./gradlew :integration:runCli --args="--eval-baseline --games 10 --load-best"
-
-# Run advanced training for N cycles (resume best checkpoint if available)
-./gradlew :integration:runCli --args="--train-advanced --cycles 3 --resume-best"
-./gradlew :integration:runCli --args="--train-advanced --cycles 3 --seed 12345"
-```
-
-### Requirements
-- **JDK 21+** (required; toolchain targets Java 21)
-- **Gradle 8.4+** (included via wrapper)
-- **Native toolchain** (optional, for native compilation)
-
-## 🎯 Project Goals & Architecture
 
 ### Target: Production-Ready Chess RL System (in progress)
 - **Advanced Self-Play Training**: Agents learn chess through sophisticated self-play with concurrent game generation
@@ -183,6 +26,26 @@ chess-rl-bot/
   - Run JVM tests per module: `./gradlew :integration:jvmTest` (or `:nn-package:jvmTest`, `:chess-engine:jvmTest`)
   - Avoid top-level `build` if Native toolchains are present; or exclude native tasks: `./gradlew build -x nativeTest`.
 
+### Profile-based Training and Warm Start
+- Profiles live in `integration/profiles.yaml` and can be selected with `--profile NAME`.
+- Imitation bootstrap profile (loads a saved supervised model and tunes DQN settings for faster visible progress):
+  - `./gradlew :integration:runCli -Dargs="--train-advanced --cycles 3 --profile dqn_imitation_bootstrap"`
+- Explicitly override the model path:
+  - `./gradlew :integration:runCli -Dargs="--train-advanced --cycles 3 --profile dqn_imitation_bootstrap --load data/imitation_qnet.json"`
+- Collect teacher data and train imitation model:
+  - Collect: `./gradlew :chess-engine:runTeacherCollector -Dargs="--collect --games 50 --depth 2 --topk 5 --tau 1.0 --out data/teacher.ndjson"`
+  - Train: `./gradlew :chess-engine:runImitationTrainer -Dargs="--train-imitation --data data/teacher.ndjson --epochs 3 --batch 64 --lr 0.001 --smooth 0.05 --val-split 0.10 --out data/imitation_qnet.json"`
+
+### Non‑NN Evaluation: Minimax vs Heuristic
+- You can pit two non‑NN opponents against each other for fast, deterministic baselines:
+  - Minimax (White) vs Heuristic (Black):
+    - `./gradlew :integration:runCli -Dargs="--eval-non-nn --white minimax --black heuristic --games 50 --max-steps 200 --depth 2 --topk 5 --tau 1.0"`
+  - Heuristic (White) vs Minimax (Black):
+    - `./gradlew :integration:runCli -Dargs="--eval-non-nn --white heuristic --black minimax --games 50 --max-steps 200 --depth 2"`
+  - Notes:
+    - Pass `--seed S` to the CLI for reproducible runs.
+    - The Minimax teacher and Baseline heuristic live in different modules; this mode runs them head‑to‑head inside the integration environment.
+
 **Design Principles:**
 - **Modular & Testable**: Each package independently developed and tested (166+ tests)
 - **Performance First**: JVM optimization for training, native compilation for deployment
@@ -197,7 +60,7 @@ chess-rl-bot/
 ```kotlin
 // Create a neural network for chess position evaluation
 val network = FeedforwardNetwork(
-    inputSize = 776,  // Chess state encoding (8x8x12 + game state)
+    inputSize = 839,  // Chess state encoding aligned with chess-engine FeatureEncoding
     hiddenLayers = listOf(512, 256, 128),
     outputSize = 4096,  // Chess action space
     activationFunction = ReLUActivation(),
@@ -252,7 +115,7 @@ val pgn = game.toPGN()
 
 ```kotlin
 // Create a DQN agent for chess
-val qNetwork = FeedforwardNetwork(776, listOf(512, 256), 4096)
+val qNetwork = FeedforwardNetwork(839, listOf(512, 256), 4096)
 val targetNetwork = qNetwork.clone()
 val experienceReplay = CircularExperienceReplay<DoubleArray, Int>(capacity = 50000)
 
@@ -327,7 +190,7 @@ println("  Average reward: ${metrics.averageReward}")
 ```
 
 **Features:**
-- **ChessEnvironment**: 776-feature state encoding, 4096 action space with legal move filtering
+- **ChessEnvironment**: 839‑feature state encoding, 4096 action space with legal move filtering
 - **ChessAgent**: Neural network RL agent with comprehensive episode tracking
 - **Training Pipeline**: Batch processing (32-128 sizes), multiple sampling strategies
 - **Enhanced Metrics**: Detailed episode termination analysis and performance tracking
@@ -335,22 +198,39 @@ println("  Average reward: ${metrics.averageReward}")
 ## ✅ Status Reality Check
 
 What’s real today
-- Chess engine, NN core (forward/backward, layers, optimizers), integration scaffolding (pipeline, self‑play controller/system), shared metrics/reporting.
-- Seed/Determinism infrastructure and seeded wrappers matching current interfaces.
+- DQN with optimizer steps, target network synchronization, and valid‑action masking for next‑state targets (logged with “🧩”).
+- Parallel self‑play on JVM (fixed thread pool per batch); agent calls synchronized for thread safety.
+- Deterministic seeding threaded through NN init, exploration, and replay; seeds logged in checkpoints.
+- Checkpointing with retention policy (keep best/last N/every N‑th); configurable frequency and cleanup.
+- Profiles and CLI overrides for common workflows (DQN vs PG, concurrency, checkpoint cadence, retention).
 
-Important limitations
-- DQN: No optimizer step and no target network copy; illegal‑action masking not applied.
-- Policy Gradient: No real optimizer updates; batch training not wired.
-- Monitoring/Optimizers: PerformanceMonitor and JVMTrainingOptimizer collect simulated metrics and are not wired into real training loops.
-- Serialization: FeedforwardNetwork.save/load is stubbed (load throws).
-- Self‑play “concurrency”: Batched sequential execution with simulated concurrency.
+Known limitations
+- Per‑state masking caveat for replay: `getValidActions(state)` uses the live env board, not the passed state; exact masking for replay would require decode or per‑experience masks.
+- Monitoring: PerformanceMonitor/JVMTrainingOptimizer still produce simulated metrics; real timings aren’t wired into hot paths yet.
+- Compression: Checkpoints use `.json.gz` extension, but content is JSON (no gzip on JVM yet).
+- Opponent variety: Limited; richer opponent strategies can improve robustness.
 
-Near‑term plan
-- Replace simulated metrics with real batch metrics in pipeline (loss/entropy/grad‑norm).  
-- Centralize determinism (single run seed), thread through NN init, replay, and exploration; log in checkpoints.  
-- Minimal JVM save/load for networks; checkpoint + resume.  
-- Illegal‑action masking in DQN targets; maintain target sync cadence.  
-- Standardize logging/metrics and benchmark flags for reproducibility.
+Practical improvements (prioritized)
+- Top tier
+  - Shorten games (80–100) and add a small step‑limit penalty to increase reward variance.
+  - Enable positional reward shaping early to reduce sparsity; dial down later.
+  - Keep valid‑action masking on and verify the “🧩” logs once per run.
+  - Use parallel self‑play (set `maxConcurrentGames≈cores`).
+  - Use deterministic seeds for reproducible comparisons.
+  - Set checkpoint frequency/retention to avoid clutter and ease rollbacks.
+  - Tune DQN target sync (e.g., 100 default; 20 for debug visibility).
+
+- Second tier
+  - Maintain experience quality filtering; tune thresholds; expand chess‑specific features over time.
+  - Evaluate vs baseline heuristic to track win/draw/loss independent of self‑play.
+  - Early exploration warmup and rollback warmup for the first cycles.
+  - Treat step‑limit as draw for reporting (toggleable per profile).
+
+- Solid engineering practices
+  - Batch size ~64, Adam + HuberLoss, ReLU hidden layers.
+  - Cyclic buffers, preallocation; consider array pooling only if profiling shows churn.
+  - Replace simulated monitoring with real timings around NN forward/backward/train, replay sampling, and move generation.
+  - Lean on profiles + CLI overrides for repeatable experiments.
 
 ### 🏗️ **Foundation Components** (Tasks 1-4)
 - ✅ **Project Setup**: Kotlin Multiplatform with comprehensive CI/CD
@@ -366,13 +246,13 @@ Near‑term plan
 
 ### 🤖 **RL Framework** (Current)
 - ✅ **Core Interfaces**: Environment, Agent, Experience with generic type support
-- ⚠️ **DQN Algorithm**: Forward/backward only; missing optimizer step, target sync, and illegal‑action masking
-- ⚠️ **Policy Gradient**: Computes returns/advantages; missing proper optimizer/batch updates
-- ✅ **Experience Replay**: Circular and prioritized buffers; sampling can be optimized further
+- ✅ **DQN Algorithm**: Batched updates via TrainableNeuralNetwork, target network sync, valid‑action masking support
+- ⚠️ **Policy Gradient**: Basic returns/advantages implemented; optimizer/batch updates are minimal
+- ✅ **Experience Replay**: Circular and prioritized buffers
 - ✅ **Exploration Strategies**: Epsilon-greedy, Boltzmann exploration
 
 ### 🔗 **Chess RL Integration** (Tasks 7-8)
-- ✅ **ChessEnvironment**: RL-compatible interface with 776-feature state encoding
+- ✅ **ChessEnvironment**: RL-compatible interface with 839‑feature state encoding
 - ✅ **Action Encoding**: 4096 action space with legal move filtering and validation
 - ✅ **Reward System**: Configurable outcome-based and position-based rewards
 - ✅ **ChessAgent**: Neural network RL agent with comprehensive training metrics
@@ -485,79 +365,6 @@ Notes:
 - Sync uses a best‑effort weight copy when the underlying networks support synchronization.
 - The log helps verify cadence during debugging and tests.
 
-## � TODO:  Next Implementation Phase
-
-### 🎯 **Task 9: Advanced Self-Play Training System** (In Progress)
-**Goal**: Implement production-ready self-play system with concurrent game generation and sophisticated training pipeline
-
-#### **9.1 Concurrent Self-Play Engine** 
-- [ ] Multi-threaded agent vs agent game execution (1-8 parallel games)
-- [ ] Advanced experience collection with quality metrics and metadata
-- [ ] SelfPlayController integration with existing TrainingController
-- [ ] Comprehensive testing for concurrent game management
-
-#### **9.2 Advanced Training Pipeline Integration** ✅ **COMPLETED**
-- ✅ Enhanced training schedule with adaptive game/training ratios
-- ✅ Sophisticated experience buffer management (50K+ experiences)
-- ✅ Integration with existing batch training optimization (32-128 batch sizes)
-- ✅ Advanced checkpointing with model versioning and rollback
-
-**Implementation Details:**
-- **AdvancedSelfPlayTrainingPipeline**: Complete training orchestration with adaptive scheduling
-- **AdvancedExperienceManager**: Large-scale buffer management with quality assessment
-- **CheckpointManager**: Production-ready model persistence with rollback capabilities
-- **ConvergenceDetector**: Multi-criteria convergence analysis with automated recommendations
-- **Comprehensive Tests**: Integration and performance tests validating all components
-
-#### **9.3 Comprehensive Training Monitoring**
-- [ ] Real-time training metrics with statistical significance analysis
-- [ ] Game quality assessment (move diversity, strategic understanding)
-- [ ] Automated training issue detection and recovery mechanisms
-- [ ] Integration with enhanced episode tracking system
-
-#### **9.4 Production Debugging Tools**
-- [ ] Interactive game analysis with neural network output visualization
-- [ ] Manual validation tools for human-in-the-loop testing
-- [ ] Advanced debugging interface with training pipeline inspection
-- [ ] Performance profiling and optimization recommendations
-
-### 🎯 **Task 10: Production Training Interface** (Planned)
-**Goal**: Comprehensive training interface with advanced monitoring and system optimization
-
-#### **10.1 Advanced Training Control Interface**
-- [ ] Full training lifecycle management (start/pause/resume/stop/restart)
-- [ ] Real-time configuration adjustment with validation and rollback
-- [ ] Interactive training dashboard with comprehensive metrics visualization
-- [ ] Integration with existing manual validation and debugging tools
-
-#### **10.2 System Optimization & Performance Tuning**
-- [ ] JVM training optimization for sustained production workloads
-- [ ] Native deployment optimization for inference and game playing
-- [ ] Automated hyperparameter optimization with A/B testing
-- [ ] Performance monitoring with bottleneck identification and optimization
-
-#### **10.3 Complete Documentation & Deployment Preparation**
-- [ ] Comprehensive system documentation with implementation details
-- [ ] Production deployment guides with operational procedures
-- [ ] Training results analysis with performance benchmarking
-- [ ] Future development roadmap with extension possibilities
-
-### 🎯 **Task 11: Production Deployment & Validation** (Planned)
-**Goal**: Large-scale validation and production deployment preparation
-
-#### **11.1 Comprehensive System Validation**
-- [ ] Large-scale training validation (1000+ episodes)
-- [ ] Cross-platform deployment testing (Linux, macOS, Windows)
-- [ ] Agent performance validation against baseline chess engines
-- [ ] System integration and robustness testing
-
-#### **11.2 Production Deployment Preparation**
-- [ ] Deployment scripts and automated installation procedures
-- [ ] Operational procedures with monitoring, backup, and recovery
-- [ ] Production optimization and scaling capabilities
-- [ ] Quality assurance with automated testing and compliance
-
-### 📊 **Success Metrics for Remaining Tasks**
 
 #### **Task 9 Targets**
 - **Concurrent Games**: 1-8 parallel self-play games running efficiently
@@ -601,166 +408,6 @@ Based on comprehensive benchmarking across all components:
 - **Throughput**: ~5-7 episodes per second in test configurations
 - **Concurrent Training**: Support for 1-8 parallel self-play games (Task 9)
 
-## 🧪 Comprehensive Testing (166+ Tests)
-
-### **Test Categories**
-- **Unit Tests**: Individual component functionality and edge cases
-- **Integration Tests**: Cross-component interaction and data flow validation
-- **Performance Tests**: Benchmarking, optimization, and scalability validation
-- **Robustness Tests**: Error handling, recovery mechanisms, and failure scenarios
-
-### **Test Commands**
-```bash
-# Run all tests
-./gradlew test
-
-# Component-specific tests
-./gradlew integration:jvmTest     # Chess RL integration (19 tests)
-./gradlew chess-engine:jvmTest    # Chess engine validation (45+ tests)
-./gradlew nn-package:jvmTest      # Neural network library (38+ tests)
-./gradlew rl-framework:jvmTest    # RL algorithms (28+ tests)
-
-# Performance benchmarking
-./benchmark-performance.sh        # JVM vs Native comparison
-```
-
-## 📚 Documentation & Resources
-
-### **Project Specifications**
-- **Requirements**: `.kiro/specs/chess-rl-bot/requirements.md` - Updated production requirements
-- **Design**: `.kiro/specs/chess-rl-bot/design.md` - Architecture and implementation patterns  
-- **Tasks**: `.kiro/specs/chess-rl-bot/tasks.md` - Detailed implementation plan
-- **Updates Summary**: `.kiro/specs/chess-rl-bot/REQUIREMENTS_DESIGN_UPDATE_SUMMARY.md`
-
-### **Implementation Guides**
-- **Integration Status**: `integration/INTEGRATION_READY_SUMMARY.md` - Complete system overview
-- **Chess Agent**: `integration/CHESS_AGENT_IMPLEMENTATION.md` - Neural RL agent implementation
-- **Training Pipeline**: `integration/TRAINING_PIPELINE_IMPLEMENTATION.md` - Batch training system
-- **Episode Tracking**: `integration/EPISODE_TRACKING_IMPROVEMENTS.md` - Enhanced metrics system
-- **Advanced Self-Play**: `integration/ADVANCED_SELF_PLAY_INTEGRATION_SUMMARY.md` - Task 9.2 implementation details
-
-### **Development Resources**
-- **Performance Benchmarks**: JVM vs Native analysis with optimization guides
-- **API Documentation**: Comprehensive interfaces and usage examples in each package
-- **Testing Guides**: 166+ tests with validation procedures and best practices
-- **CI/CD Pipeline**: Multi-platform builds with automated testing and deployment
-
-## 🎯 Project Status & Roadmap
-
-### **Current Status: Advanced Self-Play Training (Tasks 1-8 Complete, Task 9.2 Complete)**
-This chess RL system demonstrates a complete, production-ready implementation with:
-
-- ✅ **Modular Architecture**: 4-package design with clean interfaces and comprehensive testing
-- ✅ **Performance Optimization**: JVM-first approach achieving 5-8x training speed advantage
-- ✅ **Advanced Features**: Sophisticated neural networks, RL algorithms, and training pipelines
-- ✅ **Production Quality**: Robust error handling, monitoring, validation, and debugging tools
-
-### **Next Phase: Advanced Self-Play Training (Task 9)**
-Building on the solid foundation to implement:
-- 🚧 **Concurrent Self-Play**: Multi-threaded agent vs agent training
-- 🚧 **Advanced Pipeline**: Sophisticated experience collection and batch processing
-- 🚧 **Comprehensive Monitoring**: Real-time metrics and automated issue detection
-- 🚧 **Production Debugging**: Interactive analysis and validation tools
-
-### **Future Vision: Complete Production System (Tasks 10-11)**
-- 📋 **Training Interface**: User-friendly control and visualization
-- 📋 **System Optimization**: Performance tuning and deployment preparation
-- 📋 **Production Deployment**: Large-scale validation and operational procedures
-
-## 🤝 Contributing & Learning
-
-This project serves as a comprehensive reference for:
-
-**🧠 Machine Learning Engineering:**
-- Neural network implementation from scratch with advanced optimizers
-- Reinforcement learning algorithms (DQN, Policy Gradient) with experience replay
-- Production ML training pipelines with batch processing and validation
-
-**⚙️ Software Architecture:**
-- Kotlin Multiplatform development with JVM/Native optimization
-- Modular system design with clean interfaces and comprehensive testing
-- Performance optimization and benchmarking methodologies
-
-**♟️ Domain-Specific Applications:**
-- Chess engine development with complete rule implementation
-- Game AI development with RL training and self-play systems
-- Production deployment of ML systems with monitoring and debugging
-
-**🔧 Development Best Practices:**
-- Test-driven development with 166+ comprehensive tests
-- CI/CD pipelines with multi-platform builds and quality gates
-- Documentation-driven development with specifications and implementation guides
-
----
-
-**🚀 This chess RL system demonstrates production-ready ML engineering with sophisticated training pipelines, comprehensive validation, and performance optimization - ready for advanced self-play implementation and production deployment!**
-
-## 📌 Roadmap Snapshot (11.5–11.13)
-
-- 11.8 Real Metrics [IMPORTANT, medium]: Wire true loss/entropy/grad‑norm from batch training into pipeline; remove simulated metrics. DoD: pipeline reports match algorithm outputs; values are finite and trend meaningfully.
-- 11.5 Determinism [IMPORTANT, fast]: Single run seed; thread through NN init, replay sampling, exploration; log with checkpoints. DoD: deterministic test mode and documented seed handling.
-- 11.9 Checkpointing (JVM) [IMPORTANT, medium]: Implement FeedforwardNetwork save/load (config + weights) and integrate with CheckpointManager. DoD: save→load roundtrip and resume training.
-- 11.11 Buffer API Cleanup [IMPROVEMENT, fast]: Remove duplicate agent buffer for off‑policy; use algorithm replay as source of truth; keep per‑episode buffer only for on‑policy. DoD: no duplicate growth paths.
-- 11.6 Logging & Metrics [IMPROVEMENT, fast]: Lightweight logger + standardized metric keys/units; optional CSV/JSON dumps. DoD: consistent logs and exportable snapshots.
-- 11.7 Benchmark Standardization [IMPROVEMENT, fast]: Pin JVM flags, add warmup, record HW/JDK metadata. DoD: reproducible outputs with metadata.
-- 11.12 Safety Checks [IMPROVEMENT, fast]: Stronger require/check on dims, masks, rewards; fail fast. DoD: clearer errors in edge cases.
-- 11.13 Baseline Opponent [ADDITION, medium]: Simple material+mobility heuristic for evaluation runs. DoD: baseline win/draw/loss metrics separate from self‑play.
-
-Notes
-- We trimmed legacy UI/demo tests and added fast smoke tests (DQN learning, invalid‑action penalty). Performance tests are scaled down for CI.
-## 🧭 End‑to‑End Guide (E2E)
-
-1) Prereqs
-- Install JDK 17+ and ensure `java -version` works.
-- Optional: deterministic runs — set a master seed in your code using `SeedManager.initializeWithSeed(12345L)`.
-
-2) Build and test
-```bash
-./gradlew clean build
-```
-
-3) Start training (advanced pipeline)
-```bash
-# Initialize and train for 5 cycles
-./gradlew :integration:runCli --args="--train-advanced --cycles 5"
-```
-
-4) Checkpoints and resume
-- Checkpoints are written under `checkpoints/advanced` by default (configurable in `AdvancedSelfPlayConfig`).
-- To resume training from the best checkpoint:
-```bash
-./gradlew :integration:runCli --args="--train-advanced --cycles 5 --resume-best"
-```
-
-5) Evaluate vs baseline heuristic opponent
-```bash
-# Quick evaluation: agent vs baseline
-./gradlew :integration:runCli --args="--eval-baseline --games 10"
-
-# With options
-./gradlew :integration:runCli --args="--eval-baseline --games 20 --colors alternate --seed 12345"
-./gradlew :integration:runCli --args="--eval-baseline --games 10 --load-best --checkpoint-dir checkpoints/advanced"
-```
-- Output includes JSON-like summary with `games`, `avg_reward`, `win_rate`, etc.
-
-6) Monitor and debug (optional)
-- Pipelines print batch metrics (loss, entropy, grad_norm) and validation insights.
-- Use tests like `TrainingDebuggerTest` and `TrainingValidatorTest` as usage examples for deeper analysis.
-
-7) Determinism notes
-- Seeds are centralized via `SeedManager`; NN init, replay sampling, and exploration are seeded.
-- Seed metadata is saved in checkpoint metadata; logs include a seed summary at startup.
-
-8) Saving and progress control
-- Checkpoints are created at cycle boundaries; best checkpoints are auto‑tracked.
-- Advanced pipeline supports pause/resume via methods; CLI exposes basic train/evaluate flows.
-- To load a specific checkpoint when training: `--load PATH`
-TODO – Training appears non‑progressing (needs fixes)
-
-Observed during Advanced Self‑Play run:
-- All self‑play games hit the step limit (avg length ~200), with 0% wins/draws recorded.
-- Batch training metrics show near‑constant high entropy (~8.27 ≈ ln(4096)) and tiny gradients, indicating a near‑uniform policy and ineffective updates.
-- Final “best performance” remains 0.0, and model rollback selects the initial checkpoint.
 
 Likely root causes and fixes:
 - Missing DQN next‑state action masking: DQN targets should only consider Q‑values over valid next actions. Without masking, targets can be dominated by invalid actions, flattening learning. FIX: Provide `mainAgent.setNextActionProvider(environment::getValidActions)` so DQN masks next‑state Q‑values. (Wired in AdvancedSelfPlayTrainingPipeline.)

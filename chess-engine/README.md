@@ -68,6 +68,53 @@ The chess engine has 48+ comprehensive unit tests covering all functionality:
 ./gradlew :chess-engine:clean :chess-engine:jvmTest
 ```
 
+### Teacher Dataset Tools
+
+Generate a teacher dataset (NDJSON) via minimax self-play and analyze its diversity.
+
+Collect a dataset:
+
+```bash
+./gradlew :chess-engine:runTeacherCollector -Dargs="--collect --games 50 --depth 2 --topk 8 --tau 1.2 --out data/teacher.ndjson"
+```
+
+Run the Diversity Report:
+
+```bash
+# Default input path: data/teacher.ndjson
+./gradlew :chess-engine:runDiversityReport
+
+# With explicit args
+./gradlew :chess-engine:runDiversityReport -Dargs="--data data/teacher.ndjson --top 20"
+```
+
+#### Diversity Report: What It Shows
+
+- Samples/Games: total rows and unique `game_id`s; average samples per game.
+- Side mix: count of `w`/`b` samples; should be roughly balanced in self-play.
+- Unique FENs: count and percentage of distinct positions; higher is better diversity.
+- Action coverage: unique `best_action` and unique actions appearing in `top_k`.
+- Avg `top_k` size: average length of `top_k` per sample (≤ configured K).
+- Policy entropy (bits): mean entropy of `teacher_policy`; higher implies more exploratory policies.
+- Game max ply: per-game maximum ply (half-moves) stats; many very short or always-capped games can signal issues.
+- Top first moves/replies: most frequent moves at ply 0 and ply 1; helps spot opening collapse.
+- Most repeated FENs: positions that show up the most; large counts indicate oversampling.
+
+#### Interpreting Results
+
+- Unique FEN ratio: aim for a healthy fraction (for small sets, >60%). If low, add exploration: increase `--topk`, increase `--tau`, add opening noise, or vary `--seed`.
+- Policy entropy: near 0 means a peaky, deterministic policy; raise `--tau` or add Dirichlet/ε-greedy noise. Very high with poor play may mean too much noise.
+- Opening spread: if a few moves dominate at ply 0/1, inject root noise or randomize the first few plies.
+- Repeated FENs: if repeats are high, lower `--max-repeats`, add exploration, or diversify seeds.
+- Game length: many very short games may indicate tactical blunders; extremely long games hitting max plies may suggest insufficient winning chances or shallow search.
+
+Tips for more diversity:
+
+- Increase `--topk` (e.g., 8–12) and `--tau` (e.g., 1.1–1.6).
+- Randomize seeds per game or per run via `--seed`.
+- Add opening noise (random first 2–4 plies) or ε-greedy sampling.
+- Consider Dirichlet root noise to broaden openings.
+
 ### Basic Usage Examples
 
 #### Creating and Using a Chess Game

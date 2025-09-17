@@ -432,8 +432,8 @@ class PerformanceBenchmarkSuite {
         
         // Simulate neural network operations
         repeat(1000) {
-            val input = DoubleArray(776) { Random.nextDouble() }
-            val weights = DoubleArray(776 * 512) { Random.nextDouble() }
+            val input = DoubleArray(ChessStateEncoder.TOTAL_FEATURES) { Random.nextDouble() }
+            val weights = DoubleArray(ChessStateEncoder.TOTAL_FEATURES * 512) { Random.nextDouble() }
             
             // Forward pass simulation
             var sum = 0.0

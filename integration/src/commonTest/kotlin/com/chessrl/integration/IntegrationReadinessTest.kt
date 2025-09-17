@@ -19,13 +19,13 @@ class IntegrationReadinessTest {
         
         // Test basic encoding
         val state = encoder.encode(board)
-        assertEquals(776, state.size, "State should have 776 features")
+        assertEquals(ChessStateEncoder.TOTAL_FEATURES, state.size, "State should have ${ChessStateEncoder.TOTAL_FEATURES} features")
         
         // Test state encoding after moves
         board.makeMove(Move(Position(1, 4), Position(3, 4))) // e2-e4
         board.switchActiveColor()
         val stateAfterMove = encoder.encode(board)
-        assertEquals(776, stateAfterMove.size, "State size should remain consistent")
+        assertEquals(ChessStateEncoder.TOTAL_FEATURES, stateAfterMove.size, "State size should remain consistent")
         
         // Verify state changes after move
         assertFalse(state.contentEquals(stateAfterMove), "State should change after move")
@@ -101,19 +101,19 @@ class IntegrationReadinessTest {
         
         // Test starting position (not terminal)
         env.reset()
-        assertFalse(env.isTerminal(DoubleArray(776)), "Starting position should not be terminal")
+        assertFalse(env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)), "Starting position should not be terminal")
         assertEquals(GameStatus.ONGOING, env.getGameStatus(), "Game should be ongoing")
         
         // Test checkmate position (terminal)
         val checkmatePosition = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3"
         assertTrue(env.loadFromFEN(checkmatePosition), "Should load checkmate position")
-        assertTrue(env.isTerminal(DoubleArray(776)), "Checkmate should be terminal")
+        assertTrue(env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)), "Checkmate should be terminal")
         assertEquals(GameStatus.BLACK_WINS, env.getGameStatus(), "Black should have won")
         
         // Test stalemate position (terminal)
         val stalematePosition = "7k/8/6QK/8/8/8/8/8 b - - 0 1"
         assertTrue(env.loadFromFEN(stalematePosition), "Should load stalemate position")
-        assertTrue(env.isTerminal(DoubleArray(776)), "Stalemate should be terminal")
+        assertTrue(env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)), "Stalemate should be terminal")
         assertEquals(GameStatus.DRAW_STALEMATE, env.getGameStatus(), "Should be stalemate draw")
         
         println("✅ Terminal State Integration: READY")
@@ -127,8 +127,8 @@ class IntegrationReadinessTest {
         
         // Test interface methods
         val initialState = env.reset()
-        assertEquals(776, initialState.size, "Reset should return correct state size")
-        assertEquals(776, env.getStateSize(), "State size should be 776")
+        assertEquals(ChessStateEncoder.TOTAL_FEATURES, initialState.size, "Reset should return correct state size")
+        assertEquals(ChessStateEncoder.TOTAL_FEATURES, env.getStateSize(), "State size should match encoder")
         assertEquals(4096, env.getActionSize(), "Action size should be 4096")
         
         // Test valid actions
@@ -139,7 +139,7 @@ class IntegrationReadinessTest {
         val firstAction = validActions.first()
         val stepResult = env.step(firstAction)
         
-        assertEquals(776, stepResult.nextState.size, "Next state should have correct size")
+        assertEquals(ChessStateEncoder.TOTAL_FEATURES, stepResult.nextState.size, "Next state should have correct size")
         assertTrue(stepResult.reward.isFinite(), "Reward should be finite")
         assertFalse(stepResult.done, "Game should not be done after first move")
         assertTrue(stepResult.info.isNotEmpty(), "Info should contain move information")
@@ -201,7 +201,7 @@ class IntegrationReadinessTest {
         assertTrue(initialMetrics.totalMaterialValue > 0, "Should have material on board")
         
         // Make a move and check metrics update
-        val validActions = env.getValidActions(DoubleArray(776))
+        val validActions = env.getValidActions(DoubleArray(ChessStateEncoder.TOTAL_FEATURES))
         env.step(validActions.first())
         
         val afterMoveMetrics = env.getChessMetrics()
@@ -221,15 +221,15 @@ class IntegrationReadinessTest {
         var stepCount = 0
         val maxSteps = 10 // Just test a few moves to verify functionality
         
-        while (!env.isTerminal(DoubleArray(776)) && stepCount < maxSteps) {
-            val validActions = env.getValidActions(DoubleArray(776))
+        while (!env.isTerminal(DoubleArray(ChessStateEncoder.TOTAL_FEATURES)) && stepCount < maxSteps) {
+            val validActions = env.getValidActions(DoubleArray(ChessStateEncoder.TOTAL_FEATURES))
             if (validActions.isEmpty()) break
             
             val randomAction = validActions.first() // Use first action instead of random for consistency
             val result = env.step(randomAction)
             
             assertTrue(result.reward.isFinite(), "Reward should always be finite")
-            assertEquals(776, result.nextState.size, "State size should remain consistent")
+            assertEquals(ChessStateEncoder.TOTAL_FEATURES, result.nextState.size, "State size should remain consistent")
             
             stepCount++
         }
@@ -264,7 +264,7 @@ class IntegrationReadinessTest {
         
         println("\n🚀 SYSTEM STATUS: READY FOR NEXT PHASE")
         println("   • All core interfaces implemented and tested")
-        println("   • State/action encoding verified (776 features, 4096 actions)")
+        println("   • State/action encoding verified (${ChessStateEncoder.TOTAL_FEATURES} features, 4096 actions)")
         println("   • Reward system with configurable shaping")
         println("   • Terminal detection with all game outcomes")
         println("   • Full RL Environment<DoubleArray, Int> compliance")

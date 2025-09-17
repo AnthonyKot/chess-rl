@@ -1,5 +1,7 @@
 # Advanced Training Control System
 
+> Note: Archived/overview document. For current commands and usage, see README.md and DQN.md. Integration module is JVM‑only; pass CLI args via `-Dargs="..."`.
+
 ## Overview
 
 The Advanced Training Control System provides production-ready training management for Chess RL with comprehensive lifecycle management, real-time configuration adjustment, experiment tracking, and seamless integration with existing controllers.

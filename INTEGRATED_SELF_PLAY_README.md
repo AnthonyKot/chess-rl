@@ -1,5 +1,7 @@
 # Integrated Self-Play Chess RL System
 
+> Note: Archived/overview document. For current training and evaluation commands, see the root README.md and DQN.md. Use `-Dargs` for CLI arguments.
+
 ## Overview
 
 The Integrated Self-Play Chess RL System addresses the integration gaps identified in the original self-play implementation by providing a complete, production-ready solution that properly connects all components:

@@ -376,7 +376,6 @@ class ChessTrainingValidatorTest {
         chessValidator.clearHistory()
     }
     
-    @Ignore("Heuristic-based; flaky in constrained environments")
     @Test
     fun testValidChessTraining() {
         // Arrange

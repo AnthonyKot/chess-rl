@@ -37,8 +37,15 @@ class CheckpointManager(
             // Generate checkpoint path
             val checkpointPath = generateCheckpointPath(version, metadata)
             
-            // Save agent state
+            // Save agent state at checkpointPath (legacy) and a dedicated model file alongside
             agent.save(checkpointPath)
+            // Also persist a clear model artifact for portability (not compressed)
+            runCatching {
+                val modelPath = checkpointPath
+                    .replace(".json.gz", "_qnet.json")
+                    .replace(".json", "_qnet.json")
+                agent.save(modelPath)
+            }
             
             // Create checkpoint info
             val checkpointInfo = CheckpointInfo(
@@ -98,8 +105,14 @@ class CheckpointManager(
                 }
             }
             
-            // Load agent state
-            agent.load(checkpointInfo.path)
+            // Load agent state – prefer dedicated model artifact if present/valid
+            val primary = checkpointInfo.path
+            val modelPath = primary
+                .replace(".json.gz", "_qnet.json")
+                .replace(".json", "_qnet.json")
+            val loaded = runCatching { agent.load(modelPath) }.isSuccess ||
+                         runCatching { agent.load(primary) }.isSuccess
+            if (!loaded) throw CheckpointException("Failed to load model from $modelPath or $primary")
             
             totalCheckpointsLoaded++
             
@@ -291,6 +304,58 @@ class CheckpointManager(
             cleanupActions = cleanupResults
         )
     }
+
+    /**
+     * Cleanup checkpoints based on a retention policy: keep best, last N, and optionally every N.
+     * Returns a cleanup summary describing deletions.
+     */
+    fun cleanupByRetention(retention: CheckpointRetention): CleanupSummary {
+        val beforeCount = checkpoints.size
+        val beforeSize = checkpoints.values.sumOf { it.fileSize }
+        val actions = mutableListOf<String>()
+
+        // Determine versions to keep
+        val all = checkpoints.values.sortedBy { it.version }
+        val keep = mutableSetOf<Int>()
+
+        if (retention.keepBest) {
+            bestCheckpoint?.let { keep.add(it.version) }
+        }
+
+        if (retention.keepLastN > 0) {
+            all.takeLast(retention.keepLastN).forEach { keep.add(it.version) }
+        }
+
+        if (retention.keepEveryN != null && retention.keepEveryN > 0) {
+            val n = retention.keepEveryN
+            all.forEach { info -> if (info.version % n == 0) keep.add(info.version) }
+        }
+
+        // Delete all not in keep set
+        var deleted = 0
+        var freed = 0L
+        val toDelete = all.filter { it.version !in keep }
+        for (info in toDelete) {
+            if (deleteCheckpoint(info.version)) {
+                deleted++
+                freed += info.fileSize
+                actions.add("Deleted version ${info.version} per retention policy")
+            }
+        }
+
+        val afterCount = checkpoints.size
+        val afterSize = checkpoints.values.sumOf { it.fileSize }
+
+        return CleanupSummary(
+            checkpointsDeleted = deleted,
+            sizeFreed = freed,
+            checkpointsBefore = beforeCount,
+            checkpointsAfter = afterCount,
+            sizeBefore = beforeSize,
+            sizeAfter = afterSize,
+            cleanupActions = actions
+        )
+    }
     
     // Private helper methods
     
@@ -397,6 +462,13 @@ data class CheckpointConfig(
     val compressionEnabled: Boolean = true,
     val validationEnabled: Boolean = true,
     val autoCleanupEnabled: Boolean = true
+)
+
+/** Retention policy for checkpoint cleanup */
+data class CheckpointRetention(
+    val keepBest: Boolean = true,
+    val keepLastN: Int = 2,
+    val keepEveryN: Int? = null
 )
 
 /**

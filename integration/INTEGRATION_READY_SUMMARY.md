@@ -1,5 +1,7 @@
 # Chess RL Integration - Ready for Next Steps
 
+> Note: For up-to-date usage, profile-based warm start from imitation, and current state encoding, see README.md and DQN.md. This document is an archived status summary.
+
 ## 🎯 **Integration Status: COMPLETE & READY**
 
 All major integration components have been implemented, tested, and are ready for the next development phase.
@@ -56,7 +58,7 @@ All major integration components have been implemented, tested, and are ready fo
 - Exploration strategies (Epsilon-Greedy, Boltzmann)
 
 ### **Chess Environment** ✅ PRODUCTION READY
-- Complete state encoding (776 features: 8x8x12 piece planes + game state)
+- Complete state encoding (839 features: 12 piece planes + side to move + castling + en passant one‑hot 64 + clocks)
 - Action encoding (4096 action space with move validation)
 - Reward system with configurable outcome and position-based rewards
 - Chess-specific metrics and position evaluation
