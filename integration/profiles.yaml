@@ -1,25 +1,39 @@
   dqn_unlock_elo_prioritized:
-    # Unlock phase with prioritized replay + Elo-based best selection parameters
-    hiddenLayers: 1024,1024,256
+    # Unlock phase with prioritized replay + optimized for large network
+    hiddenLayers: 768,512,256  # Balanced capacity vs speed
     enableDoubleDQN: true
     maxStepsPerGame: 100
-    maxConcurrentGames: 8
-    explorationRate: 0.20
+    maxConcurrentGames: 6  # Reduced for larger network memory usage
+    
+    # Learning parameters optimized for larger network
+    learningRate: 0.0005  # Lower for stability
+    explorationRate: 0.15  # Start more conservative
     explorationWarmupCycles: 8
-    explorationWarmupRate: 0.35
+    explorationWarmupRate: 0.25  # Lower warmup rate
+    explorationDecay: 0.995  # Slower decay
+    
+    # Opponent configuration
     opponentWarmupCycles: 8
     opponentUpdateStrategy: HISTORICAL
     opponentUpdateFrequency: 1
     opponentHistoryLag: 1
+    
+    # Reward structure
     enablePositionRewards: false
     drawReward: -0.2
     stepLimitPenalty: 0
-    # Right-size per-step penalty; keep win/loss at ±1
     stepPenalty: -0.002
-    # Disable early: let decisive outcomes dominate reward signal
     gameLengthNormalization: false
-    batchSize: 32
-    targetUpdateFrequency: 10
+    
+    # Training parameters optimized for large network
+    batchSize: 64  # Larger batches for stable gradients
+    targetUpdateFrequency: 100  # Less frequent for stability
+    
+    # Regularization (critical for large networks)
+    l2Regularization: 0.0001
+    gradientClipping: 1.0
+    
+    # Checkpointing
     checkpointDirectory: checkpoints/unlock_elo_prioritized
     checkpointInterval: 5
     autoCleanupOnFinish: true
@@ -27,6 +41,7 @@
     keepLastN: 2
     treatStepLimitAsDraw: true
     replayType: PRIORITIZED
+    
     # Anti-repetition controls
     enableLocalThreefoldDraw: true
     localThreefoldThreshold: 3

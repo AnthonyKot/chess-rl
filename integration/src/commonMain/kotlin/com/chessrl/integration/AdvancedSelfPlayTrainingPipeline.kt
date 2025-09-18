@@ -781,9 +781,9 @@ class AdvancedSelfPlayTrainingPipeline(
                 stepPenalty = 0.0, stepLimitPenalty = -0.5, enablePositionRewards = false, gameLengthNormalization = false, maxGameLength = 200
             )
         )
-        // Small exploration to break symmetry
-        runCatching { current.setExplorationRate(0.05) }
-        runCatching { opp.setExplorationRate(0.05) }
+        // Moderate exploration to break symmetry and prevent repetitive play
+        runCatching { current.setExplorationRate(0.15) }
+        runCatching { opp.setExplorationRate(0.15) }
 
         var wins = 0
         var draws = 0
@@ -793,8 +793,7 @@ class AdvancedSelfPlayTrainingPipeline(
         repeat(games) {
             var state = env.reset()
             var steps = 0
-            val fenCounts = mutableMapOf(env.getCurrentBoard().toFEN() to 1)
-            var trippedLocalThreefold = false
+            // Remove flawed local threefold detection - let chess engine handle it properly
             while (!env.isTerminal(state) && steps < 200) {
                 val valid = env.getValidActions(state)
                 if (valid.isEmpty()) break
@@ -804,18 +803,13 @@ class AdvancedSelfPlayTrainingPipeline(
                 val step = env.step(action)
                 state = step.nextState
                 steps++
-                val fen = env.getCurrentBoard().toFEN()
-                val cnt = (fenCounts[fen] ?: 0) + 1
-                fenCounts[fen] = cnt
-                if (cnt >= 3) { trippedLocalThreefold = true; break }
                 if (step.done) break
             }
             val status = env.getGameStatus().name
             val outcomeA = when {
-                trippedLocalThreefold -> 0
                 status.contains("WHITE_WINS") -> if (currentIsWhite) 1 else -1
                 status.contains("BLACK_WINS") -> if (!currentIsWhite) 1 else -1
-                else -> 0
+                else -> 0  // Legitimate draws or step-limited games
             }
             when (outcomeA) {
                 1 -> wins++

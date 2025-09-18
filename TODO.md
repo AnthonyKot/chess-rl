@@ -1,3 +1,53 @@
+# 🧠 Network Architecture Optimization (Priority: Tomorrow)
+
+## Current Issue
+The default network `[512, 256, 128]` (~1.4M params) may be too small for chess complexity. User experimented with `[1024, 1024, 256]` (~4.2M params) but needs optimization guidance.
+
+## Recommended Approach
+
+### Phase 1: Balanced Architecture (Start Here) ✅ IMPLEMENTED
+```yaml
+# Updated in profiles.yaml - dqn_unlock_elo_prioritized
+hiddenLayers: [768, 512, 256]  # ~2.1M params - sweet spot
+batchSize: 64                  # Increased from 32
+targetUpdateFrequency: 100     # Increased from 10 (critical fix)
+learningRate: 0.0005          # Lowered for stability
+maxConcurrentGames: 6         # Reduced for memory
+l2Regularization: 0.0001      # Added regularization
+gradientClipping: 1.0         # Prevent exploding gradients
+```
+
+### Phase 2: If Phase 1 Works Well, Try Large Network
+```yaml
+# Create new profile: dqn_unlock_large
+hiddenLayers: [1024, 1024, 256]  # ~4.2M params
+batchSize: 128                   # Must increase for large networks
+targetUpdateFrequency: 200       # Much less frequent updates
+learningRate: 0.0003            # Lower learning rate
+maxConcurrentGames: 4           # Reduce for memory constraints
+```
+
+## Key Hyperparameter Rules
+- **Target Update Frequency**: Small networks (10-50), Medium (100-200), Large (200-500)
+- **Batch Size Scaling**: 512→32-64, 768→64-96, 1024→128-256
+- **Learning Rate**: <2M params→0.001, 2M-5M→0.0005, >5M→0.0003
+
+## Test Commands
+```bash
+# Phase 1: Test balanced architecture
+./gradlew :integration:runCli -Dargs="--train-advanced --cycles 5 --profile dqn_unlock_elo_prioritized"
+
+# Monitor: Loss convergence, policy entropy, win/draw ratios, training speed
+```
+
+## Expected Results
+- Better pattern recognition than small network
+- More stable training than original large network  
+- ~3-5 episodes/sec (vs 5-7 with smaller network)
+- Improved strategic play after 10-20 cycles
+
+---
+
 ▌Can we teach model to play as good as some simple strategy, which let's say look 2-3 moves formward and use figures value for position estimate and make a move. Seems like self playing doesn't work/learn very fast. I suggest to create special mode to
 ▌create baseline model which learn from such simple strategy, by adding reward for selecting simple strategy move 
 

@@ -48,7 +48,7 @@ data class TrainingConfiguration(
     val maxStepsPerGame: Int = 200,
     
     // Performance configuration
-    val parallelGames: Int = 1,
+    val parallelGames: Int = 4,
     val enableJvmOptimizations: Boolean = true,
     val memoryManagementMode: String = "auto", // auto, conservative, aggressive
     
