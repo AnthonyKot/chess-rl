@@ -22,9 +22,9 @@ Purpose: Run a reliable self-learning chess experiment by focusing on the minima
   - Minimal metrics collector (no dashboards): `integration/AdvancedMetricsCollector.kt`
 
 Immediate next core fixes (must-have for “real learning”)
-- RL DQN: ensure optimizer step is called with batched targets (or add `trainBatch` API usage in algorithm) and implement target-network sync. File: `rl-framework/RLAlgorithms.kt`.
-- Policy Gradient: use proper log-prob gradient objective and batched updates. File: `rl-framework/RLAlgorithms.kt`.
-- Mask illegal actions when computing Q-targets. Files: `rl-framework/RLAlgorithms.kt`, `integration/ChessEnvironment.kt`.
+- DQN batched updates and target-network sync: implemented via `agent.trainBatch` and configurable `targetUpdateFrequency`.
+- Strict legal-move selection: enforced at adapter boundary; the agent only returns legal actions.
+- Next-state valid-action masking for targets: provider wired (`setNextActionProvider`); enhancement to add per-state masking for replay (decode or per-experience masks).
 
 ## Detached For Now — Return After Core Is Green
 
@@ -122,12 +122,20 @@ These tests are performance‑sensitive and can be flaky or slow in constrained 
 
 ## Quick Checklist for Core Self‑Learning Run
 
-- [ ] Fix DQN optimizer step + target network sync (rl-framework)
-- [ ] Apply legal‑action masking for targets (rl-framework + integration)
+- [x] DQN batched updates + target sync (rl-framework + integration)
+- [x] Strict legal‑move selection at adapter boundary
+- [x] Next‑state masking provider wired (enhance to per‑state masking)
 - [ ] Verify Policy Gradient log‑prob objective and updates (rl-framework)
-- [ ] Run `SelfPlayController` with `SelfPlayConfig` to generate experiences and train
-- [ ] Log basic metrics (win/draw/loss, average reward, batch loss) via `AdvancedMetricsCollector`
-- [ ] Save/load checkpoints for resuming runs (JVM)
+- [x] Run advanced pipeline with head-to-head promotion vs previous best per cycle
+- [x] Log core metrics and write canonical best artifacts (no Elo)
+- [x] Save/load checkpoints and resume runs (JVM)
+
+## Recent Updates
+- Best selection: head-to-head vs previous best each cycle; promote on tie/win. No Elo.
+- Sidecar metadata and pointer file record `performance` (outcome score), not Elo.
+- Checkpoint validation is existence-based and never blocks loads.
+- Eval-baseline JSON prints win/draw/loss and lengths (no performance_score).
+- Unlock profile: modest per-step penalty (≈ −0.002) and game-length normalization disabled early to favor decisive outcomes.
 
 ## Notes
 

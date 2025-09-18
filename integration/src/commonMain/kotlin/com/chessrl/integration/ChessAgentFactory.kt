@@ -17,7 +17,8 @@ object ChessAgentFactory {
         learningRate: Double = 0.001,
         explorationRate: Double = 0.1,
         config: ChessAgentConfig = ChessAgentConfig(),
-        enableDoubleDQN: Boolean = false
+        enableDoubleDQN: Boolean = false,
+        replayType: String = "UNIFORM"
     ): ChessAgent {
         return RealChessAgentFactory.createRealDQNAgent(
             inputSize = ChessStateEncoder.TOTAL_FEATURES, // Chess state features
@@ -28,7 +29,8 @@ object ChessAgentFactory {
             batchSize = config.batchSize,
             maxBufferSize = config.maxBufferSize,
             targetUpdateFrequency = config.targetUpdateFrequency,
-            doubleDqn = enableDoubleDQN
+            doubleDqn = enableDoubleDQN,
+            replayType = replayType
         ).let { realAgent ->
             ChessAgentAdapter(realAgent, config)
         }
@@ -43,7 +45,8 @@ object ChessAgentFactory {
         learningRate: Double = 0.001,
         explorationRate: Double = 0.1,
         config: ChessAgentConfig = ChessAgentConfig(),
-        seedManager: SeedManager = SeedManager.getInstance()
+        seedManager: SeedManager = SeedManager.getInstance(),
+        replayType: String = "UNIFORM"
     ): ChessAgent {
         return RealChessAgentFactory.createSeededDQNAgent(
             inputSize = ChessStateEncoder.TOTAL_FEATURES,
@@ -55,7 +58,8 @@ object ChessAgentFactory {
             maxBufferSize = config.maxBufferSize,
             neuralNetworkRandom = seedManager.getNeuralNetworkRandom(),
             explorationRandom = seedManager.getExplorationRandom(),
-            replayBufferRandom = seedManager.getReplayBufferRandom()
+            replayBufferRandom = seedManager.getReplayBufferRandom(),
+            replayType = replayType
         ).let { realAgent ->
             ChessAgentAdapter(realAgent, config)
         }
@@ -72,7 +76,21 @@ class ChessAgentAdapter(
 ) : ChessAgent {
     
     override fun selectAction(state: DoubleArray, validActions: List<Int>): Int {
-        return realAgent.selectAction(state, validActions)
+        val proposed = realAgent.selectAction(state, validActions)
+        if (proposed in validActions) return proposed
+        // Strict masking: fall back to a legal action only
+        return try {
+            val probs = realAgent.getActionProbabilities(state, validActions)
+            if (probs.isNotEmpty()) {
+                // Pick highest-prob legal action
+                probs.maxByOrNull { it.value }?.key ?: validActions.first()
+            } else {
+                val q = realAgent.getQValues(state, validActions)
+                if (q.isNotEmpty()) q.maxByOrNull { it.value }?.key ?: validActions.first() else validActions.first()
+            }
+        } catch (_: Throwable) {
+            validActions.first()
+        }
     }
     
     override fun learn(experience: Experience<DoubleArray, Int>) {

@@ -149,18 +149,34 @@ object CLIRunner {
         } ?: run {
             if (args.contains("--load-best")) {
                 val dir = args.getAfter("--checkpoint-dir") ?: AdvancedSelfPlayConfig().checkpointDirectory
-                findBestCheckpointPath(dir)?.let { bestPrimary ->
-                    // Prefer dedicated model artifact if present
-                    val modelPath = bestPrimary
-                        .replace(".json.gz", "_qnet.json")
-                        .replace(".json", "_qnet.json")
-                    val resolved = resolvePath(modelPath)
-                    runCatching { agent.load(resolved) }
-                        .recoverCatching {
-                            // Fallback to primary checkpoint path
-                            agent.load(resolvePath(bestPrimary))
+                resolveBestModelPath(dir)?.let { best ->
+                    val resolved = resolvePath(best)
+                    // Print performance score if sidecar meta exists
+                    runCatching {
+                        fun metaFor(p: String): String {
+                            return if (p.endsWith("_qnet.json")) p.replace("_qnet.json", "_qnet_meta.json") else "$p.meta.json"
                         }
-                        .onFailure { println("Warning: failed to load best checkpoint: ${it.message}") }
+                        val meta = java.nio.file.Path.of(metaFor(resolved))
+                        if (java.nio.file.Files.exists(meta)) {
+                            val txt = java.nio.file.Files.readString(meta)
+                            val perfIdx = txt.indexOf("\"performance\":")
+                            val perf = if (perfIdx >= 0) txt.substring(perfIdx + 14).takeWhile { it !in listOf(',', '}', ' ', '\n', '\r') } else null
+                            if (perf != null) println("Model performance (meta): $perf")
+                        }
+                    }
+                    runCatching { agent.load(resolved) }
+                        .onFailure { println("Warning: failed to load best model: ${it.message}") }
+                } ?: run {
+                    // Final fallback: latest checkpoint
+                    findBestCheckpointPath(dir)?.let { latest ->
+                        val modelPath = latest
+                            .replace(".json.gz", "_qnet.json")
+                            .replace(".json", "_qnet.json")
+                        val resolved = resolvePath(modelPath)
+                        runCatching { agent.load(resolved) }
+                            .recoverCatching { agent.load(resolvePath(latest)) }
+                            .onFailure { println("Warning: failed to load latest checkpoint: ${it.message}") }
+                    }
                 }
             }
         }
@@ -211,19 +227,24 @@ object CLIRunner {
                 steps++
             }
             val status = env.getGameStatus().name
-            val outcome = when {
+            val raw = when {
                 status.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
                 status.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
                 status.contains("DRAW") || status.contains("ONGOING") -> GameOutcome.DRAW
                 else -> GameOutcome.DRAW
             }
-            when (outcome) {
-                GameOutcome.WHITE_WINS -> wins++
-                GameOutcome.BLACK_WINS -> losses++
-                GameOutcome.DRAW, GameOutcome.ONGOING -> draws++
+            val agentOutcome = when (raw) {
+                GameOutcome.WHITE_WINS -> if (agentIsWhite) 1 else -1
+                GameOutcome.BLACK_WINS -> if (!agentIsWhite) 1 else -1
+                else -> 0
             }
-            // Use terminal outcome score for evaluation rather than per-step shaped reward
-            totalOutcomeScore += when (outcome) {
+            when (agentOutcome) {
+                1 -> wins++
+                -1 -> losses++
+                else -> draws++
+            }
+            // Use terminal outcome score from the agent's perspective
+            totalOutcomeScore += when (raw) {
                 GameOutcome.WHITE_WINS -> if (agentIsWhite) 1.0 else -1.0
                 GameOutcome.BLACK_WINS -> if (!agentIsWhite) 1.0 else -1.0
                 else -> 0.0
@@ -234,7 +255,7 @@ object CLIRunner {
                     gameIndex = idx,
                     gameLength = steps,
                     totalReward = rewardSum,
-                    gameOutcome = outcome,
+                    gameOutcome = raw,
                     finalPosition = env.getCurrentBoard().toFEN()
                 )
             )
@@ -247,17 +268,14 @@ object CLIRunner {
         val winRate = wins.toDouble() / counted
         val drawRate = draws.toDouble() / counted
         val lossRate = losses.toDouble() / counted
-        val perfScore = calculatePerformanceScore(avgReward, winRate, drawRate, avgLen, maxSteps)
-
-        // Print concise JSON-like summary
+        // Print concise JSON-like summary (no performance_score)
         println("{" +
             "\"games\":$games," +
             "\"avg_reward\":$avgReward," +
             "\"avg_length\":$avgLen," +
             "\"win_rate\":$winRate," +
             "\"draw_rate\":$drawRate," +
-            "\"loss_rate\":$lossRate," +
-            "\"performance_score\":$perfScore" +
+            "\"loss_rate\":$lossRate" +
         "}")
     }
 
@@ -268,6 +286,13 @@ object CLIRunner {
         val games = args.getAfter("--games")?.toIntOrNull() ?: 20
         val maxSteps = args.getAfter("--max-steps")?.toIntOrNull() ?: 120
         val evalEpsilon = args.getAfter("--eval-epsilon")?.toDoubleOrNull() ?: 0.0
+        val enableLocalThreefold = args.contains("--local-threefold")
+        val localThreefoldThreshold = args.getAfter("--threefold-threshold")?.toIntOrNull() ?: 3
+        val invalidLoss = args.contains("--invalid-loss")
+        // Early adjudication flags (optional)
+        val enableAdjudication = args.contains("--adjudicate")
+        val resignMaterial = args.getAfter("--resign-material")?.toIntOrNull() ?: 9
+        val noProgressPlies = args.getAfter("--no-progress-plies")?.toIntOrNull() ?: 40
         val dumpDraws = args.contains("--dump-draws")
         val dumpLimit = args.getAfter("--dump-limit")?.toIntOrNull() ?: 3
 
@@ -326,7 +351,9 @@ object CLIRunner {
         var drawFifty = 0
         var drawInsufficient = 0
         var drawOther = 0
+        var drawLocalThreefold = 0
         var totalInvalid = 0
+        var invalidLossA = 0
 
         var aStartsWhite = true
         var dumped = 0
@@ -336,25 +363,97 @@ object CLIRunner {
             val moveList = mutableListOf<String>()
             val startFen = env.getCurrentBoard().toFEN()
             var midFen: String? = null
+            val fenCounts = mutableMapOf(startFen to 1)
+            var trippedLocalThreefold = false
+            var forcedOutcomeFromInvalid: Int? = null // 1 = A wins, -1 = A loses
+            var adjudicatedOutcomeA: Int? = null // 1 = A wins; -1 = A loses; 0 = draw
+            // Track no-progress plies (no capture and no check) via FEN material totals and IN_CHECK
+            fun matTotals(fen: String): Pair<Int, Int> {
+                var w = 0; var b = 0
+                for (ch in fen.takeWhile { it != ' ' }) {
+                    when (ch) {
+                        'P' -> w += 1; 'p' -> b += 1
+                        'N', 'B' -> w += 3; 'n', 'b' -> b += 3
+                        'R' -> w += 5; 'r' -> b += 5
+                        'Q' -> w += 9; 'q' -> b += 9
+                    }
+                }
+                return w to b
+            }
+            var lastTotals = matTotals(startFen)
+            var noProg = 0
             while (!env.isTerminal(state) && steps < maxSteps) {
                 val valid = env.getValidActions(state)
                 if (valid.isEmpty()) break
                 val active = env.getCurrentBoard().getActiveColor()
                 val aTurn = (active.name.contains("WHITE") && aStartsWhite) || (active.name.contains("BLACK") && !aStartsWhite)
-                val action = if (aTurn) agentA.selectAction(state, valid) else agentB.selectAction(state, valid)
-                val step = env.step(action)
-                if (step.info["error"] != null) totalInvalid++
+                var chosen = if (aTurn) agentA.selectAction(state, valid) else agentB.selectAction(state, valid)
+                if (chosen !in valid) {
+                    // Guard against any buggy selection; fall back to a valid action
+                    chosen = valid.first()
+                }
+                var step = env.step(chosen)
+                if (step.info["error"] != null) {
+                    totalInvalid++
+                    // Retry once with a random valid action to avoid getting stuck on invalids
+                    val fallback = valid.random()
+                    step = env.step(fallback)
+                    if (step.info["error"] != null) {
+                        totalInvalid++
+                        if (invalidLoss) {
+                            // Assign loss to the side that failed to produce a valid move twice
+                            forcedOutcomeFromInvalid = if (aTurn) -1 else 1
+                            if (aTurn) invalidLossA++
+                        }
+                        // Terminate the game on repeated invalids
+                        break
+                    }
+                }
                 step.info["move"]?.let { moveList.add(it.toString()) }
                 state = step.nextState
                 steps++
                 if (midFen == null && steps >= maxSteps / 2) {
                     midFen = env.getCurrentBoard().toFEN()
                 }
+                if (enableLocalThreefold) {
+                    val fen = env.getCurrentBoard().toFEN()
+                    val cnt = (fenCounts[fen] ?: 0) + 1
+                    fenCounts[fen] = cnt
+                    if (cnt >= localThreefoldThreshold) {
+                        trippedLocalThreefold = true
+                        break
+                    }
+                }
+                if (enableAdjudication && adjudicatedOutcomeA == null) {
+                    val fenNow = env.getCurrentBoard().toFEN()
+                    val (wNow, bNow) = matTotals(fenNow)
+                    val (wPrev, bPrev) = lastTotals
+                    val capture = (wNow + bNow) < (wPrev + bPrev)
+                    val statusNow = env.getGameStatus()
+                    val inCheck = statusNow.name.contains("IN_CHECK")
+                    noProg = if (capture || inCheck) 0 else noProg + 1
+                    lastTotals = (wNow to bNow)
+                    val matDiff = wNow - bNow
+                    if (kotlin.math.abs(matDiff) >= resignMaterial) {
+                        adjudicatedOutcomeA = if (matDiff > 0) {
+                            if (aStartsWhite) 1 else -1
+                        } else {
+                            if (!aStartsWhite) 1 else -1
+                        }
+                        break
+                    }
+                    if (noProg >= noProgressPlies) {
+                        adjudicatedOutcomeA = 0
+                        break
+                    }
+                }
             }
             totalLen += steps
             val status = env.getGameStatus().name
             val stepLimited = steps >= maxSteps && !env.isTerminal(state)
             val outcomeA = when {
+                forcedOutcomeFromInvalid != null -> forcedOutcomeFromInvalid!!
+                trippedLocalThreefold -> 0
                 status.contains("WHITE_WINS") -> if (aStartsWhite) 1 else -1
                 status.contains("BLACK_WINS") -> if (!aStartsWhite) 1 else -1
                 else -> 0
@@ -364,7 +463,8 @@ object CLIRunner {
                 -1 -> lossesA++
                 else -> {
                     draws++
-                    if (stepLimited) drawStepLimit++ else when {
+                    if (trippedLocalThreefold) drawLocalThreefold++
+                    else if (stepLimited) drawStepLimit++ else when {
                         status.contains("STALEMATE") -> drawStalemate++
                         status.contains("REPETITION") -> drawRepetition++
                         status.contains("FIFTY_MOVE_RULE") -> drawFifty++
@@ -374,7 +474,7 @@ object CLIRunner {
                     if (dumpDraws && dumped < dumpLimit) {
                         dumped++
                         println("--- Draw #$dumped ---")
-                        println("Reason: ${if (stepLimited) "STEP_LIMIT" else status}")
+                        println("Reason: ${when { trippedLocalThreefold -> "LOCAL_THREEFOLD"; stepLimited -> "STEP_LIMIT"; else -> status }}")
                         println("Steps: $steps / max=$maxSteps")
                         println("Start FEN: $startFen")
                         midFen?.let { println("Mid FEN: $it") }
@@ -401,13 +501,15 @@ object CLIRunner {
                 "\"draw_rate\":$drawRate," +
                 "\"loss_rate\":$lossRate," +
                 "\"invalid_moves\":$totalInvalid," +
+                "\"invalid_loss_A\":$invalidLossA," +
                 "\"draw_details\":{" +
                     "\"step_limit\":$drawStepLimit," +
                     "\"stalemate\":$drawStalemate," +
                     "\"repetition\":$drawRepetition," +
                     "\"fifty_move\":$drawFifty," +
                     "\"insufficient\":$drawInsufficient," +
-                    "\"other\":$drawOther" +
+                    "\"other\":$drawOther," +
+                    "\"local_threefold\":$drawLocalThreefold" +
                 "}" +
                 "}")
     }
@@ -424,24 +526,7 @@ object CLIRunner {
         return candidates.firstOrNull { java.nio.file.Files.exists(java.nio.file.Path.of(it)) } ?: raw
     }
 
-    private fun calculatePerformanceScore(
-        avgReward: Double,
-        winRate: Double,
-        drawRate: Double,
-        avgGameLength: Double,
-        maxStepsPerGame: Int
-    ): Double {
-        val rewardWeight = 0.4
-        val winRateWeight = 0.3
-        val drawRateWeight = 0.1
-        val gameLengthWeight = 0.2
-        val normalizedReward = ((avgReward + 1.0) / 2.0).coerceIn(0.0, 1.0)
-        val normalizedGameLength = 1.0 - (avgGameLength / maxStepsPerGame).coerceIn(0.0, 1.0)
-        return rewardWeight * normalizedReward +
-                winRateWeight * winRate +
-                drawRateWeight * drawRate +
-                gameLengthWeight * normalizedGameLength
-    }
+    // performance_score removed from outputs; report raw rates and lengths only.
 
     private fun trainAdvanced(args: List<String>) {
         val cycles = args.getAfter("--cycles")?.toIntOrNull() ?: 3
@@ -481,6 +566,9 @@ object CLIRunner {
 
         val tunedConfig = AdvancedSelfPlayConfig(
             hiddenLayers = hiddenFromCli ?: hiddenFromProfile ?: AdvancedSelfPlayConfig().hiddenLayers,
+            initialGamesPerCycle = profile?.get("initialGamesPerCycle")?.toIntOrNull() ?: AdvancedSelfPlayConfig().initialGamesPerCycle,
+            minGamesPerCycle = profile?.get("minGamesPerCycle")?.toIntOrNull() ?: AdvancedSelfPlayConfig().minGamesPerCycle,
+            maxGamesPerCycle = profile?.get("maxGamesPerCycle")?.toIntOrNull() ?: AdvancedSelfPlayConfig().maxGamesPerCycle,
             maxStepsPerGame = args.getAfter("--max-steps")?.toIntOrNull()
                 ?: profile?.get("maxStepsPerGame")?.toIntOrNull() ?: 100,
             enablePositionRewards = profile?.get("enablePositionRewards")?.toBooleanStrictOrNull() ?: true,
@@ -504,6 +592,10 @@ object CLIRunner {
             stepLimitPenalty = profile?.get("stepLimitPenalty")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().stepLimitPenalty,
             drawReward = args.getAfter("--draw-reward")?.toDoubleOrNull()
                 ?: profile?.get("drawReward")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().drawReward,
+            stepPenalty = args.getAfter("--step-penalty")?.toDoubleOrNull()
+                ?: profile?.get("stepPenalty")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().stepPenalty,
+            gameLengthNormalization = profile?.get("gameLengthNormalization")?.toBooleanStrictOrNull()
+                ?: AdvancedSelfPlayConfig().gameLengthNormalization,
             batchSize = profile?.get("batchSize")?.toIntOrNull() ?: AdvancedSelfPlayConfig().batchSize,
             treatStepLimitAsDrawForReporting = profile?.get("treatStepLimitAsDraw")?.toBooleanStrictOrNull() ?: AdvancedSelfPlayConfig().treatStepLimitAsDrawForReporting,
             autoCleanupOnFinish = if (args.contains("--no-cleanup")) false else (profile?.get("autoCleanupOnFinish")?.toBooleanStrictOrNull() ?: AdvancedSelfPlayConfig().autoCleanupOnFinish),
@@ -513,6 +605,14 @@ object CLIRunner {
             } ?: AdvancedSelfPlayConfig().opponentUpdateStrategy,
             opponentUpdateFrequency = profile?.get("opponentUpdateFrequency")?.toIntOrNull() ?: AdvancedSelfPlayConfig().opponentUpdateFrequency,
             opponentHistoryLag = profile?.get("opponentHistoryLag")?.toIntOrNull() ?: AdvancedSelfPlayConfig().opponentHistoryLag,
+            enableLocalThreefoldDraw = args.contains("--local-threefold") || (profile?.get("enableLocalThreefoldDraw")?.toBooleanStrictOrNull() ?: AdvancedSelfPlayConfig().enableLocalThreefoldDraw),
+            localThreefoldThreshold = args.getAfter("--threefold-threshold")?.toIntOrNull()
+                ?: profile?.get("localThreefoldThreshold")?.toIntOrNull() ?: AdvancedSelfPlayConfig().localThreefoldThreshold,
+            repetitionPenalty = args.getAfter("--repetition-penalty")?.toDoubleOrNull()
+                ?: profile?.get("repetitionPenalty")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().repetitionPenalty,
+            repetitionPenaltyAfter = args.getAfter("--repetition-penalty-after")?.toIntOrNull()
+                ?: profile?.get("repetitionPenaltyAfter")?.toIntOrNull() ?: AdvancedSelfPlayConfig().repetitionPenaltyAfter,
+            // Elo removed; best selection uses head-to-head vs previous best
             retention = CheckpointRetention(
                 keepBest = if (args.contains("--no-keep-best")) false else (profile?.get("keepBest")?.toBooleanStrictOrNull() ?: true),
                 keepLastN = args.getAfter("--keep-last")?.toIntOrNull() ?: (profile?.get("keepLastN")?.toIntOrNull() ?: 2),
@@ -541,7 +641,16 @@ object CLIRunner {
         }
         when {
             cliLoad != null -> pipeline.loadCheckpointPath(resolveExistingPath(cliLoad) ?: cliLoad)
-            resumeBest -> pipeline.loadBestCheckpoint()
+            resumeBest -> {
+                // Try canonical best in checkpoint dir; fallback to in-memory (no-op if none)
+                val dir = tunedConfig.checkpointDirectory
+                val best = resolveBestModelPath(dir)
+                if (best != null) {
+                    pipeline.loadCheckpointPath(best)
+                } else {
+                    pipeline.loadBestCheckpoint()
+                }
+            }
             !profileLoad.isNullOrBlank() -> {
                 val resolved = resolveExistingPath(profileLoad) ?: profileLoad
                 pipeline.loadCheckpointPath(resolved)
@@ -566,8 +675,13 @@ object CLIRunner {
         } ?: run {
             if (args.contains("--load-best")) {
                 val dir = args.getAfter("--checkpoint-dir") ?: AdvancedSelfPlayConfig().checkpointDirectory
-                findBestCheckpointPath(dir)?.let { best ->
-                    runCatching { agent.load(best) }.onFailure { println("Warning: failed to load best checkpoint: ${it.message}") }
+                resolveBestModelPath(dir)?.let { best ->
+                    val resolved = resolvePath(best)
+                    runCatching { agent.load(resolved) }.onFailure { println("Warning: failed to load best model: ${it.message}") }
+                } ?: run {
+                    findBestCheckpointPath(dir)?.let { latest ->
+                        runCatching { agent.load(resolvePath(latest)) }.onFailure { println("Warning: failed to load latest checkpoint: ${it.message}") }
+                    }
                 }
             }
         }
@@ -645,19 +759,27 @@ object CLIRunner {
                 Evaluate agent vs baseline for N games. Agent plays White by default.
               --eval-h2h --loadA PATH --loadB PATH [--games N] [--max-steps M] [--eval-epsilon E]
                 Head-to-head: Agent A vs Agent B, alternating colors. Optional: --hiddenA/--hiddenB [--profile NAME]
+                Options: --local-threefold [--threefold-threshold N] --invalid-loss
+                  • --local-threefold: stop local position cycles early during eval
+                  • --invalid-loss: repeated invalid moves (twice in a row) lose the game for that side
               --train-advanced --cycles N [--resume-best] [--seed S] [--load PATH]
                 Run advanced training for N cycles; optionally resume from best checkpoint.
                 Profiles: [--profile NAME] [--profiles PATH]
                   - Overrides defaults via YAML (keys: hiddenLayers, algo, maxStepsPerGame, maxConcurrentGames, enablePositionRewards,
                     explorationRate, explorationWarmupCycles, explorationWarmupRate, rollbackWarmupCycles, enableModelRollback,
                     batchSize, checkpointDirectory, checkpointInterval, autoCleanupOnFinish, keepBest, keepLastN, keepEveryN,
-                    stepLimitPenalty, treatStepLimitAsDraw, targetUpdateFrequency, enableDoubleDQN, loadModelPath)
+                    stepLimitPenalty, treatStepLimitAsDraw, targetUpdateFrequency, enableDoubleDQN, loadModelPath,
+                    enableLocalThreefoldDraw, localThreefoldThreshold, repetitionPenalty, repetitionPenaltyAfter)
                 Overrides (flags take precedence over profiles):
                   --max-steps M              Per-game step cap
                   --eps-start E --eps-end E --eps-cycles N
                                          Linear epsilon decay after warmup (optional)
                   --checkpoint-dir DIR       Checkpoint base directory
                   --checkpoint-interval N    Save a regular checkpoint every N cycles
+                  --local-threefold          Enable local threefold detection (training)
+                  --threefold-threshold N    Repetition threshold for local threefold (default 3)
+                  --repetition-penalty X     End-episode penalty when repetition detected (training-only shaping)
+                  --repetition-penalty-after N  Start penalizing once a FEN repeats ≥ N times (default 2)
                   --no-cleanup               Disable end-of-run retention cleanup
                   --no-keep-best             Do not force keeping the best checkpoint
                   --keep-last K              Keep last K checkpoints (default 2)
@@ -684,6 +806,43 @@ object CLIRunner {
                 .orElse(null)
         } catch (e: Exception) {
             println("Warning: failed to scan checkpoints in $dir: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Resolve canonical best model path.
+     * Preference order:
+     * 1) <dir>/best_qnet.json
+     * 2) path from <dir>/best_checkpoint.txt (supports either _qnet.json or primary path)
+     * 3) null (caller should fallback to latest checkpoint)
+     */
+    private fun resolveBestModelPath(dir: String): String? {
+        return try {
+            val base = java.nio.file.Path.of(dir)
+            // 1) Dedicated best model
+            val bestQnet = base.resolve("best_qnet.json")
+            if (java.nio.file.Files.exists(bestQnet)) return bestQnet.toString()
+            // 2) Pointer file
+            val pointer = base.resolve("best_checkpoint.txt")
+            if (java.nio.file.Files.exists(pointer)) {
+                val lines = java.nio.file.Files.readAllLines(pointer)
+                // Try explicit path= first
+                val fromKey = lines.firstOrNull { it.startsWith("path=") }?.substringAfter("path=")?.trim()
+                val parsed = fromKey ?: lines.firstOrNull { it.isNotBlank() }?.trim()
+                if (!parsed.isNullOrBlank()) {
+                    val p = java.nio.file.Path.of(parsed)
+                    if (java.nio.file.Files.exists(p)) {
+                        // Prefer dedicated model artifact sibling if possible
+                        val qnet = parsed.replace(".json.gz", "_qnet.json").replace(".json", "_qnet.json")
+                        val qnetPath = java.nio.file.Path.of(qnet)
+                        return if (java.nio.file.Files.exists(qnetPath)) qnetPath.toString() else p.toString()
+                    }
+                }
+            }
+            null
+        } catch (e: Exception) {
+            println("Warning: failed to resolve canonical best model in $dir: ${e.message}")
             null
         }
     }

@@ -275,11 +275,7 @@ data class ChessBoard(
         } else {
             gameState.halfmoveClock++
         }
-        
-        // Update fullmove number
-        if (piece.color == PieceColor.BLACK) {
-            gameState.fullmoveNumber++
-        }
+        // Note: fullmoveNumber is incremented in switchActiveColor() when the turn passes to White
     }
     
     /**

@@ -45,6 +45,7 @@ data class TrainingConfiguration(
     val lossReward: Double = -1.0,
     val drawReward: Double = 0.0,
     val enablePositionRewards: Boolean = false,
+    val maxStepsPerGame: Int = 200,
     
     // Performance configuration
     val parallelGames: Int = 1,
@@ -55,6 +56,12 @@ data class TrainingConfiguration(
     val enableDebugMode: Boolean = false,
     val verboseLogging: Boolean = false,
     val enableTrainingValidation: Boolean = true,
+
+    // Self-play specific
+    val gamesPerIteration: Int = 20,
+    val stepLimitPenalty: Double = -0.05,
+    val treatStepLimitAsDrawForReporting: Boolean = true,
+    val experienceCleanupStrategy: String = "OLDEST_FIRST", // OLDEST_FIRST, LOWEST_QUALITY, RANDOM
     
     // Additional metadata
     val configurationName: String = "default",
@@ -128,6 +135,18 @@ data class TrainingConfiguration(
         if (winReward <= lossReward) {
             warnings.add("Win reward ($winReward) should be greater than loss reward ($lossReward)")
         }
+
+        // Validate self-play configuration
+        if (gamesPerIteration <= 0) errors.add("Games per iteration must be positive")
+        if (parallelGames <= 0) errors.add("Parallel games must be positive")
+        if (maxStepsPerGame <= 0) errors.add("Max steps per game must be positive")
+        if (stepLimitPenalty.isNaN() || stepLimitPenalty < -1.0 || stepLimitPenalty > 0.0) {
+            warnings.add("Step limit penalty ($stepLimitPenalty) is unusual (expected [-1.0, 0.0])")
+        }
+        val supportedCleanup = setOf("OLDEST_FIRST", "LOWEST_QUALITY", "RANDOM")
+        if (experienceCleanupStrategy !in supportedCleanup) {
+            errors.add("Unsupported experience cleanup strategy: $experienceCleanupStrategy")
+        }
         
         // Performance warnings
         if (parallelGames > 8) {
@@ -200,6 +219,63 @@ data class TrainingConfiguration(
                 enableRealTimeMonitoring = enableRealTimeMonitoring,
                 metricsOutputFormat = metricsOutputFormat
             )
+        )
+    }
+
+    /**
+     * Map to SelfPlayConfig (for concurrent self-play)
+     */
+    fun toSelfPlayConfig(): SelfPlayConfig {
+        val cleanup = when (experienceCleanupStrategy.uppercase()) {
+            "LOWEST_QUALITY" -> ExperienceCleanupStrategy.LOWEST_QUALITY
+            "RANDOM" -> ExperienceCleanupStrategy.RANDOM
+            else -> ExperienceCleanupStrategy.OLDEST_FIRST
+        }
+        return SelfPlayConfig(
+            maxConcurrentGames = parallelGames.coerceAtLeast(1),
+            maxStepsPerGame = maxStepsPerGame,
+            winReward = winReward,
+            lossReward = lossReward,
+            drawReward = drawReward,
+            enablePositionRewards = enablePositionRewards,
+            stepLimitPenalty = stepLimitPenalty,
+            maxExperienceBufferSize = maxBufferSize,
+            experienceCleanupStrategy = cleanup,
+            progressReportInterval = progressReportInterval,
+            treatStepLimitAsDrawForReporting = treatStepLimitAsDrawForReporting
+        )
+    }
+
+    /**
+     * Map to SelfPlayControllerConfig (high-level orchestration)
+     * Note: fields not present in TrainingConfiguration use the controller default.
+     */
+    fun toSelfPlayControllerConfig(existing: SelfPlayControllerConfig = SelfPlayControllerConfig()): SelfPlayControllerConfig {
+        val cleanup = when (experienceCleanupStrategy.uppercase()) {
+            "LOWEST_QUALITY" -> ExperienceCleanupStrategy.LOWEST_QUALITY
+            "RANDOM" -> ExperienceCleanupStrategy.RANDOM
+            else -> ExperienceCleanupStrategy.OLDEST_FIRST
+        }
+        return existing.copy(
+            hiddenLayers = hiddenLayers,
+            learningRate = learningRate,
+            explorationRate = explorationRate,
+            gamesPerIteration = gamesPerIteration,
+            maxConcurrentGames = parallelGames.coerceAtLeast(1),
+            maxStepsPerGame = maxStepsPerGame,
+            batchSize = batchSize,
+            maxExperienceBufferSize = maxBufferSize,
+            samplingStrategy = when (replaySamplingStrategy.lowercase()) {
+                "recent" -> SamplingStrategy.RECENT
+                "mixed" -> SamplingStrategy.MIXED
+                else -> SamplingStrategy.RANDOM
+            },
+            winReward = winReward,
+            lossReward = lossReward,
+            drawReward = drawReward,
+            enablePositionRewards = enablePositionRewards,
+            experienceCleanupStrategy = cleanup,
+            progressReportInterval = progressReportInterval
         )
     }
 }
@@ -279,6 +355,13 @@ class TrainingConfigurationBuilder {
     fun enableDebugMode(enabled: Boolean = true) = apply { config = config.copy(enableDebugMode = enabled) }
     fun name(name: String) = apply { config = config.copy(configurationName = name) }
     fun description(desc: String) = apply { config = config.copy(description = desc) }
+    // Self-play additions
+    fun gamesPerIteration(n: Int) = apply { config = config.copy(gamesPerIteration = n) }
+    fun parallelGames(n: Int) = apply { config = config.copy(parallelGames = n) }
+    fun maxStepsPerGame(n: Int) = apply { config = config.copy(maxStepsPerGame = n) }
+    fun stepLimitPenalty(v: Double) = apply { config = config.copy(stepLimitPenalty = v) }
+    fun treatStepLimitAsDraw(enabled: Boolean) = apply { config = config.copy(treatStepLimitAsDrawForReporting = enabled) }
+    fun experienceCleanupStrategy(strategy: String) = apply { config = config.copy(experienceCleanupStrategy = strategy) }
     
     fun build(): TrainingConfiguration = config
 }
@@ -328,6 +411,37 @@ object ConfigurationParser {
                 "--optimizer" -> {
                     if (i + 1 < args.size) {
                         builder.optimizer(args[++i])
+                    }
+                }
+                "--games-per-iteration" -> {
+                    if (i + 1 < args.size) {
+                        builder.gamesPerIteration(args[++i].toInt())
+                    }
+                }
+                "--parallel-games" -> {
+                    if (i + 1 < args.size) {
+                        builder.parallelGames(args[++i].toInt())
+                    }
+                }
+                "--max-steps-per-game" -> {
+                    if (i + 1 < args.size) {
+                        builder.maxStepsPerGame(args[++i].toInt())
+                    }
+                }
+                "--step-limit-penalty" -> {
+                    if (i + 1 < args.size) {
+                        builder.stepLimitPenalty(args[++i].toDouble())
+                    }
+                }
+                "--treat-step-limit-as-draw" -> {
+                    builder.treatStepLimitAsDraw(true)
+                }
+                "--no-treat-step-limit-as-draw" -> {
+                    builder.treatStepLimitAsDraw(false)
+                }
+                "--experience-cleanup" -> {
+                    if (i + 1 < args.size) {
+                        builder.experienceCleanupStrategy(args[++i])
                     }
                 }
                 "--checkpoint-interval" -> {
@@ -402,12 +516,19 @@ object ConfigurationParser {
         println("  --learning-rate <double>   Learning rate for optimizer")
         println("  --exploration-rate <double> Exploration rate for epsilon-greedy")
         println("  --optimizer <string>       Optimizer type (sgd, adam, rmsprop)")
+        println("  --games-per-iteration <int> Self-play games per training iteration")
+        println("  --parallel-games <int>     Concurrent self-play games")
+        println("  --max-steps-per-game <int> Max steps per self-play game")
+        println("  --step-limit-penalty <double> Reward penalty when step limit hit")
+        println("  --treat-step-limit-as-draw Treat step-limit games as draws in reports")
+        println("  --no-treat-step-limit-as-draw Do not treat step-limit as draws in reports")
+        println("  --experience-cleanup <OLDEST_FIRST|LOWEST_QUALITY|RANDOM> Experience cleanup strategy")
         println("  --checkpoint-interval <int> Episodes between checkpoints")
         println("  --debug                    Enable debug mode")
         println("  --name <string>            Configuration name")
         println("  --description <string>     Configuration description")
         println()
         println("Example:")
-        println("  --seed 12345 --deterministic --episodes 1000 --batch-size 32")
+        println("  --seed 12345 --deterministic --episodes 1000 --batch-size 32 --games-per-iteration 20 --parallel-games 4")
     }
 }

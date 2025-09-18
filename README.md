@@ -36,6 +36,73 @@ chess-rl-bot/
   - Collect: `./gradlew :chess-engine:runTeacherCollector -Dargs="--collect --games 50 --depth 2 --topk 5 --tau 1.0 --out data/teacher.ndjson"`
   - Train: `./gradlew :chess-engine:runImitationTrainer -Dargs="--train-imitation --data data/teacher.ndjson --epochs 3 --batch 64 --lr 0.001 --smooth 0.05 --val-split 0.10 --out data/imitation_qnet.json"`
 
+#### Profiles Overview (2 presets)
+- `dqn_unlock_elo_prioritized` (default for scratch training):
+  - Goal: “unlock” visible learning from scratch by reducing draw loops and amplifying early signal.
+  - How: short horizon (80–100), anti‑draw shaping (small draw/step‑limit penalties), prioritized replay, local threefold detection, exploration warmup, and head‑to‑head promotion vs previous best each cycle. Writes checkpoints to `checkpoints/unlock_elo_prioritized`.
+  - When to use: starting from zero; general experimentation with self‑play.
+- `dqn_imitation_bootstrap` (warm start):
+  - Goal: start from a supervised imitation model and fine‑tune with DQN for faster progress.
+  - How: loads `../chess-engine/data/imitation_qnet.json` (override via `--load`), longer horizon, balanced defaults; canonical best artifacts and versioned checkpoints in `checkpoints/advanced`.
+  - When to use: you have an imitation model trained from teacher data and want to accelerate early strength.
+
+#### Best checkpoint resolution (head‑to‑head based)
+- Best selection uses internal head‑to‑head (current vs previous best) each cycle and promotes on tie or win.
+- Canonical artifacts on each new best:
+  - `<checkpointDirectory>/best_qnet.json` (ready‑to‑load model)
+  - `<checkpointDirectory>/best_qnet_meta.json` (sidecar with `performance` = outcome score)
+  - `<checkpointDirectory>/best_checkpoint.txt` (version, path, performance)
+- `--load-best` resolution order in CLI:
+  1) `best_qnet.json`
+  2) path from `best_checkpoint.txt` (prefers sibling `_qnet.json`)
+  3) latest `checkpoint_v*.json(.gz)` by modified time
+
+#### Evaluation tips to avoid 100% draws
+- Increase horizon: `--max-steps 180` (or 200)
+- Alternate colors: `--colors alternate`
+- Allow slight exploration: `--eval-epsilon 0.05..0.1`
+- Neutralize draw reward for evaluation comparisons: `--draw-reward 0.0`
+- CLI prints JSON with win/draw/loss rates and lengths (no performance_score field).
+
+#### A/B training and evaluation (concurrency-enabled)
+- Train Model A (scratch):
+  - `./gradlew :integration:runCli --args="--train-advanced --cycles 6 --profile dqn_unlock_elo_prioritized --concurrency 8"`
+- Train Model B (warm start):
+  - `./gradlew :integration:runCli --args="--train-advanced --cycles 6 --profile dqn_unlock_elo_prioritized --concurrency 8 --load ../chess-engine/data/imitation_qnet.json --checkpoint-dir checkpoints/unlock_prioritized_warm"`
+- Evaluate vs baseline (greedy):
+  - `./gradlew :integration:runCli --args="--eval-baseline --profile dqn_unlock_elo_prioritized --games 100 --colors alternate --max-steps 120 --eval-epsilon 0.0 --draw-reward 0.0 --load-best --checkpoint-dir checkpoints/unlock_elo_prioritized"`
+- Head‑to‑Head (A vs B):
+  - `./gradlew :integration:runCli --args="--eval-h2h --games 100 --max-steps 180 --eval-epsilon 0.05 --loadA checkpoints/unlock_elo_prioritized/best_qnet.json --loadB checkpoints/unlock_prioritized_warm/best_qnet.json --local-threefold --threefold-threshold 3 --dump-draws --dump-limit 3"`
+Notes:
+- Selection of “best” uses head‑to‑head (current vs previous best) each cycle and promotes on tie/win (no Elo needed).
+- CLI prints JSON with win/draw/loss rates and lengths (no performance_score field).
+
+#### Legal-move selection (strict)
+- Agent selection is clamped to legal actions: the adapter chooses among `validActions` only.
+- This guarantees no illegal indices are returned to the environment in training/eval.
+
+#### Self‑play anti‑repetition controls
+- Training overrides (flags take precedence over profiles):
+  - `--local-threefold` and `--threefold-threshold N` stop local repetition loops during self‑play.
+  - `--repetition-penalty X` and `--repetition-penalty-after N` add a small end‑episode penalty on repeated positions.
+- H2H eval options (draw reduction & debugging):
+  - `--local-threefold [--threefold-threshold N]`
+  - `--invalid-loss` (optional; converts repeated invalids to a loss — rarely needed now due to strict masking).
+
+#### Best Promotion per Cycle (no Elo)
+- Advanced pipeline plays the current model vs the previous best each cycle and promotes on tie or win.
+- Elo and composite performance scores have been removed; selection relies only on head‑to‑head outcomes.
+- Resume training from best with `--resume-best` to accumulate learning across runs.
+
+#### Matchup diagnostics and TD loss
+- Self‑play controller prints per‑iteration matchup diagnostics (color split, step‑limit ratio, avg lengths).
+- TD loss (temporal‑difference) is the batch‑average Bellman error; track it alongside policy entropy and win/draw/loss.
+
+#### Deterministic seeding (reproducibility)
+- Pass a master seed to the CLI: `--seed 12345` (works with eval and advanced training) to initialize `SeedManager`.
+- Programmatic: `SeedManager.initializeWithSeed(12345L)` and use `TrainingConfiguration(seed=..., deterministicMode=true)`.
+- Seeds are stored in checkpoint metadata; loading a checkpoint restores model weights (you can log/reapply seed config as needed).
+
 ### Non‑NN Evaluation: Minimax vs Heuristic
 - You can pit two non‑NN opponents against each other for fast, deterministic baselines:
   - Minimax (White) vs Heuristic (Black):
@@ -193,7 +260,7 @@ println("  Average reward: ${metrics.averageReward}")
 - **ChessEnvironment**: 839‑feature state encoding, 4096 action space with legal move filtering
 - **ChessAgent**: Neural network RL agent with comprehensive episode tracking
 - **Training Pipeline**: Batch processing (32-128 sizes), multiple sampling strategies
-- **Enhanced Metrics**: Detailed episode termination analysis and performance tracking
+- **Enhanced Metrics**: Detailed episode termination analysis and outcome tracking
 
 ## ✅ Status Reality Check
 
@@ -411,7 +478,7 @@ Based on comprehensive benchmarking across all components:
 
 Likely root causes and fixes:
 - Missing DQN next‑state action masking: DQN targets should only consider Q‑values over valid next actions. Without masking, targets can be dominated by invalid actions, flattening learning. FIX: Provide `mainAgent.setNextActionProvider(environment::getValidActions)` so DQN masks next‑state Q‑values. (Wired in AdvancedSelfPlayTrainingPipeline.)
-- Sparse/undirected rewards: With only terminal rewards and high step limits, random play rarely reaches terminal states. Consider enabling positional shaping (`enablePositionRewards=true`) or adding a modest step penalty/bonus to encourage progress. Also consider reducing `maxStepsPerGame` initially.
+- Sparse/undirected rewards: With only terminal rewards and high step limits, random play rarely reaches terminal states. Consider enabling positional shaping (`enablePositionRewards=true`) and adding a modest per -step penalty (≈ − 0.001…− 0.005). Also consider reducing `maxStepsPerGame` initially.
 - Decisive outcomes: Persistently reaching the step limit suggests random play rarely mates or stalemates within 200 moves. Consider early‑draw adjudication, simpler opponents, or curriculum (smaller boards/opening book) to produce decisive signals early.
 - Policy still near‑uniform: Entropy ≈ ln(4096) implies the network outputs remain effectively uniform. Verify that the network output size matches the action space (4096) and that batch sizes/learning rate are reasonable. Try smaller hidden layers or pretraining with supervised move datasets to bootstrap.
 - Metric simulation vs. real updates: Ensure all training metrics reflect real agent updates (they do via `agent.trainBatch`), and that the same agent is used for self‑play. Keep `setNextActionProvider` wired for both DQN batch training and any evaluation flows.

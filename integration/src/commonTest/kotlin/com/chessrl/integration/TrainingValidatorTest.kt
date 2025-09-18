@@ -582,21 +582,32 @@ class ChessTrainingValidatorTest {
     private fun generateDiverseMoves(count: Int, diversity: Double = 0.8): List<String> {
         val commonMoves = listOf("e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Ba4", "Nf6", "O-O", "Be7")
         val diverseMoves = listOf("d4", "d5", "c4", "c5", "f4", "f5", "g3", "g6", "h3", "h6", "Qd2", "Qd7")
-        
+
         val moves = mutableListOf<String>()
-        val uniqueMovesCount = (count * diversity).toInt()
-        
-        // Add unique moves
+        val frac = diversity.coerceIn(0.0, 1.0)
+        val uniqueMovesCount = (count * frac).toInt()
+
+        // Build the set of unique moves first
+        val uniques = mutableListOf<String>()
         repeat(uniqueMovesCount) { i ->
-            val movePool = if (i < commonMoves.size) commonMoves else diverseMoves
-            moves.add(movePool[i % movePool.size])
+            val pool = if (i < commonMoves.size) commonMoves else diverseMoves
+            val mv = pool[i % pool.size]
+            uniques.add(mv)
+            moves.add(mv)
         }
-        
-        // Fill remaining with repetitions
-        repeat(count - uniqueMovesCount) {
-            moves.add(commonMoves[it % commonMoves.size])
+
+        // Fill remaining strictly by repeating from the uniques, to control diversity
+        if (uniques.isEmpty()) {
+            // Degenerate case: no diversity requested; repeat a single common move
+            repeat(count - moves.size) { moves.add(commonMoves.first()) }
+        } else {
+            var idx = 0
+            repeat(count - moves.size) {
+                moves.add(uniques[idx % uniques.size])
+                idx++
+            }
         }
-        
+
         return moves.take(count)
     }
 }

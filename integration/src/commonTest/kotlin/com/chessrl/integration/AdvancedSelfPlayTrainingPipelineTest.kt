@@ -230,8 +230,9 @@ class AdvancedSelfPlayTrainingPipelineTest {
             val totalRate = performance.winRate + performance.drawRate + performance.lossRate
             assertTrue(kotlin.math.abs(totalRate - 1.0) < 0.1, "Win/draw/loss rates should sum to ~1.0")
             
-            assertTrue(performance.performanceScore >= 0.0, "Performance score should be non-negative")
-            assertTrue(performance.performanceScore <= 1.0, "Performance score should be <= 1.0")
+            // Outcome score should be within [0,1]; avg reward finite
+            assertTrue(performance.averageReward.isFinite(), "Average reward should be finite")
+            assertTrue(performance.outcomeScore in 0.0..1.0, "Outcome score should be in [0,1]")
             
             // Verify game results
             assertEquals(performance.gamesPlayed, performance.gameResults.size, 
@@ -246,7 +247,7 @@ class AdvancedSelfPlayTrainingPipelineTest {
             }
             
             println("   Cycle ${cycle.cycle}: ${performance.gamesPlayed} games, " +
-                   "win rate ${performance.winRate}, score ${performance.performanceScore}")
+                   "win rate ${performance.winRate}, outcomeScore ${performance.outcomeScore}")
         }
     }
     

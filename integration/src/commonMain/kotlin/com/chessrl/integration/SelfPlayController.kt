@@ -200,6 +200,14 @@ class SelfPlayController(
         )
         
         println("✅ Self-play completed: ${selfPlayResults.totalGames} games, ${selfPlayResults.totalExperiences} experiences")
+        // Matchup diagnostics
+        val matchupDiagnostics = MatchupDiagnosticsBuilder.from(selfPlayResults)
+        println("📎 Matchup Diagnostics:")
+        println("  White wins: ${matchupDiagnostics.whiteWins} (${String.format("%.1f", matchupDiagnostics.winRateWhite * 100)}%)")
+        println("  Black wins: ${matchupDiagnostics.blackWins} (${String.format("%.1f", matchupDiagnostics.winRateBlack * 100)}%)")
+        println("  Draws: ${matchupDiagnostics.draws} (${String.format("%.1f", matchupDiagnostics.drawRate * 100)}%)")
+        println("  Step-limit terminations: ${matchupDiagnostics.stepLimitEnded} (${String.format("%.1f", matchupDiagnostics.stepLimitRatio * 100)}%)")
+        println("  Avg length: ${String.format("%.1f", matchupDiagnostics.averageGameLength)} moves")
         
         // Phase 2: Experience processing and training
         println("🧠 Phase 2: Training on collected experiences")
@@ -219,7 +227,8 @@ class SelfPlayController(
             selfPlayResults = selfPlayResults,
             trainingMetrics = trainingResults,
             evaluationResults = evaluationResults,
-            iterationDuration = iterationDuration
+            iterationDuration = iterationDuration,
+            matchupDiagnostics = matchupDiagnostics
         )
     }
     
@@ -599,7 +608,8 @@ data class SelfPlayIterationResult(
     val selfPlayResults: SelfPlayResults,
     val trainingMetrics: SelfPlayTrainingMetrics,
     val evaluationResults: AgentEvaluationResults,
-    val iterationDuration: Long
+    val iterationDuration: Long,
+    val matchupDiagnostics: MatchupDiagnostics? = null
 )
 
 /**

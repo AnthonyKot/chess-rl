@@ -44,6 +44,7 @@ class AdvancedSelfPlayTrainingPipeline(
     private var currentGamesPerCycle = 0
     private var currentTrainingRatio = 0.0
     private var convergenceDetector = ConvergenceDetector(config.convergenceConfig)
+    // Performance history stores outcomeScore for convergence
     
     /**
      * Initialize the advanced training pipeline
@@ -99,13 +100,23 @@ class AdvancedSelfPlayTrainingPipeline(
                 config = SelfPlayConfig(
                     maxConcurrentGames = config.maxConcurrentGames,
                     maxStepsPerGame = config.maxStepsPerGame,
+                    // Local repetition controls
+                    enableLocalThreefoldDraw = config.enableLocalThreefoldDraw,
+                    localThreefoldThreshold = config.localThreefoldThreshold,
+                    // Rewards & shaping
                     winReward = config.winReward,
                     lossReward = config.lossReward,
                     drawReward = config.drawReward,
+                    stepPenalty = config.stepPenalty,
+                    gameLengthNormalization = config.gameLengthNormalization,
                     enablePositionRewards = config.enablePositionRewards,
                     stepLimitPenalty = config.stepLimitPenalty,
+                    repetitionPenalty = config.repetitionPenalty,
+                    repetitionPenaltyAfter = config.repetitionPenaltyAfter,
+                    // Experience management
                     maxExperienceBufferSize = config.maxExperienceBufferSize,
                     experienceCleanupStrategy = config.experienceCleanupStrategy,
+                    // Monitoring & reporting
                     progressReportInterval = config.progressReportInterval,
                     treatStepLimitAsDrawForReporting = config.treatStepLimitAsDrawForReporting
                 )
@@ -117,8 +128,9 @@ class AdvancedSelfPlayTrainingPipeline(
                     winReward = config.winReward,
                     lossReward = config.lossReward,
                     drawReward = config.drawReward,
-                    stepPenalty = -0.001,
-                    enablePositionRewards = config.enablePositionRewards
+                    stepPenalty = config.stepPenalty,
+                    enablePositionRewards = config.enablePositionRewards,
+                    gameLengthNormalization = config.gameLengthNormalization
                 )
             )
             
@@ -245,9 +257,8 @@ class AdvancedSelfPlayTrainingPipeline(
                     cycle, mainAgent, opponentAgent, selfPlaySystem,
                     trainingValidator, experienceManager
                 )
-                
+
                 cycleHistory.add(cycleResult)
-                performanceHistory.add(cycleResult.performance.averageReward)
 
                 // Sanity-check buffer after first cycle using ExperienceBufferAnalyzer
                 if (cycle == 1) {
@@ -267,8 +278,16 @@ class AdvancedSelfPlayTrainingPipeline(
                     }
                 }
                 
-                // Update best model if performance improved
-                if (cycleResult.performance.averageReward > getBestPerformance()) {
+                // Decide best via head-to-head vs previous best (or first cycle)
+                val prevBest = checkpointManager.getBestCheckpoint()
+                val promoteToBest = if (prevBest == null) true else {
+                    val peer = runCatching { evaluateAgainstBest(mainAgent, prevBest) }.getOrNull()
+                    if (peer != null) {
+                        println("   🤝 Peer match vs best: current=${peer.wins}-${peer.draws}-${peer.losses}")
+                        peer.wins >= peer.losses
+                    } else false
+                }
+                if (promoteToBest) {
                     bestModelVersion = cycle
                     
                     // Create best model checkpoint
@@ -277,14 +296,38 @@ class AdvancedSelfPlayTrainingPipeline(
                         version = cycle,
                         metadata = CheckpointMetadata(
                             cycle = cycle,
-                            performance = cycleResult.performance.averageReward,
+                            performance = cycleResult.performance.outcomeScore,
                             description = "Best model - cycle $cycle",
                             isBest = true
                         )
                     )
                     
                     println("🏆 New best model saved: ${bestCheckpoint.path}")
+
+                // Persist canonical best artifacts for easy discovery across processes
+                    // 1) Dedicated model artifact always at <checkpointDirectory>/best_qnet.json
+                    runCatching {
+                        val bestModelPath = "${config.checkpointDirectory.trimEnd('/')}/best_qnet.json"
+                        mainAgent.save(bestModelPath)
+                        println("   ↳ Updated canonical best model: $bestModelPath")
+                    }.onFailure { e -> println("   ⚠️ Failed to write canonical best model: ${e.message}") }
+
+                    // 2) Human-readable pointer with metadata at <checkpointDirectory>/best_checkpoint.txt
+                    runCatching {
+                        val ts = getCurrentTimeMillis()
+                        val content = buildString {
+                            appendLine("version=${bestCheckpoint.version}")
+                            appendLine("path=${bestCheckpoint.path}")
+                            appendLine("performance=${"%.6f".format(cycleResult.performance.outcomeScore)}")
+                            appendLine("timestamp=$ts")
+                        }
+                        val pointerPath = "${config.checkpointDirectory.trimEnd('/')}/best_checkpoint.txt"
+                        writeTextFile(pointerPath, content)
+                        println("   ↳ Updated best pointer: $pointerPath")
+                    }.onFailure { e -> println("   ⚠️ Failed to write best checkpoint pointer: ${e.message}") }
                 }
+                // Record this cycle's outcome score for convergence/history
+                performanceHistory.add(cycleResult.performance.outcomeScore)
                 
                 // Adaptive scheduling updates
                 updateAdaptiveScheduling()
@@ -305,7 +348,7 @@ class AdvancedSelfPlayTrainingPipeline(
                         version = cycle,
                         metadata = CheckpointMetadata(
                             cycle = cycle,
-                            performance = cycleResult.performance.averageReward,
+                            performance = cycleResult.performance.outcomeScore,
                             description = "Regular checkpoint - cycle $cycle",
                             seedConfiguration = try { SeedManager.getInstance().getSeedConfiguration() } catch (_: Throwable) { null }
                         )
@@ -623,8 +666,9 @@ class AdvancedSelfPlayTrainingPipeline(
                 winReward = config.winReward,
                 lossReward = config.lossReward,
                 drawReward = config.drawReward,
-                stepPenalty = -0.001,
+                stepPenalty = config.stepPenalty,
                 enablePositionRewards = config.enablePositionRewards,
+                gameLengthNormalization = config.gameLengthNormalization,
                 maxGameLength = config.maxStepsPerGame
             )
         )
@@ -639,14 +683,8 @@ class AdvancedSelfPlayTrainingPipeline(
         }
         
         // Calculate performance metrics
-        val avgReward = if (gameResults.isNotEmpty()) {
-            gameResults.map { it.totalReward }.average()
-        } else 0.0
-        
-        val avgGameLength = if (gameResults.isNotEmpty()) {
-            gameResults.map { it.gameLength }.average()
-        } else 0.0
-        
+        val avgReward = if (gameResults.isNotEmpty()) gameResults.map { it.totalReward }.average() else 0.0
+        val avgGameLength = if (gameResults.isNotEmpty()) gameResults.map { it.gameLength }.average() else 0.0
         val wins = gameResults.count { it.gameOutcome == GameOutcome.WHITE_WINS }
         val ongoing = gameResults.count { it.gameOutcome == GameOutcome.ONGOING }
         val draws = gameResults.count { it.gameOutcome == GameOutcome.DRAW } + ongoing // treat ongoing as draws
@@ -655,10 +693,9 @@ class AdvancedSelfPlayTrainingPipeline(
         val winRate = wins.toDouble() / counted
         val drawRate = draws.toDouble() / counted
         val lossRate = losses.toDouble() / counted
-        
-        // Calculate performance score (weighted combination of metrics)
-        val performanceScore = calculatePerformanceScore(avgReward, winRate, drawRate, avgGameLength)
-        
+        // Outcome score for selection/convergence
+        val outcomeScore = (wins + 0.5 * draws) / counted.toDouble()
+
         return PerformanceEvaluationResult(
             cycle = cycle,
             gamesPlayed = gameResults.size,
@@ -667,7 +704,7 @@ class AdvancedSelfPlayTrainingPipeline(
             winRate = winRate,
             drawRate = drawRate,
             lossRate = lossRate,
-            performanceScore = performanceScore,
+            outcomeScore = outcomeScore,
             gameResults = gameResults
         )
     }
@@ -723,30 +760,72 @@ class AdvancedSelfPlayTrainingPipeline(
             finalPosition = environment.getCurrentBoard().toFEN()
         )
     }
-    
+
     /**
-     * Calculate performance score from multiple metrics
+     * Head-to-head: current main agent vs previous best checkpoint. Fixed settings to reduce draws.
      */
-    private fun calculatePerformanceScore(
-        avgReward: Double,
-        winRate: Double,
-        drawRate: Double,
-        avgGameLength: Double
-    ): Double {
-        // Weighted combination of performance metrics
-        val rewardWeight = 0.4
-        val winRateWeight = 0.3
-        val drawRateWeight = 0.1
-        val gameLengthWeight = 0.2
-        
-        val normalizedReward = ((avgReward + 1.0) / 2.0).coerceIn(0.0, 1.0)
-        val normalizedGameLength = (1.0 - (avgGameLength / config.maxStepsPerGame)).coerceIn(0.0, 1.0)
-        
-        return rewardWeight * normalizedReward +
-               winRateWeight * winRate +
-               drawRateWeight * drawRate +
-               gameLengthWeight * normalizedGameLength
+    private fun evaluateAgainstBest(current: ChessAgent, bestCheckpoint: CheckpointInfo): H2HResult {
+        val opp = ChessAgentFactory.createDQNAgent(hiddenLayers = config.hiddenLayers)
+        val manager = checkpointManager ?: throw IllegalStateException("CheckpointManager not initialized")
+        manager.loadCheckpoint(bestCheckpoint, opp)
+
+        val env = ChessEnvironment(
+            rewardConfig = ChessRewardConfig(
+                winReward = 1.0, lossReward = -1.0, drawReward = 0.0,
+                stepPenalty = 0.0, enablePositionRewards = false, gameLengthNormalization = false, maxGameLength = 200
+            )
+        )
+        // Small exploration to break symmetry
+        runCatching { current.setExplorationRate(0.05) }
+        runCatching { opp.setExplorationRate(0.05) }
+
+        var wins = 0
+        var draws = 0
+        var losses = 0
+        var currentIsWhite = true
+        val games = 40
+        repeat(games) {
+            var state = env.reset()
+            var steps = 0
+            val fenCounts = mutableMapOf(env.getCurrentBoard().toFEN() to 1)
+            var trippedLocalThreefold = false
+            while (!env.isTerminal(state) && steps < 200) {
+                val valid = env.getValidActions(state)
+                if (valid.isEmpty()) break
+                val actColor = env.getCurrentBoard().getActiveColor()
+                val curTurn = (actColor.name.contains("WHITE") && currentIsWhite) || (actColor.name.contains("BLACK") && !currentIsWhite)
+                val action = if (curTurn) current.selectAction(state, valid) else opp.selectAction(state, valid)
+                val step = env.step(action)
+                state = step.nextState
+                steps++
+                val fen = env.getCurrentBoard().toFEN()
+                val cnt = (fenCounts[fen] ?: 0) + 1
+                fenCounts[fen] = cnt
+                if (cnt >= 3) { trippedLocalThreefold = true; break }
+                if (step.done) break
+            }
+            val status = env.getGameStatus().name
+            val outcomeA = when {
+                trippedLocalThreefold -> 0
+                status.contains("WHITE_WINS") -> if (currentIsWhite) 1 else -1
+                status.contains("BLACK_WINS") -> if (!currentIsWhite) 1 else -1
+                else -> 0
+            }
+            when (outcomeA) {
+                1 -> wins++
+                -1 -> losses++
+                else -> draws++
+            }
+            currentIsWhite = !currentIsWhite
+        }
+        return H2HResult(wins = wins, draws = draws, losses = losses)
     }
+
+    data class H2HResult(val wins: Int, val draws: Int, val losses: Int)
+
+    // Head-to-head vs previous best is used for best selection; Elo is removed.
+    
+    // performance_score removed; using outcomeScore derived from wins/draws.
     
     // Additional helper methods will be implemented in the next part...
     
@@ -934,7 +1013,7 @@ class AdvancedSelfPlayTrainingPipeline(
         val recentCycles = cycleHistory.takeLast(config.cycleReportInterval)
         
         if (recentCycles.isNotEmpty()) {
-            val avgPerformance = recentCycles.map { it.performance.performanceScore }.average()
+            val avgOutcome = recentCycles.map { it.performance.outcomeScore }.average()
             val avgWinRate = recentCycles.map { it.performance.winRate }.average()
             val avgGameLength = recentCycles.map { it.performance.averageGameLength }.average()
             val avgExperienceQuality = recentCycles.map { 
@@ -942,7 +1021,7 @@ class AdvancedSelfPlayTrainingPipeline(
             }.average()
             
             println("\n📊 Advanced Training Progress - Cycle $cycle/$totalCycles ($progress%)")
-            println("   Performance Score: ${avgPerformance}")
+            println("   Outcome Score: ${avgOutcome}")
             println("   Win Rate: ${(avgWinRate * 100)}%")
             println("   Avg Game Length: ${avgGameLength} moves")
             println("   Experience Quality: ${avgExperienceQuality}")
@@ -994,8 +1073,8 @@ class AdvancedSelfPlayTrainingPipeline(
         val totalGames = cycleHistory.sumOf { it.selfPlayResults.totalGames }
         val totalExperiences = cycleHistory.sumOf { it.selfPlayResults.totalExperiences }
         val totalBatchUpdates = cycleHistory.sumOf { it.trainingResults.totalBatches }
-        val avgPerformanceScore = cycleHistory.map { it.performance.performanceScore }.average()
-        val bestPerformanceScore = cycleHistory.map { it.performance.performanceScore }.maxOrNull() ?: 0.0
+        val avgOutcomeScore = cycleHistory.map { it.performance.outcomeScore }.average()
+        val bestOutcomeScore = cycleHistory.map { it.performance.outcomeScore }.maxOrNull() ?: 0.0
         val avgWinRate = cycleHistory.map { it.performance.winRate }.average()
         val avgExperienceQuality = cycleHistory.map { it.experienceProcessing.averageQuality }.average()
         val convergenceStatus = convergenceDetector.getFinalStatus()
@@ -1004,8 +1083,8 @@ class AdvancedSelfPlayTrainingPipeline(
             totalGamesPlayed = totalGames,
             totalExperiencesProcessed = totalExperiences,
             totalBatchUpdates = totalBatchUpdates,
-            averagePerformanceScore = avgPerformanceScore,
-            bestPerformanceScore = bestPerformanceScore,
+            averagePerformanceScore = avgOutcomeScore,
+            bestPerformanceScore = bestOutcomeScore,
             averageWinRate = avgWinRate,
             averageExperienceQuality = avgExperienceQuality,
             convergenceAchieved = convergenceStatus.hasConverged,
@@ -1137,7 +1216,8 @@ class AdvancedSelfPlayTrainingPipeline(
                     maxBufferSize = config.maxExperienceBufferSize,
                     targetUpdateFrequency = config.targetUpdateFrequency
                 ),
-                enableDoubleDQN = config.enableDoubleDQN
+                enableDoubleDQN = config.enableDoubleDQN,
+                replayType = config.replayType
             )
             else -> ChessAgentFactory.createDQNAgent(
                 hiddenLayers = config.hiddenLayers,
@@ -1166,7 +1246,8 @@ class AdvancedSelfPlayTrainingPipeline(
                     maxBufferSize = config.maxExperienceBufferSize,
                     targetUpdateFrequency = config.targetUpdateFrequency
                 ),
-                enableDoubleDQN = config.enableDoubleDQN
+                enableDoubleDQN = config.enableDoubleDQN,
+                replayType = config.replayType
             )
             else -> ChessAgentFactory.createDQNAgent(
                 hiddenLayers = config.hiddenLayers,
@@ -1209,6 +1290,9 @@ data class AdvancedSelfPlayConfig(
     val maxConcurrentGames: Int = 4,
     val maxStepsPerGame: Int = 200,
     val evaluationGamesPerCycle: Int = 5,
+    // Reward shaping basics
+    val stepPenalty: Double = -0.001,
+    val gameLengthNormalization: Boolean = true,
     
     // Training configuration
     val batchSize: Int = 64,
@@ -1231,6 +1315,11 @@ data class AdvancedSelfPlayConfig(
     val lossReward: Double = -1.0,
     val drawReward: Double = 0.0,
     val enablePositionRewards: Boolean = false,
+    // Local threefold & repetition shaping (to reduce loops/draws)
+    val enableLocalThreefoldDraw: Boolean = false,
+    val localThreefoldThreshold: Int = 3,
+    val repetitionPenalty: Double? = null,
+    val repetitionPenaltyAfter: Int = 2,
     // Reporting behavior
     val treatStepLimitAsDrawForReporting: Boolean = true,
     
@@ -1259,6 +1348,8 @@ data class AdvancedSelfPlayConfig(
     val opponentUpdateFrequency: Int = 3,
     val opponentHistoryLag: Int = 5,
     val opponentAdaptationThreshold: Double = 0.7,
+    // Replay buffer configuration
+    val replayType: String = "UNIFORM",
     // Use a fixed heuristic opponent for the first N cycles to generate decisive outcomes
     val opponentWarmupCycles: Int = 2,
     
@@ -1342,7 +1433,7 @@ data class PerformanceEvaluationResult(
     val winRate: Double,
     val drawRate: Double,
     val lossRate: Double,
-    val performanceScore: Double,
+    val outcomeScore: Double,
     val gameResults: List<EvaluationGameResult>
 )
 

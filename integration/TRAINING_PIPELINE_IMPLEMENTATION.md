@@ -1,10 +1,12 @@
-# Chess RL Training Pipeline Implementation
+Deprecated: content folded into README.md. See README.md sections:
+- Profile-based Training and Warm Start
+- Diagnostics profile, Best checkpoint resolution, Eval tips, Matchup diagnostics and TD loss
 
-> Note: This document is a deeper dive. For current quick-start, profiles, and warm-start instructions, see README.md and DQN.md.
+# Chess RL Training Pipeline Implementation (Archived)
 
 ## Overview
 
-This document describes the implementation of task 8.2: "Implement end-to-end training pipeline with efficient batching" for the Chess RL Bot project. The implementation provides a comprehensive training system that orchestrates the complete process from experience collection to neural network updates with efficient batching and monitoring.
+This document described the implementation of task 8.2. It is archived; refer to README.md for up-to-date instructions.
 
 ## Components Implemented
 

@@ -295,5 +295,8 @@ data class SelfPlayGameResult(
     val gameDuration: Long,
     val experiences: List<Experience<DoubleArray, Int>>,
     val chessMetrics: ChessMetrics,
-    val finalPosition: String
+    val finalPosition: String,
+    // Local repetition stats (lightweight, optional)
+    val localRepeatMax: Int = 0,
+    val localPositionsRepeated: Int = 0
 )

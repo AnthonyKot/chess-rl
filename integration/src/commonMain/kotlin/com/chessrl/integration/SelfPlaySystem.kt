@@ -74,6 +74,14 @@ class SelfPlaySystem(
                 
                 // Process results
                 processBatchResults(batchResults)
+                // Optional repetition sampling/logging every N games
+                val period = 10 // fixed sampling period
+                if (totalGamesCompleted > 0 && totalGamesCompleted % period == 0) {
+                    val sample = gameResults.takeLast(minOf(3, gameResults.size))
+                    for (gr in sample) {
+                        println("   🔁 Repetition sample: gameId=${gr.gameId} maxRepeat=${gr.localRepeatMax} positionsRepeated>=2=${gr.localPositionsRepeated}")
+                    }
+                }
                 
                 gamesRemaining -= batchSize
                 
@@ -111,6 +119,8 @@ class SelfPlaySystem(
             executor?.shutdownNow()
         }
     }
+
+    // Repetition stats helpers removed (now computed per game)
     
     /**
      * Start a batch of concurrent games
@@ -132,8 +142,9 @@ class SelfPlaySystem(
                     winReward = config.winReward,
                     lossReward = config.lossReward,
                     drawReward = config.drawReward,
-                    stepPenalty = -0.001,
-                    enablePositionRewards = config.enablePositionRewards
+                    stepPenalty = config.stepPenalty,
+                    enablePositionRewards = config.enablePositionRewards,
+                    gameLengthNormalization = config.gameLengthNormalization
                 )
             )
             
@@ -432,9 +443,11 @@ class SelfPlayGame(
     fun playGame(): SelfPlayGameResult {
         val startTime = getCurrentTimeMillis()
         val experiences = mutableListOf<Experience<DoubleArray, Int>>()
+        val fenCounts = mutableMapOf<String, Int>()
         
         // Reset environment
         var state = environment.reset()
+        fenCounts[environment.getCurrentBoard().toFEN()] = 1
         var stepCount = 0
         var gameResult = "ongoing"
         
@@ -480,6 +493,14 @@ class SelfPlayGame(
             
             // Update state
             state = stepResult.nextState
+            // Count current position FEN
+            val fen = environment.getCurrentBoard().toFEN()
+            fenCounts[fen] = (fenCounts[fen] ?: 0) + 1
+            // Optional local threefold detection
+            if (config.enableLocalThreefoldDraw && (fenCounts[fen] ?: 0) >= config.localThreefoldThreshold) {
+                gameResult = "DRAW_REPETITION_LOCAL"
+                break
+            }
             stepCount++
             
             if (stepResult.done) {
@@ -503,10 +524,19 @@ class SelfPlayGame(
             val penalized = last.copy(reward = last.reward + config.stepLimitPenalty, done = true)
             experiences[experiences.lastIndex] = penalized
         }
+        // Optional repetition penalty (training-only shaping)
+        val localRepeatMax = fenCounts.values.maxOrNull() ?: 0
+        if (config.repetitionPenalty != null && localRepeatMax >= config.repetitionPenaltyAfter && experiences.isNotEmpty()) {
+            val last = experiences.last()
+            val penalized = last.copy(reward = last.reward + (config.repetitionPenalty ?: 0.0))
+            experiences[experiences.lastIndex] = penalized
+        }
         val gameOutcome = if (terminationReason == EpisodeTerminationReason.STEP_LIMIT && config.treatStepLimitAsDrawForReporting) GameOutcome.DRAW else parseGameOutcome(gameResult)
         
         // Get chess metrics
         val chessMetrics = environment.getChessMetrics()
+        // Compute simple repetition stats
+        val localPositionsRepeated = fenCounts.values.count { it >= 2 }
         
         return SelfPlayGameResult(
             gameId = gameId,
@@ -516,7 +546,9 @@ class SelfPlayGame(
             gameDuration = gameDuration,
             experiences = experiences,
             chessMetrics = chessMetrics,
-            finalPosition = environment.getCurrentBoard().toFEN()
+            finalPosition = environment.getCurrentBoard().toFEN(),
+            localRepeatMax = localRepeatMax,
+            localPositionsRepeated = localPositionsRepeated
         )
     }
     
@@ -542,14 +574,24 @@ data class SelfPlayConfig(
     
     // Game settings
     val maxStepsPerGame: Int = 200,
+    // Local threefold repetition detection (optional)
+    val enableLocalThreefoldDraw: Boolean = false,
+    val localThreefoldThreshold: Int = 3,
     
     // Reward configuration
     val winReward: Double = 1.0,
     val lossReward: Double = -1.0,
     val drawReward: Double = 0.0,
     val enablePositionRewards: Boolean = false,
+    // Per-step penalty during self-play generation
+    val stepPenalty: Double = -0.001,
+    // Control game-length normalization of terminal rewards
+    val gameLengthNormalization: Boolean = true,
     // Additional penalty applied when a game hits the step limit (final transition)
     val stepLimitPenalty: Double = -0.05,
+    // Optional repetition penalty (training-only shaping)
+    val repetitionPenalty: Double? = null,
+    val repetitionPenaltyAfter: Int = 2,
     
     // Experience collection
     val maxExperienceBufferSize: Int = 50000,

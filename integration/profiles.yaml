@@ -1,60 +1,5 @@
-profiles:
-  dqn_default:
-    enablePositionRewards: true
-    maxStepsPerGame: 100
-    maxConcurrentGames: 8
-    explorationRate: 0.2
-    explorationWarmupCycles: 2
-    explorationWarmupRate: 0.25
-    rollbackWarmupCycles: 2
-    enableModelRollback: true
-    batchSize: 64
-    checkpointDirectory: checkpoints/advanced
-    checkpointInterval: 5
-    autoCleanupOnFinish: true
-    keepBest: true
-    keepLastN: 2
-    keepEveryN: 5
-    treatStepLimitAsDraw: true
-    targetUpdateFrequency: 100
-
-  dqn_sparse:
-    enablePositionRewards: false
-    maxStepsPerGame: 200
-    maxConcurrentGames: 8
-    explorationRate: 0.1
-    rollbackWarmupCycles: 2
-    enableModelRollback: false
-    stepLimitPenalty: -0.02
-    batchSize: 64
-    checkpointInterval: 5
-    autoCleanupOnFinish: true
-    keepBest: false
-    keepLastN: 1
-    treatStepLimitAsDraw: false
-    targetUpdateFrequency: 100
-
-  dqn_debug_masking:
-    enablePositionRewards: true
-    maxStepsPerGame: 80
-    maxConcurrentGames: 8
-    explorationRate: 0.15
-    explorationWarmupCycles: 1
-    explorationWarmupRate: 0.2
-    rollbackWarmupCycles: 1
-    batchSize: 64
-    checkpointDirectory: checkpoints/advanced
-    checkpointInterval: 2
-    autoCleanupOnFinish: true
-    keepBest: true
-    keepLastN: 2
-    treatStepLimitAsDraw: true
-    targetUpdateFrequency: 20
-    enableDoubleDQN: true
-    drawReward: -0.02
-
-  dqn_unlock:
-    # Short-horizon anti-draw profile to unlock learning
+  dqn_unlock_elo_prioritized:
+    # Unlock phase with prioritized replay + Elo-based best selection parameters
     hiddenLayers: 512,256,128
     enableDoubleDQN: true
     maxStepsPerGame: 60
@@ -69,40 +14,24 @@ profiles:
     enablePositionRewards: false
     drawReward: -0.2
     stepLimitPenalty: -1.0
+    # Right-size per-step penalty; keep win/loss at ±1
+    stepPenalty: -0.002
+    # Disable early: let decisive outcomes dominate reward signal
+    gameLengthNormalization: false
     batchSize: 64
     targetUpdateFrequency: 20
-    checkpointDirectory: checkpoints/advanced
+    checkpointDirectory: checkpoints/unlock_elo_prioritized
     checkpointInterval: 2
     autoCleanupOnFinish: true
     keepBest: true
     keepLastN: 2
     treatStepLimitAsDraw: true
-
-  dqn_expand:
-    # Longer horizon after unlock; softer anti-draw, mild shaping
-    hiddenLayers: 512,256,128
-    enableDoubleDQN: true
-    maxStepsPerGame: 140
-    maxConcurrentGames: 8
-    explorationRate: 0.10
-    explorationWarmupCycles: 2
-    explorationWarmupRate: 0.20
-    opponentWarmupCycles: 2
-    opponentUpdateStrategy: HISTORICAL
-    opponentUpdateFrequency: 1
-    opponentHistoryLag: 1
-    enablePositionRewards: true
-    drawReward: -0.1
-    stepLimitPenalty: -0.2
-    batchSize: 64
-    targetUpdateFrequency: 60
-    checkpointDirectory: checkpoints/advanced
-    checkpointInterval: 2
-    autoCleanupOnFinish: true
-    keepBest: true
-    keepLastN: 2
-    treatStepLimitAsDraw: true
-
+    replayType: PRIORITIZED
+    # Anti-repetition controls
+    enableLocalThreefoldDraw: true
+    localThreefoldThreshold: 3
+    repetitionPenalty: -0.05
+    repetitionPenaltyAfter: 2
   dqn_imitation_bootstrap:
     # Warm-start DQN from an imitation checkpoint trained on chess-engine move examples
     hiddenLayers: 512,256,128
@@ -129,3 +58,22 @@ profiles:
     stepLimitPenalty: -1.0
     # New: model path to load at start if --load not provided
     loadModelPath: ../chess-engine/data/imitation_qnet.json
+
+  
+    # Encourage decisive outcomes and avoid step-limit endings
+    drawReward: -0.05
+    stepLimitPenalty: -0.2
+    treatStepLimitAsDraw: true
+    # Training / replay
+    batchSize: 64
+    experienceCleanupStrategy: LOWEST_QUALITY
+    # Target/updates (kept modest for stability during diagnostics)
+    targetUpdateFrequency: 40
+    # Checkpointing
+    checkpointDirectory: checkpoints/advanced
+    checkpointInterval: 2
+    autoCleanupOnFinish: true
+    keepBest: true
+    keepLastN: 2
+    # Optional algorithm toggles used elsewhere in repo
+    enableDoubleDQN: true

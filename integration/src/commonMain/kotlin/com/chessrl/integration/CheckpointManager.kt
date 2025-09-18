@@ -45,6 +45,17 @@ class CheckpointManager(
                     .replace(".json.gz", "_qnet.json")
                     .replace(".json", "_qnet.json")
                 agent.save(modelPath)
+                // Write model meta alongside, if Elo/perf available
+                val modelMetaPath = modelPath.replace("_qnet.json", "_qnet_meta.json")
+                val metaJson = buildString {
+                    append("{")
+                    append("\"cycle\":${metadata.cycle},")
+                    append("\"performance\":${metadata.performance}")
+                    append(",\"isBest\":${metadata.isBest}")
+                    append(",\"description\":\"${metadata.description}\"")
+                    append("}")
+                }
+                writeTextFile(modelMetaPath, metaJson)
             }
             
             // Create checkpoint info
@@ -81,7 +92,25 @@ class CheckpointManager(
             if (config.validationEnabled) {
                 println("   Validation: ${checkpointInfo.validationStatus}")
             }
-            
+            // Write sidecar metadata JSON for checkpoint
+            runCatching {
+                val metaPath = when {
+                    checkpointPath.endsWith(".json.gz") -> "$checkpointPath.meta.json"
+                    checkpointPath.endsWith(".json") -> "$checkpointPath.meta.json"
+                    else -> "$checkpointPath.meta.json"
+                }
+                val metaJson = buildString {
+                    append("{")
+                    append("\"cycle\":${metadata.cycle},")
+                    append("\"performance\":${metadata.performance}")
+                    append(",\"isBest\":${metadata.isBest}")
+                    append(",\"description\":\"${metadata.description}\"")
+                    append(",\"timestamp\":${checkpointStartTime}")
+                    append("}")
+                }
+                writeTextFile(metaPath, metaJson)
+            }.onFailure { /* best-effort */ }
+
             return checkpointInfo
             
         } catch (e: Exception) {
@@ -97,11 +126,11 @@ class CheckpointManager(
         val loadStartTime = getCurrentTimeMillis()
         
         try {
-            // Validate checkpoint before loading
+            // Validate checkpoint before loading (existence-based; warn only)
             if (config.validationEnabled && checkpointInfo.validationStatus != ValidationStatus.VALID) {
                 val validationResult = validateCheckpoint(checkpointInfo.path)
                 if (validationResult != ValidationStatus.VALID) {
-                    throw CheckpointException("Checkpoint validation failed: $validationResult")
+                    println("⚠️ Checkpoint validation warning: $validationResult — attempting to load anyway")
                 }
             }
             
@@ -382,24 +411,11 @@ class CheckpointManager(
      * Validate checkpoint integrity
      */
     private fun validateCheckpoint(path: String): ValidationStatus {
-        try {
-            // In practice, would perform actual file validation
-            // - Check file exists and is readable
-            // - Validate JSON structure
-            // - Check model weights are valid numbers
-            // - Verify metadata consistency
-            
-            // Simulate validation with occasional failures, deterministically by path
-            val validationSuccess = (kotlin.math.abs(path.hashCode()) % 20) != 0 // ~95% success
-            
-            return if (validationSuccess) {
-                ValidationStatus.VALID
-            } else {
-                ValidationStatus.INVALID
-            }
-            
-        } catch (e: Exception) {
-            return ValidationStatus.INVALID
+        return try {
+            val p = java.nio.file.Path.of(path)
+            if (java.nio.file.Files.exists(p)) ValidationStatus.VALID else ValidationStatus.INVALID
+        } catch (_: Throwable) {
+            ValidationStatus.INVALID
         }
     }
     
@@ -460,7 +476,8 @@ data class CheckpointConfig(
     val baseDirectory: String = "checkpoints",
     val maxVersions: Int = 20,
     val compressionEnabled: Boolean = true,
-    val validationEnabled: Boolean = true,
+    // Default off: when enabled, we perform simple existence checks (no random gating)
+    val validationEnabled: Boolean = false,
     val autoCleanupEnabled: Boolean = true
 )
 

@@ -21,7 +21,8 @@ object RealChessAgentFactory {
         batchSize: Int = 32,
         maxBufferSize: Int = 10000,
         targetUpdateFrequency: Int = 100,
-        doubleDqn: Boolean = false
+        doubleDqn: Boolean = false,
+        replayType: String = "UNIFORM"
     ): RealChessAgent {
         // Seeded randoms if available
         val nnRandom = try { SeedManager.getNeuralNetworkRandom() } catch (_: Throwable) { kotlin.random.Random.Default }
@@ -91,8 +92,11 @@ object RealChessAgentFactory {
             regularization = L2Regularization(lambda = 0.001)
         )
         
-        // Create experience replay buffer
-        val experienceReplay = com.chessrl.rl.CircularExperienceBuffer<DoubleArray, Int>(maxSize = maxBufferSize)
+        // Create experience replay buffer (uniform or prioritized)
+        val experienceReplay: ExperienceReplay<DoubleArray, Int> = when (replayType.uppercase()) {
+            "PRIORITIZED" -> PrioritizedExperienceBuffer(maxSize = maxBufferSize)
+            else -> CircularExperienceBuffer(maxSize = maxBufferSize)
+        }
         
         // Create DQN algorithm
         val dqnAlgorithm = DQNAlgorithm(
@@ -153,7 +157,8 @@ object RealChessAgentFactory {
 
         val policyNetwork = FeedforwardNetwork(
             _layers = policyNetworkLayers,
-            lossFunction = MSELoss(),
+            // For policy gradients, train logits with softmax cross-entropy for stable learning
+            lossFunction = SoftmaxCrossEntropyLoss(),
             optimizer = AdamOptimizer(learningRate = learningRate),
             regularization = L2Regularization(lambda = 0.001)
         )
@@ -191,7 +196,8 @@ object RealChessAgentFactory {
         explorationRandom: kotlin.random.Random,
         replayBufferRandom: kotlin.random.Random,
         weightInitType: String = "he",
-        targetUpdateFrequency: Int = 100
+        targetUpdateFrequency: Int = 100,
+        replayType: String = "UNIFORM"
     ): RealChessAgent {
         
         // Create main Q-network with seeded initialization
@@ -263,11 +269,14 @@ object RealChessAgentFactory {
             regularization = L2Regularization(lambda = 0.001)
         )
         
-        // Create seeded experience replay buffer
-        val experienceReplay = SeededCircularExperienceBuffer<DoubleArray, Int>(
-            maxSize = maxBufferSize,
-            random = replayBufferRandom
-        )
+        // Create seeded experience replay buffer (uniform) or prioritized (unseeded)
+        val experienceReplay: ExperienceReplay<DoubleArray, Int> = when (replayType.uppercase()) {
+            "PRIORITIZED" -> PrioritizedExperienceBuffer(maxSize = maxBufferSize)
+            else -> SeededCircularExperienceBuffer(
+                maxSize = maxBufferSize,
+                random = replayBufferRandom
+            )
+        }
         
         // Create DQN algorithm
         val dqnAlgorithm = DQNAlgorithm(

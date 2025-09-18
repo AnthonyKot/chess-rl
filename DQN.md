@@ -48,6 +48,7 @@ Files to know (main pathnames abbreviated):
 ### 3.3 Action selection and exploration
 - Exploration strategy: EpsilonGreedyStrategy (or seeded variant)
 - selectAction: choose argmax Q(s, a) over valid actions with ε-greedy exploration
+- Strict masking at adapter boundary: even if an internal policy proposes an illegal index, the adapter clamps selection to the best legal move (by prob or Q). This prevents illegal picks in training/eval.
 
 ### 3.4 Valid-action masking (critical for chess)
 - Where it’s set: ChessTrainingPipeline.init calls agent.setNextActionProvider(environment::getValidActions)
@@ -69,7 +70,9 @@ Files to know (main pathnames abbreviated):
 
 ### 3.6 Checkpointing and retention
 - CheckpointManager creates checkpoints regularly and at end; model saved via FeedforwardNetwork.save
+- Canonical best artifacts: `best_qnet.json` + `best_qnet_meta.json` + `best_checkpoint.txt` are updated when best advances.
 - Retention policy: keep best, last N, and optionally every N-th; cleanup metadata-level by default (JVM file deletion could be added)
+- Validation is existence-based and warns only; it never randomly gates loads.
 
 ## 4) Theoretical “ideal” vs current implementation
 
@@ -113,7 +116,8 @@ What happens (one end‑to‑end cycle)
   - Prints per‑batch metrics from the algorithm result (loss, policy entropy, gradient norm; optional EMA and extras).
   - Periodically prints target sync: `🔁 DQN target network synchronized at update=… (freq=…)`.
 - Phase 4 — Evaluation (internal)
-  - Plays a small number of evaluation games to estimate reward/win/draw/loss and compute a composite performance score.
+  - Plays a small number of evaluation games to estimate reward/win/draw/loss and outcomeScore = (wins + 0.5·draws)/games.
+  - Peer match vs previous best each cycle: current vs best head‑to‑head; promote on tie or win.
 - Checkpointing
   - Creates an initial checkpoint (v0), regular checkpoints every `checkpointInterval` cycles, and a final checkpoint.
   - Optional retention cleanup at the end (keep best + last K + every Nth) per config/profile.
@@ -230,7 +234,7 @@ If you want, I can prototype “per-state” masking via masks embedded in exper
       - `🧩 DQN next-state action masking enabled (provider set)`
       - `🧩 DQN masking applied: valid next actions for sample=N`
   - Phase 4: Evaluation
-    - Runs quick evaluation games; computes a composite performance score.
+    - Runs quick evaluation games; reports outcome metrics (win/draw/loss, average length) and computes outcomeScore = (wins + 0.5·draws)/games.
   - Checkpointing
     - Initial checkpoint v0; regular checkpoints by interval; final checkpoint; optional retention cleanup.
 # Heuristic‑Guided Bootstrapping for Chess DQN
