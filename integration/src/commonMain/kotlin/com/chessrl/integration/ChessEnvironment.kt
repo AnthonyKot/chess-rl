@@ -198,9 +198,16 @@ data class ChessRewardConfig(
     val drawReward: Double = 0.0,
     // Small per-step penalty to discourage excessively long games (default 0.0 for tests)
     val stepPenalty: Double = 0.0,
+    // Penalty applied when games hit step limits (incomplete games)
+    val stepLimitPenalty: Double = -0.5,
     val invalidMoveReward: Double = -0.1,
     val gameLengthNormalization: Boolean = true,
     val maxGameLength: Int = 200,
+    
+    // Early adjudication settings
+    val enableEarlyAdjudication: Boolean = false,
+    val resignMaterialThreshold: Int = 9, // Material point difference for resignation
+    val noProgressPlies: Int = 40, // Plies without capture/check before draw adjudication
     
     // Position-based reward shaping (optional)
     val enablePositionRewards: Boolean = false,
@@ -411,6 +418,11 @@ class ChessEnvironment(
     // Game metrics tracking
     private var moveCount = 0
     private var captureCount = 0
+    
+    // Early adjudication tracking
+    private var lastMaterialTotals = Pair(0, 0)
+    private var noProgressPlies = 0
+    private var adjudicatedOutcome: GameStatus? = null
     private var checkCount = 0
     private var previousMaterialValue = 0
     
@@ -424,6 +436,12 @@ class ChessEnvironment(
         captureCount = 0
         checkCount = 0
         previousMaterialValue = calculateTotalMaterialValue()
+        
+        // Reset adjudication state
+        val startFen = chessBoard.toFEN()
+        lastMaterialTotals = calculateMaterialTotals(startFen)
+        noProgressPlies = 0
+        adjudicatedOutcome = null
         
         return stateEncoder.encode(chessBoard)
     }
@@ -471,8 +489,11 @@ class ChessEnvironment(
         // Update game metrics
         updateGameMetrics()
         
+        // Check for early adjudication first
+        val adjudicatedStatus = checkEarlyAdjudication()
+        
         // Get game status and calculate reward
-        val gameStatus = gameStateDetector.getGameStatus(chessBoard, gameHistory)
+        val gameStatus = adjudicatedStatus ?: gameStateDetector.getGameStatus(chessBoard, gameHistory)
         val reward = calculateReward(gameStatus, actualMove, chessBoard.getActiveColor().opposite())
         require(reward.isFinite()) { "Non-finite reward computed: $reward" }
         val done = gameStatus.isGameOver
@@ -489,6 +510,66 @@ class ChessEnvironment(
                 "fen" to chessBoard.toFEN()
             )
         )
+    }
+    
+    /**
+     * Apply step limit penalty for games that hit the maximum step limit
+     * This should be called by the training pipeline when a game is terminated due to step limits
+     */
+    fun applyStepLimitPenalty(): Double {
+        return rewardConfig.stepLimitPenalty
+    }
+    
+    /**
+     * Calculate material totals from FEN string for adjudication
+     */
+    private fun calculateMaterialTotals(fen: String): Pair<Int, Int> {
+        var white = 0
+        var black = 0
+        for (ch in fen.takeWhile { it != ' ' }) {
+            when (ch) {
+                'P' -> white += 1; 'p' -> black += 1
+                'N', 'B' -> white += 3; 'n', 'b' -> black += 3
+                'R' -> white += 5; 'r' -> black += 5
+                'Q' -> white += 9; 'q' -> black += 9
+            }
+        }
+        return white to black
+    }
+    
+    /**
+     * Check for early adjudication based on material advantage or no progress
+     */
+    private fun checkEarlyAdjudication(): GameStatus? {
+        if (!rewardConfig.enableEarlyAdjudication || adjudicatedOutcome != null) {
+            return adjudicatedOutcome
+        }
+        
+        val currentFen = chessBoard.toFEN()
+        val (whiteTotal, blackTotal) = calculateMaterialTotals(currentFen)
+        val (prevWhite, prevBlack) = lastMaterialTotals
+        
+        // Check for capture or check to reset no-progress counter
+        val capture = (whiteTotal + blackTotal) < (prevWhite + prevBlack)
+        val inCheck = gameStateDetector.getGameStatus(chessBoard, gameHistory).name.contains("IN_CHECK")
+        
+        noProgressPlies = if (capture || inCheck) 0 else noProgressPlies + 1
+        lastMaterialTotals = whiteTotal to blackTotal
+        
+        // Check material advantage for resignation
+        val materialDiff = whiteTotal - blackTotal
+        if (kotlin.math.abs(materialDiff) >= rewardConfig.resignMaterialThreshold) {
+            adjudicatedOutcome = if (materialDiff > 0) GameStatus.WHITE_WINS else GameStatus.BLACK_WINS
+            return adjudicatedOutcome
+        }
+        
+        // Check no progress for draw adjudication
+        if (noProgressPlies >= rewardConfig.noProgressPlies) {
+            adjudicatedOutcome = GameStatus.DRAW_FIFTY_MOVE_RULE // Use fifty-move as proxy for no progress
+            return adjudicatedOutcome
+        }
+        
+        return null
     }
     
     /**

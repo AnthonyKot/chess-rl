@@ -283,7 +283,7 @@ class GameStateDetectionTest {
         board.setPieceAt(Position(7, 7), Piece(PieceType.ROOK, PieceColor.BLACK)) // h8
         board.setPieceAt(Position(5, 5), Piece(PieceType.KNIGHT, PieceColor.WHITE)) // f6
         
-        board.getGameState().activeColor = PieceColor.BLACK
+        board.switchActiveColor() // Switch from WHITE to BLACK
         assertTrue(detector.isCheckmate(board, PieceColor.BLACK))
     }
 }

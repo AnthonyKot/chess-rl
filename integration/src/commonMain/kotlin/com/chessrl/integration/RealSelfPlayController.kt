@@ -22,6 +22,7 @@ class RealSelfPlayController(
     private val chessEnvironment = ChessEnvironment(
         rewardConfig = ChessRewardConfig(
             enablePositionRewards = true,
+            stepLimitPenalty = -0.5,
             maxGameLength = 100
         )
     )
@@ -322,7 +323,7 @@ class RealSelfPlayController(
             GameOutcome.WHITE_WINS -> 1.0
             GameOutcome.BLACK_WINS -> -1.0
             GameOutcome.DRAW -> 0.0
-            GameOutcome.ONGOING -> 0.0
+            GameOutcome.ONGOING -> -0.5  // Penalty for incomplete games (step-limited)
         }
     }
     

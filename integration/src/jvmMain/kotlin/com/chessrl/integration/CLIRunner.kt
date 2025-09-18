@@ -46,7 +46,11 @@ object CLIRunner {
         val rng = runCatching { SeedManager.getNeuralNetworkRandom() }.getOrElse { kotlin.random.Random.Default }
         val teacher = com.chessrl.teacher.MinimaxTeacher(depth = depth, random = rng)
         val actionEncoder = ChessActionEncoder()
-        val env = ChessEnvironment()
+        val env = ChessEnvironment(
+            rewardConfig = ChessRewardConfig(
+                stepLimitPenalty = -0.5
+            )
+        )
 
         var wins = 0
         var draws = 0
@@ -190,6 +194,7 @@ object CLIRunner {
                 lossReward = evalLoss,
                 drawReward = evalDraw,
                 stepPenalty = 0.0,
+                stepLimitPenalty = profile?.get("stepLimitPenalty")?.toDoubleOrNull() ?: -0.5,
                 enablePositionRewards = profile?.get("enablePositionRewards")?.toBooleanStrictOrNull() ?: false,
                 maxGameLength = maxSteps
             )
@@ -230,8 +235,9 @@ object CLIRunner {
             val raw = when {
                 status.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
                 status.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
-                status.contains("DRAW") || status.contains("ONGOING") -> GameOutcome.DRAW
-                else -> GameOutcome.DRAW
+                status.contains("DRAW") -> GameOutcome.DRAW
+                status.contains("ONGOING") -> GameOutcome.ONGOING
+                else -> GameOutcome.ONGOING  // Default to ONGOING for unrecognized states
             }
             val agentOutcome = when (raw) {
                 GameOutcome.WHITE_WINS -> if (agentIsWhite) 1 else -1
@@ -337,7 +343,7 @@ object CLIRunner {
         val env = ChessEnvironment(
             rewardConfig = ChessRewardConfig(
                 winReward = 1.0, lossReward = -1.0, drawReward = 0.0,
-                stepPenalty = 0.0, enablePositionRewards = false, maxGameLength = maxSteps
+                stepPenalty = 0.0, stepLimitPenalty = -0.5, enablePositionRewards = false, maxGameLength = maxSteps
             )
         )
 
@@ -686,7 +692,11 @@ object CLIRunner {
             }
         }
 
-        val env = ChessEnvironment()
+        val env = ChessEnvironment(
+            rewardConfig = ChessRewardConfig(
+                stepLimitPenalty = -0.5
+            )
+        )
         var state = env.reset()
         val encoder = ChessActionEncoder()
 

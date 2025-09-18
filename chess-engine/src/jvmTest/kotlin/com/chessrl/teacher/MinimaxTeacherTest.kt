@@ -117,7 +117,7 @@ class MinimaxTeacherTest {
         val teacher = MinimaxTeacher(depth = 2)
         val board = ChessBoard() // start position
         val start = System.currentTimeMillis()
-        val _ = teacher.scoreMoves(board, board.getActiveColor(), searchDepth = 2)
+        val result = teacher.scoreMoves(board, board.getActiveColor(), searchDepth = 2)
         val elapsed = System.currentTimeMillis() - start
         // Be generous to avoid flakiness across machines/CI
         assertTrue(elapsed < 3_000, "Depth-2 scoring took too long: ${elapsed}ms")

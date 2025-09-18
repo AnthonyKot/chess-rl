@@ -1,8 +1,8 @@
   dqn_unlock_elo_prioritized:
     # Unlock phase with prioritized replay + Elo-based best selection parameters
-    hiddenLayers: 512,256,128
+    hiddenLayers: 1024,1024,256
     enableDoubleDQN: true
-    maxStepsPerGame: 60
+    maxStepsPerGame: 100
     maxConcurrentGames: 8
     explorationRate: 0.20
     explorationWarmupCycles: 8
@@ -13,15 +13,15 @@
     opponentHistoryLag: 1
     enablePositionRewards: false
     drawReward: -0.2
-    stepLimitPenalty: -1.0
+    stepLimitPenalty: 0
     # Right-size per-step penalty; keep win/loss at ±1
     stepPenalty: -0.002
     # Disable early: let decisive outcomes dominate reward signal
     gameLengthNormalization: false
-    batchSize: 64
-    targetUpdateFrequency: 20
+    batchSize: 32
+    targetUpdateFrequency: 10
     checkpointDirectory: checkpoints/unlock_elo_prioritized
-    checkpointInterval: 2
+    checkpointInterval: 5
     autoCleanupOnFinish: true
     keepBest: true
     keepLastN: 2

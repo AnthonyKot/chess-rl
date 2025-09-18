@@ -161,7 +161,7 @@ class GameStateDetector {
      */
     fun getAllLegalMoves(board: ChessBoard, color: PieceColor): List<Move> {
         val validator = MoveValidationSystem()
-        val pseudoLegalMoves = validator.getAllValidMoves(board, color)
+        val pseudoLegalMoves = validator.getAllValidMovesIgnoringTurn(board, color)
         val legalMoves = mutableListOf<Move>()
         
         for (move in pseudoLegalMoves) {

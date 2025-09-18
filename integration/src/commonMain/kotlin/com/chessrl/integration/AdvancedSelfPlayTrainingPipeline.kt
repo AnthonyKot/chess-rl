@@ -129,8 +129,12 @@ class AdvancedSelfPlayTrainingPipeline(
                     lossReward = config.lossReward,
                     drawReward = config.drawReward,
                     stepPenalty = config.stepPenalty,
+                    stepLimitPenalty = config.stepLimitPenalty,
                     enablePositionRewards = config.enablePositionRewards,
-                    gameLengthNormalization = config.gameLengthNormalization
+                    gameLengthNormalization = config.gameLengthNormalization,
+                    enableEarlyAdjudication = true,
+                    resignMaterialThreshold = 9,
+                    noProgressPlies = 40
                 )
             )
             
@@ -667,6 +671,7 @@ class AdvancedSelfPlayTrainingPipeline(
                 lossReward = config.lossReward,
                 drawReward = config.drawReward,
                 stepPenalty = config.stepPenalty,
+                stepLimitPenalty = config.stepLimitPenalty,
                 enablePositionRewards = config.enablePositionRewards,
                 gameLengthNormalization = config.gameLengthNormalization,
                 maxGameLength = config.maxStepsPerGame
@@ -687,12 +692,13 @@ class AdvancedSelfPlayTrainingPipeline(
         val avgGameLength = if (gameResults.isNotEmpty()) gameResults.map { it.gameLength }.average() else 0.0
         val wins = gameResults.count { it.gameOutcome == GameOutcome.WHITE_WINS }
         val ongoing = gameResults.count { it.gameOutcome == GameOutcome.ONGOING }
-        val draws = gameResults.count { it.gameOutcome == GameOutcome.DRAW } + ongoing // treat ongoing as draws
+        val draws = gameResults.count { it.gameOutcome == GameOutcome.DRAW }  // Only legitimate draws
         val losses = gameResults.count { it.gameOutcome == GameOutcome.BLACK_WINS }
-        val counted = (wins + draws + losses).coerceAtLeast(1) // avoid divide by zero
+        val counted = (wins + draws + losses + ongoing).coerceAtLeast(1) // avoid divide by zero
         val winRate = wins.toDouble() / counted
         val drawRate = draws.toDouble() / counted
         val lossRate = losses.toDouble() / counted
+        val ongoingRate = ongoing.toDouble() / counted
         // Outcome score for selection/convergence
         val outcomeScore = (wins + 0.5 * draws) / counted.toDouble()
 
@@ -772,7 +778,7 @@ class AdvancedSelfPlayTrainingPipeline(
         val env = ChessEnvironment(
             rewardConfig = ChessRewardConfig(
                 winReward = 1.0, lossReward = -1.0, drawReward = 0.0,
-                stepPenalty = 0.0, enablePositionRewards = false, gameLengthNormalization = false, maxGameLength = 200
+                stepPenalty = 0.0, stepLimitPenalty = -0.5, enablePositionRewards = false, gameLengthNormalization = false, maxGameLength = 200
             )
         )
         // Small exploration to break symmetry

@@ -65,6 +65,7 @@ class SelfPlayController(
                     winReward = config.winReward,
                     lossReward = config.lossReward,
                     drawReward = config.drawReward,
+                    stepLimitPenalty = config.stepLimitPenalty,
                     enablePositionRewards = config.enablePositionRewards
                 )
             )
@@ -312,7 +313,11 @@ class SelfPlayController(
         println("🔍 Evaluating agent performance...")
         
         // Create evaluation environment
-        val evalEnvironment = ChessEnvironment()
+        val evalEnvironment = ChessEnvironment(
+            rewardConfig = ChessRewardConfig(
+                stepLimitPenalty = config.stepLimitPenalty
+            )
+        )
         
         // Run evaluation games
         val evaluationGames = 5
@@ -571,6 +576,7 @@ data class SelfPlayControllerConfig(
     val winReward: Double = 1.0,
     val lossReward: Double = -1.0,
     val drawReward: Double = 0.0,
+    val stepLimitPenalty: Double = -0.05,
     val enablePositionRewards: Boolean = true,
     
     // Experience management

@@ -143,8 +143,12 @@ class SelfPlaySystem(
                     lossReward = config.lossReward,
                     drawReward = config.drawReward,
                     stepPenalty = config.stepPenalty,
+                    stepLimitPenalty = config.stepLimitPenalty,
                     enablePositionRewards = config.enablePositionRewards,
-                    gameLengthNormalization = config.gameLengthNormalization
+                    gameLengthNormalization = config.gameLengthNormalization,
+                    enableEarlyAdjudication = true,
+                    resignMaterialThreshold = 9,
+                    noProgressPlies = 40
                 )
             )
             

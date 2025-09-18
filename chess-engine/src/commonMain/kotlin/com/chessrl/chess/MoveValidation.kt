@@ -568,4 +568,26 @@ class MoveValidationSystem {
         
         return moves
     }
+    
+    /**
+     * Get all valid moves for a color, ignoring whose turn it is
+     * This is used for game state detection (checkmate/stalemate)
+     */
+    fun getAllValidMovesIgnoringTurn(board: ChessBoard, color: PieceColor): List<Move> {
+        val moves = mutableListOf<Move>()
+        
+        for (rank in 0..7) {
+            for (file in 0..7) {
+                val position = Position(rank, file)
+                val piece = board.getPieceAt(position)
+                
+                if (piece != null && piece.color == color) {
+                    val validator = validators[piece.type] ?: continue
+                    moves.addAll(validator.getValidMoves(board, position))
+                }
+            }
+        }
+        
+        return moves
+    }
 }
