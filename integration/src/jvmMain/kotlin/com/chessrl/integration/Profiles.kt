@@ -41,6 +41,13 @@ object ProfilesLoader {
                 val idx = line.indexOf(":")
                 val key = line.substring(0, idx).trim()
                 var value = line.substring(idx + 1).trim()
+                
+                // Remove inline comments
+                val commentIdx = value.indexOf("#")
+                if (commentIdx >= 0) {
+                    value = value.substring(0, commentIdx).trim()
+                }
+                
                 value = value.trim('"')
                 current[key] = value
             }

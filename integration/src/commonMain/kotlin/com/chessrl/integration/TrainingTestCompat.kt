@@ -207,7 +207,9 @@ class TrainingDebugger(private val config: DebuggerConfig) {
         val quality = if (nonZeroRewards.toDouble() / max(1, experiences.size) < 0.2) ExperienceQuality.POOR else ExperienceQuality.GOOD
 
         val qAnalysis = if (updateResult.qValueMean != null && updateResult.targetValueMean != null) {
-            val div = updateResult.qValueMean - updateResult.targetValueMean
+            val qMean = updateResult.qValueMean!!
+            val targetMean = updateResult.targetValueMean!!
+            val div = qMean - targetMean
             val health = when {
                 div > 50.0 -> QValueHealth.OVERESTIMATED
                 div < -50.0 -> QValueHealth.UNDERESTIMATED

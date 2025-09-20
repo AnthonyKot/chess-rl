@@ -105,7 +105,7 @@ class TrainingPipeline(
 
             // Set up valid action provider for DQN masking
             mainAgent.setNextActionProvider { state ->
-                ValidActionRegistry.get(state) ?: environment?.getValidActions(state) ?: emptyList()
+                environment?.getValidActions(state) ?: emptyList()
             }
             
             println("✅ Training Pipeline initialized successfully")
@@ -259,7 +259,7 @@ class TrainingPipeline(
         val cycleStartTime = getCurrentTimeMillis()
         
         // Clear any stale action masks from previous cycles
-        ValidActionRegistry.clear()
+        // (ValidActionRegistry removed - using direct environment calls)
         
         // Phase 1: Concurrent self-play game generation
         println("🎮 Phase 1: Self-play generation (${config.gamesPerCycle} games)")
@@ -365,11 +365,8 @@ class TrainingPipeline(
                 
                 experiences.add(experience)
                 
-                // Register valid actions for next state (for DQN masking)
-                runCatching {
-                    val nextValidActions = environment.getValidActions(stepResult.nextState)
-                    ValidActionRegistry.put(stepResult.nextState, nextValidActions)
-                }
+                // Valid actions are now handled directly by the environment
+                // (ValidActionRegistry removed - using direct environment calls)
                 
                 // Update state
                 state = stepResult.nextState

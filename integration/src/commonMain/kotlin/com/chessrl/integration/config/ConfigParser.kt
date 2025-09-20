@@ -225,21 +225,81 @@ object ConfigParser {
     fun parseJson(jsonContent: String): ChessRLConfig {
         var config = ChessRLConfig()
 
-        // Simple JSON parsing - remove braces and split by commas
+        // Simple JSON parsing - handle arrays properly
         val content = jsonContent.trim().removeSurrounding("{", "}")
-        val pairs = if (content.isBlank()) emptyList() else content.split(",")
+        
+        // Parse key-value pairs while handling arrays
+        val pairs = parseJsonPairs(content)
 
-        for (pair in pairs) {
-            val parts = pair.split(":", limit = 2)
-            if (parts.size != 2) continue
-
-            val key = parts[0].trim().removeSurrounding("\"")
-            val value = parts[1].trim()
-
+        for ((key, value) in pairs) {
             config = applyConfigSetting(config, key, value)
         }
 
         return config
+    }
+    
+    /**
+     * Parse JSON key-value pairs, properly handling arrays
+     */
+    private fun parseJsonPairs(content: String): List<Pair<String, String>> {
+        val pairs = mutableListOf<Pair<String, String>>()
+        var i = 0
+        
+        while (i < content.length) {
+            // Skip whitespace
+            while (i < content.length && content[i].isWhitespace()) i++
+            if (i >= content.length) break
+            
+            // Skip comma
+            if (content[i] == ',') {
+                i++
+                continue
+            }
+            
+            // Parse key
+            if (content[i] != '"') break
+            i++ // skip opening quote
+            val keyStart = i
+            while (i < content.length && content[i] != '"') i++
+            if (i >= content.length) break
+            val key = content.substring(keyStart, i)
+            i++ // skip closing quote
+            
+            // Skip whitespace and colon
+            while (i < content.length && (content[i].isWhitespace() || content[i] == ':')) i++
+            if (i >= content.length) break
+            
+            // Parse value
+            val valueStart = i
+            var valueEnd = i
+            
+            if (content[i] == '[') {
+                // Handle array value
+                var bracketCount = 0
+                while (i < content.length) {
+                    if (content[i] == '[') bracketCount++
+                    else if (content[i] == ']') bracketCount--
+                    i++
+                    if (bracketCount == 0) break
+                }
+                valueEnd = i
+            } else if (content[i] == '"') {
+                // Handle string value
+                i++ // skip opening quote
+                while (i < content.length && content[i] != '"') i++
+                if (i < content.length) i++ // skip closing quote
+                valueEnd = i
+            } else {
+                // Handle number or other value
+                while (i < content.length && content[i] != ',' && content[i] != '}') i++
+                valueEnd = i
+            }
+            
+            val value = content.substring(valueStart, valueEnd).trim()
+            pairs.add(key to value)
+        }
+        
+        return pairs
     }
     
     /**

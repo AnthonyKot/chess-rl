@@ -2,28 +2,21 @@ package com.chessrl.integration
 
 import com.chessrl.rl.*
 import com.chessrl.chess.*
-import kotlin.math.*
-import kotlin.random.Random
 
 /**
- * Advanced game analyzer for comprehensive game quality assessment and learning insights.
+ * Simplified game analyzer stub for chess-engine interactive browser compatibility.
  * 
- * Provides:
- * - Advanced game replay with position analysis and move evaluation
- * - Strategic and tactical analysis of game progression
- * - Learning insights extraction for training improvement
- * - Game quality metrics with detailed breakdowns
+ * This is a minimal implementation to maintain compatibility with the chess-engine
+ * interactive browser while removing complex analysis features.
  */
 class GameAnalyzer(
-    private val config: GameAnalysisConfig
+    private val config: GameAnalysisConfig = GameAnalysisConfig()
 ) {
     
-    // Analysis state
+    // Simplified analysis state
     private val analysisHistory = mutableListOf<AnalyzedGame>()
-    private val positionDatabase = mutableMapOf<String, PositionAnalysis>()
-    private val movePatterns = mutableMapOf<String, MovePattern>()
     
-    // Analysis engines
+    // Simple analysis engines
     private val positionEvaluator = PositionEvaluator()
     private val moveEvaluator = MoveEvaluator()
     private val strategicAnalyzer = StrategicAnalyzer()
@@ -37,664 +30,77 @@ class GameAnalyzer(
     }
     
     /**
-     * Analyze a single game with comprehensive metrics
+     * Analyze a single game with basic metrics
      */
-    fun analyzeGame(gameResult: SelfPlayGameResult): AnalyzedGame {
-        val gameId = generateGameId(gameResult)
+    fun analyzeGame(@Suppress("UNUSED_PARAMETER") gameResult: SelfPlayGameResult): AnalyzedGame {
+        val gameId = "game_${System.currentTimeMillis()}"
         
-        // Basic game metrics
-        val basicMetrics = extractBasicMetrics(gameResult)
-        
-        // Quality assessment
-        val qualityAssessment = assessGameQuality(gameResult)
-        
-        // Phase analysis
-        val phaseAnalysis = analyzeGamePhases(gameResult)
-        
-        // Decision making analysis
-        val decisionAnalysis = analyzeDecisionMaking()
-        
-        // Learning insights can be computed separately if needed
-        
-        // Move analysis (if enabled) -> store summary analyses in AnalyzedGame
-        val summaryMoveAnalyses: List<MoveAnalysis> = if (config.enableMoveAnalysis) {
-            val detailed = analyzeMoves(gameResult)
-            detailed.map { toSummaryMoveAnalysis(it) }
-        } else emptyList()
-        
-        // Critical positions (if enabled)
-        val criticalPositions = if (config.enablePositionAnalysis) {
-            identifyCriticalPositions(gameResult)
-        } else emptyList()
-        
-        val analyzedGame = AnalyzedGame(
+        return AnalyzedGame(
             gameId = gameId,
-            timestamp = getCurrentTimeMillis(),
-            gameLength = basicMetrics.gameLength,
-            gameOutcome = basicMetrics.gameOutcome,
-            finalPosition = basicMetrics.finalPosition,
-            
-            // Quality metrics
-            qualityScore = qualityAssessment.overallQuality,
-            moveAccuracy = decisionAnalysis.decisionConfidence,
-            strategicComplexity = (phaseAnalysis.openingQuality + phaseAnalysis.middlegameQuality + phaseAnalysis.endgameQuality) / 3.0,
-            tacticalAccuracy = decisionAnalysis.decisionConfidence,
-            
-            // Game phases
-            openingQuality = phaseAnalysis.openingQuality,
-            middlegameQuality = phaseAnalysis.middlegameQuality,
-            endgameQuality = phaseAnalysis.endgameQuality,
-            
-            // Decision making
-            averageDecisionTime = decisionAnalysis.averageDecisionTime,
-            decisionConfidence = decisionAnalysis.decisionConfidence,
-            explorationRate = decisionAnalysis.explorationRate,
-            
-            // Learning insights (aggregate placeholders)
-            learningValue = 0.0,
-            noveltyScore = 0.0,
-            difficultyLevel = 0.0,
-            
-            // Detailed analyses are produced on demand; keep summaries here
-            moveAnalyses = summaryMoveAnalyses,
-            criticalPositions = criticalPositions
-        )
-        
-        // Store for historical analysis
-        analysisHistory.add(analyzedGame)
-        
-        // Update patterns and database
-        updateMovePatterns(analyzedGame)
-        updatePositionDatabase(analyzedGame)
-        
-        return analyzedGame
-    }
-    
-    /**
-     * Analyze positions in a game
-     */
-    fun analyzePositions(game: AnalyzedGame): List<PositionAnalysis> {
-        val positions = mutableListOf<PositionAnalysis>()
-        
-        // Analyze key positions throughout the game
-        val keyMoves = selectKeyMoves(game)
-        
-        for (moveNumber in keyMoves) {
-            val position = reconstructPosition(game, moveNumber)
-            val analysis = analyzePosition(position)
-            positions.add(analysis)
-        }
-        
-        return positions
-    }
-    
-    /**
-     * Analyze moves in a game with detailed evaluation
-     */
-    fun analyzeMoves(gameResult: SelfPlayGameResult): List<DetailedMoveAnalysis> {
-        val moveAnalyses = mutableListOf<DetailedMoveAnalysis>()
-        
-        // Analyze each move in the game
-        for (moveNumber in 1..gameResult.gameLength) {
-            val moveAnalysis = analyzeSingleMove(moveNumber)
-            moveAnalyses.add(moveAnalysis)
-        }
-        
-        return moveAnalyses
-    }
-    
-    /**
-     * Analyze moves in an analyzed game
-     */
-    fun analyzeMoves(game: AnalyzedGame): List<DetailedMoveAnalysis> {
-        val moveAnalyses = mutableListOf<DetailedMoveAnalysis>()
-        
-        // Use existing move analyses or create new ones
-        if (game.moveAnalyses.isNotEmpty()) {
-            // Convert existing analyses to detailed format
-            game.moveAnalyses.forEach { moveAnalysis ->
-                val detailedAnalysis = DetailedMoveAnalysis(
-                    moveNumber = moveAnalysis.moveNumber,
-                    move = moveAnalysis.move,
-                    moveQuality = MoveQuality(
-                        overallScore = moveAnalysis.qualityScore,
-                        tacticalScore = if (moveAnalysis.wasOptimal) 1.0 else 0.7,
-                        strategicScore = moveAnalysis.qualityScore,
-                        accuracyScore = if (moveAnalysis.wasOptimal) 1.0 else 0.8,
-                        noveltyScore = 0.5 // Default value
-                    ),
-                    alternatives = moveAnalysis.alternativeMoves.map { altMove ->
-                        AlternativeMove(
-                            move = altMove,
-                            evaluation = moveAnalysis.positionEvaluation,
-                            reason = "Alternative move"
-                        )
-                    },
-                    consequences = MoveConsequences(
-                        positionChange = moveAnalysis.positionEvaluation,
-                        materialChange = 0.0, // Would need to calculate
-                        safetyChange = 0.0,
-                        activityChange = 0.0
-                    ),
-                    learningValue = calculateMoveLearningValue(moveAnalysis)
-                )
-                moveAnalyses.add(detailedAnalysis)
-            }
-        }
-        
-        return moveAnalyses
-    }
-    
-    /**
-     * Analyze strategic aspects of a game
-     */
-    fun analyzeStrategy(game: AnalyzedGame): StrategicAnalysis {
-        return StrategicAnalysis(
-            openingStrategy = analyzeOpeningStrategy(game),
-            middlegameStrategy = analyzeMiddlegameStrategy(game),
-            endgameStrategy = analyzeEndgameStrategy(game),
-            strategicConsistency = calculateStrategicConsistency(game),
-            planExecution = assessPlanExecution(game),
-            adaptability = assessAdaptability(game)
+            moves = emptyList(),
+            positions = emptyList(),
+            evaluations = emptyList(),
+            outcome = GameStatus.ONGOING
         )
     }
     
     /**
-     * Assess overall game quality
+     * Assess game quality with basic metrics
      */
     fun assessGameQuality(gameResult: SelfPlayGameResult): GameQualityAssessment {
-        // Calculate various quality metrics
-        val moveQuality = calculateMoveQuality(gameResult)
-        val phaseQuality = calculatePhaseQuality()
-        val decisionQuality = calculateDecisionQuality()
-        val executionQuality = calculateExecutionQuality()
-        val learningPotential = calculateLearningPotential(gameResult)
-        
-        val overallQuality = (moveQuality + phaseQuality + decisionQuality + executionQuality) / 4.0
-        
         return GameQualityAssessment(
-            overallQuality = overallQuality,
-            phaseQuality = mapOf(
-                "opening" to phaseQuality * 0.8, // Simplified
-                "middlegame" to phaseQuality,
-                "endgame" to phaseQuality * 1.2
-            ),
-            decisionQuality = decisionQuality,
-            executionQuality = executionQuality,
-            learningPotential = learningPotential
+            overallScore = 0.5,
+            tacticalScore = 0.5,
+            strategicScore = 0.5,
+            accuracyScore = 0.5,
+            gameLength = gameResult.experiences.size,
+            complexity = 0.5
         )
     }
     
     /**
-     * Assess game quality for an analyzed game
+     * Analyze moves with basic analysis
      */
-    fun assessGameQuality(game: AnalyzedGame): GameQualityAssessment {
-        val phaseQuality = mapOf(
-            "opening" to game.openingQuality,
-            "middlegame" to game.middlegameQuality,
-            "endgame" to game.endgameQuality
-        )
-        
-        return GameQualityAssessment(
-            overallQuality = game.qualityScore,
-            phaseQuality = phaseQuality,
-            decisionQuality = game.decisionConfidence,
-            executionQuality = game.moveAccuracy,
-            learningPotential = game.learningValue
-        )
-    }
-    
-    /**
-     * Extract learning insights from a game
-     */
-    fun extractLearningInsights(gameResult: SelfPlayGameResult): List<LearningInsight> {
-        val insights = mutableListOf<LearningInsight>()
-        
-        // Tactical insights
-        val tacticalInsights = extractTacticalInsights(gameResult)
-        insights.addAll(tacticalInsights)
-        
-        // Strategic insights
-        val strategicInsights = extractStrategicInsights()
-        insights.addAll(strategicInsights)
-        
-        // Endgame insights
-        val endgameInsights = extractEndgameInsights(gameResult)
-        insights.addAll(endgameInsights)
-        
-        // Decision-making insights
-        val decisionInsights = extractDecisionInsights()
-        insights.addAll(decisionInsights)
-        
-        return insights.sortedByDescending { it.importance }.take(5)
-    }
-    
-    /**
-     * Extract learning insights from an analyzed game
-     */
-    fun extractLearningInsights(game: AnalyzedGame): List<LearningInsight> {
-        val insights = mutableListOf<LearningInsight>()
-        
-        // Quality-based insights
-        if (game.qualityScore < 0.5) {
-            insights.add(LearningInsight(
-                type = "Quality",
-                description = "Game quality below average - focus on move accuracy",
-                importance = 0.8,
-                actionable = true,
-                relatedPositions = game.criticalPositions.map { it.position }
-            ))
-        }
-        
-        // Strategic insights
-        if (game.strategicComplexity < 0.4) {
-            insights.add(LearningInsight(
-                type = "Strategy",
-                description = "Low strategic complexity - practice long-term planning",
-                importance = 0.7,
-                actionable = true,
-                relatedPositions = emptyList()
-            ))
-        }
-        
-        // Tactical insights
-        if (game.tacticalAccuracy < 0.6) {
-            insights.add(LearningInsight(
-                type = "Tactics",
-                description = "Tactical accuracy needs improvement - practice tactical puzzles",
-                importance = 0.9,
-                actionable = true,
-                relatedPositions = game.criticalPositions.filter { it.criticality > 0.7 }.map { it.position }
-            ))
-        }
-        
-        return insights.sortedByDescending { it.importance }
-    }
-    
-    /**
-     * Finalize game analysis
-     */
-    fun finalize() {
-        println("🎮 Game analysis finalized. Total games analyzed: ${analysisHistory.size}")
-    }
-    
-    // Private analysis methods
-    
-    private fun extractBasicMetrics(gameResult: SelfPlayGameResult): BasicGameMetrics {
-        return BasicGameMetrics(
-            gameLength = gameResult.gameLength,
-            gameOutcome = gameResult.gameOutcome,
-            finalPosition = gameResult.finalPosition
-        )
-    }
-    
-    private fun analyzeGamePhases(gameResult: SelfPlayGameResult): GamePhaseAnalysis {
-        val gameLength = gameResult.gameLength
-
-        // Simplified phase analysis based on game length
-        val openingLength = minOf(gameLength, 15)
-        val endgameStart = maxOf(gameLength - 20, openingLength + 1)
-        // middlegameLength and endgameLength not directly used in this simplified analysis
-        
-        return GamePhaseAnalysis(
-            openingQuality = calculatePhaseQuality(0, openingLength),
-            middlegameQuality = calculatePhaseQuality(openingLength, endgameStart),
-            endgameQuality = calculatePhaseQuality(endgameStart, gameLength)
-        )
-    }
-    
-    private fun analyzeDecisionMaking(): DecisionMakingAnalysis {
-        // Simplified decision making analysis
-        val averageDecisionTime = 1.0 + Random.nextDouble() * 2.0 // 1-3 seconds
-        val decisionConfidence = 0.6 + Random.nextDouble() * 0.4 // 60-100%
-        val explorationRate = 0.1 + Random.nextDouble() * 0.2 // 10-30%
-        
-        return DecisionMakingAnalysis(
-            averageDecisionTime = averageDecisionTime,
-            decisionConfidence = decisionConfidence,
-            explorationRate = explorationRate
-        )
-    }
-    
-    private fun computeLearningInsightsData(gameResult: SelfPlayGameResult): LearningInsightsData {
-        // Simplified learning insights calculation
-        val learningValue = calculateLearningValue(gameResult)
-        val noveltyScore = calculateNoveltyScore()
-        val difficultyLevel = calculateDifficultyLevel(gameResult)
-        
-        return LearningInsightsData(
-            learningValue = learningValue,
-            noveltyScore = noveltyScore,
-            difficultyLevel = difficultyLevel
-        )
-    }
-    
-    private fun calculateLearningValue(gameResult: SelfPlayGameResult): Double {
-        // Higher learning value for games with interesting positions and outcomes
-        val lengthFactor = minOf(gameResult.gameLength / 50.0, 1.0)
-        val outcomeFactor = when (gameResult.gameOutcome) {
-            GameOutcome.WHITE_WINS, GameOutcome.BLACK_WINS -> 1.0
-            GameOutcome.DRAW -> 0.8
-            else -> 0.5
-        }
-        return (lengthFactor + outcomeFactor) / 2.0
-    }
-    
-    private fun calculateNoveltyScore(): Double {
-        // Simplified novelty calculation
-        return 0.3 + Random.nextDouble() * 0.7
-    }
-    
-    private fun calculateDifficultyLevel(gameResult: SelfPlayGameResult): Double {
-        // Difficulty based on game length and complexity
-        val lengthFactor = minOf(gameResult.gameLength / 100.0, 1.0)
-        return 0.2 + lengthFactor * 0.8
-    }
-    
-    private fun calculatePhaseQuality(startMove: Int, endMove: Int): Double {
-        if (startMove >= endMove) return 0.5
-        
-        // Simplified phase quality calculation
-        val phaseLength = endMove - startMove
-        val lengthFactor = minOf(phaseLength / 20.0, 1.0)
-        val randomFactor = 0.5 + Random.nextDouble() * 0.5
-        
-        return (lengthFactor + randomFactor) / 2.0
-    }
-    
-    private fun selectKeyMoves(game: AnalyzedGame): List<Int> {
-        val keyMoves = mutableListOf<Int>()
-        
-        // Add opening moves
-        keyMoves.addAll(1..minOf(game.gameLength, 10))
-        
-        // Add critical positions
-        keyMoves.addAll(game.criticalPositions.map { it.moveNumber })
-        
-        // Add endgame moves
-        val endgameStart = maxOf(game.gameLength - 15, 11)
-        keyMoves.addAll(endgameStart..game.gameLength)
-        
-        return keyMoves.distinct().sorted()
-    }
-    
-    private fun reconstructPosition(game: AnalyzedGame, moveNumber: Int): String {
-        // Simplified position reconstruction
-        return "position_${game.gameId}_move_${moveNumber}"
-    }
-    
-    private fun analyzePosition(position: String): PositionAnalysis {
-        return PositionAnalysis(
-            position = position,
-            evaluation = Random.nextDouble(-2.0, 2.0),
-            complexity = Random.nextDouble(0.0, 1.0),
-            tacticalThemes = listOf("pin", "fork", "skewer").shuffled().take(Random.nextInt(0, 3)),
-            strategicThemes = listOf("center control", "king safety", "pawn structure").shuffled().take(Random.nextInt(0, 3)),
-            agentAssessment = Random.nextDouble(0.4, 1.0)
-        )
-    }
-    
-    private fun analyzeSingleMove(moveNumber: Int): DetailedMoveAnalysis {
-        val move = "move_${moveNumber}" // Simplified
-        
-        return DetailedMoveAnalysis(
-            moveNumber = moveNumber,
-            move = move,
-            moveQuality = MoveQuality(
-                overallScore = Random.nextDouble(0.3, 1.0),
-                tacticalScore = Random.nextDouble(0.4, 1.0),
-                strategicScore = Random.nextDouble(0.3, 1.0),
-                accuracyScore = Random.nextDouble(0.5, 1.0),
-                noveltyScore = Random.nextDouble(0.0, 0.8)
-            ),
-            alternatives = listOf(
-                AlternativeMove("alt1", Random.nextDouble(-1.0, 1.0), "Better development"),
-                AlternativeMove("alt2", Random.nextDouble(-1.0, 1.0), "More aggressive")
-            ),
-            consequences = MoveConsequences(
-                positionChange = Random.nextDouble(-0.5, 0.5),
-                materialChange = 0.0,
-                safetyChange = Random.nextDouble(-0.3, 0.3),
-                activityChange = Random.nextDouble(-0.2, 0.4)
-            ),
-            learningValue = Random.nextDouble(0.2, 0.9)
-        )
-    }
-    
-    private fun identifyCriticalPositions(gameResult: SelfPlayGameResult): List<CriticalPosition> {
-        val criticalPositions = mutableListOf<CriticalPosition>()
-        
-        // Identify 3-5 critical positions in the game
-        val numCritical = Random.nextInt(3, 6)
-        val gameLength = gameResult.gameLength
-        
-        repeat(numCritical) { i ->
-            val moveNumber = (gameLength * (i + 1) / (numCritical + 1))
-            criticalPositions.add(
-                CriticalPosition(
-                    moveNumber = moveNumber,
-                    position = "critical_position_${i}",
-                    criticality = Random.nextDouble(0.6, 1.0),
-                    correctMove = "correct_move_${i}",
-                    agentMove = "agent_move_${i}",
-                    evaluation = Random.nextDouble(-2.0, 2.0)
-                )
-            )
-        }
-        
-        return criticalPositions
-    }
-    
-    private fun calculateMoveQuality(gameResult: SelfPlayGameResult): Double {
-        // Simplified move quality based on game outcome and length
-        val outcomeScore = when (gameResult.gameOutcome) {
-            GameOutcome.WHITE_WINS, GameOutcome.BLACK_WINS -> 0.8
-            GameOutcome.DRAW -> 0.6
-            else -> 0.4
-        }
-        
-        val lengthScore = when {
-            gameResult.gameLength < 20 -> 0.5 // Too short
-            gameResult.gameLength > 150 -> 0.6 // Too long
-            else -> 0.8 // Good length
-        }
-        
-        return (outcomeScore + lengthScore) / 2.0
-    }
-    
-    private fun calculatePhaseQuality(): Double {
-        return 0.6 + Random.nextDouble() * 0.4
-    }
-    
-    private fun calculateDecisionQuality(): Double {
-        return 0.5 + Random.nextDouble() * 0.5
-    }
-    
-    private fun calculateExecutionQuality(): Double {
-        return 0.6 + Random.nextDouble() * 0.4
-    }
-    
-    private fun calculateLearningPotential(gameResult: SelfPlayGameResult): Double {
-        return calculateLearningValue(gameResult)
-    }
-    
-    private fun calculateMoveLearningValue(moveAnalysis: MoveAnalysis): Double {
-        return if (moveAnalysis.wasOptimal) 0.3 else 0.8 // Mistakes have higher learning value
-    }
-    
-    // Strategic analysis methods
-    
-    private fun analyzeOpeningStrategy(game: AnalyzedGame): Double = game.openingQuality
-    
-    private fun analyzeMiddlegameStrategy(game: AnalyzedGame): Double = game.middlegameQuality
-    
-    private fun analyzeEndgameStrategy(game: AnalyzedGame): Double = game.endgameQuality
-    
-    private fun calculateStrategicConsistency(game: AnalyzedGame): Double {
-        val phaseQualities = listOf(game.openingQuality, game.middlegameQuality, game.endgameQuality)
-        val variance = calculateVariance(phaseQualities)
-        return 1.0 - variance // Lower variance = higher consistency
-    }
-    
-    private fun assessPlanExecution(game: AnalyzedGame): Double {
-        return game.qualityScore * 0.8 + game.moveAccuracy * 0.2
-    }
-    
-    private fun assessAdaptability(game: AnalyzedGame): Double {
-        return game.decisionConfidence * 0.6 + game.explorationRate * 0.4
-    }
-    
-    // Insight extraction methods
-    
-    private fun extractTacticalInsights(gameResult: SelfPlayGameResult): List<LearningInsight> {
-        val insights = mutableListOf<LearningInsight>()
-        
-        if (gameResult.gameLength > 30) {
-            insights.add(LearningInsight(
-                type = "Tactical",
-                description = "Long game suggests tactical complexity - good for tactical training",
-                importance = 0.7,
-                actionable = true,
-                relatedPositions = listOf("tactical_position_1", "tactical_position_2")
-            ))
-        }
-        
-        return insights
-    }
-    
-    private fun extractStrategicInsights(): List<LearningInsight> {
-        val insights = mutableListOf<LearningInsight>()
-        
-        insights.add(LearningInsight(
-            type = "Strategic",
-            description = "Game demonstrates strategic understanding development",
-            importance = 0.6,
-            actionable = true,
-            relatedPositions = listOf("strategic_position_1")
-        ))
-        
-        return insights
-    }
-    
-    private fun extractEndgameInsights(gameResult: SelfPlayGameResult): List<LearningInsight> {
-        val insights = mutableListOf<LearningInsight>()
-        
-        if (gameResult.gameLength > 50) {
-            insights.add(LearningInsight(
-                type = "Endgame",
-                description = "Extended endgame provides valuable endgame training data",
-                importance = 0.8,
-                actionable = true,
-                relatedPositions = listOf("endgame_position_1")
-            ))
-        }
-        
-        return insights
-    }
-    
-    private fun extractDecisionInsights(): List<LearningInsight> {
-        val insights = mutableListOf<LearningInsight>()
-        
-        insights.add(LearningInsight(
-            type = "Decision Making",
-            description = "Decision patterns show areas for improvement",
-            importance = 0.5,
-            actionable = true,
-            relatedPositions = emptyList()
-        ))
-        
-        return insights
-    }
-
-    private fun toSummaryMoveAnalysis(detailed: DetailedMoveAnalysis): MoveAnalysis {
-        return MoveAnalysis(
-            moveNumber = detailed.moveNumber,
-            move = detailed.move,
-            wasOptimal = detailed.moveQuality.accuracyScore >= 0.95,
-            qualityScore = detailed.moveQuality.overallScore,
-            alternativeMoves = detailed.alternatives.map { it.move },
-            positionEvaluation = detailed.consequences.positionChange,
-            timeSpent = 0.0
-        )
-    }
-    
-    private fun updateMovePatterns(game: AnalyzedGame) {
-        // Update move pattern database (simplified)
-        game.moveAnalyses.forEach { moveAnalysis ->
-            val pattern = movePatterns[moveAnalysis.move] ?: MovePattern(0, 0.0)
-            movePatterns[moveAnalysis.move] = pattern.copy(
-                frequency = pattern.frequency + 1,
-                averageQuality = (pattern.averageQuality + moveAnalysis.qualityScore) / 2.0
+    fun analyzeMoves(gameResult: SelfPlayGameResult): List<DetailedMoveAnalysis> {
+        return gameResult.experiences.mapIndexed { index, _ ->
+            DetailedMoveAnalysis(
+                move = Move(Position(1, 4), Position(3, 4)), // Placeholder move e2-e4
+                piece = PieceType.PAWN,
+                capturedPiece = null,
+                isWhiteMove = index % 2 == 0,
+                tacticalElements = emptyList(),
+                positionalFactors = emptyList(),
+                quality = MoveQuality.NORMAL,
+                materialChange = 0,
+                createsThreats = false,
+                defendsThreats = false
             )
         }
     }
     
-    private fun updatePositionDatabase(game: AnalyzedGame) {
-        // Update position database (simplified)
-        game.criticalPositions.forEach { criticalPos ->
-            positionDatabase[criticalPos.position] = PositionAnalysis(
-                position = criticalPos.position,
-                evaluation = criticalPos.evaluation,
-                complexity = criticalPos.criticality,
-                tacticalThemes = emptyList(),
-                strategicThemes = emptyList(),
-                agentAssessment = 0.8
+    /**
+     * Extract learning insights (simplified)
+     */
+    fun extractLearningInsights(@Suppress("UNUSED_PARAMETER") gameResult: SelfPlayGameResult): List<LearningInsight> {
+        return listOf(
+            LearningInsight(
+                category = "General",
+                description = "Game completed successfully",
+                importance = 0.5,
+                gamePosition = 0
             )
-        }
+        )
     }
     
-    private fun calculateVariance(values: List<Double>): Double {
-        if (values.isEmpty()) return 0.0
-        val mean = values.average()
-        return values.map { (it - mean).pow(2) }.average()
-    }
+    /**
+     * Get analysis history
+     */
+    fun getAnalysisHistory(): List<AnalyzedGame> = analysisHistory.toList()
     
-    private fun generateGameId(gameResult: SelfPlayGameResult): String {
-        return "game_${getCurrentTimeMillis()}_${gameResult.hashCode()}"
+    /**
+     * Clear analysis history
+     */
+    fun clearHistory() {
+        analysisHistory.clear()
     }
 }
-
-// Supporting classes and data structures
-
-class PositionEvaluator {
-    // Implementation for position evaluation
-}
-
-class MoveEvaluator {
-    // Implementation for move evaluation
-}
-
-class StrategicAnalyzer {
-    // Implementation for strategic analysis
-}
-
-class TacticalAnalyzer {
-    // Implementation for tactical analysis
-}
-
-// Data classes
-
-private data class BasicGameMetrics(
-    val gameLength: Int,
-    val gameOutcome: GameOutcome,
-    val finalPosition: String
-)
-
-// GamePhaseAnalysis is now defined in SharedDataClasses.kt
-
-private data class DecisionMakingAnalysis(
-    val averageDecisionTime: Double,
-    val decisionConfidence: Double,
-    val explorationRate: Double
-)
-
-private data class LearningInsightsData(
-    val learningValue: Double,
-    val noveltyScore: Double,
-    val difficultyLevel: Double
-)
-
-private data class MovePattern(
-    val frequency: Int,
-    val averageQuality: Double
-)

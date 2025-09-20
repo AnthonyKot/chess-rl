@@ -97,7 +97,27 @@ object JvmConfigParser {
      * @return List of layer sizes
      */
     private fun parseHiddenLayersFromProfile(value: String): List<Int> {
-        return value.split(",").map { it.trim().toInt() }
+        val cleanValue = value.trim()
+        
+        return when {
+            // Array format: [512, 256, 128]
+            cleanValue.startsWith("[") && cleanValue.endsWith("]") -> {
+                val arrayContent = cleanValue.removeSurrounding("[", "]")
+                arrayContent.split(",").map { it.trim().toInt() }
+            }
+            // Comma-separated: 512,256,128
+            "," in cleanValue -> {
+                cleanValue.split(",").map { it.trim().toInt() }
+            }
+            // Space-separated: 512 256 128
+            " " in cleanValue -> {
+                cleanValue.split("\\s+".toRegex()).map { it.trim().toInt() }
+            }
+            // Single value: 512
+            else -> {
+                listOf(cleanValue.toInt())
+            }
+        }
     }
     
     /**

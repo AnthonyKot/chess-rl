@@ -153,7 +153,7 @@ This implementation plan provides a systematic approach to refactoring the chess
     - CLIRunner remains usable (:integration:runCli) and already calls the consolidated TrainingPipeline.
     - Seeded components are actively used by seeded agent creation; don’t delete those unless you refactor RealChessAgentFactory to avoid them.
 
-- [ ] 4.1 Delete Experimental Classes
+- [x] 4.1 Delete Experimental Classes
   - **Prerequisites**: Use ARCHITECTURE_ANALYSIS.md specific deletion list
   - Remove SeededComponents.kt, DeterministicTrainingCLI.kt, InteractiveTrainingDashboard.kt
   - Delete ProductionDebuggingDemo.kt, TrainingControlInterface.kt, SystemOptimizationCoordinator.kt
@@ -189,7 +189,7 @@ This implementation plan provides a systematic approach to refactoring the chess
       - integration/performance-comparison.sh
       - integration/run_debugging_tests.sh
 
-- [ ] 4.2 Remove Experimental Build Scripts
+- [x] 4.2 Remove Experimental Build Scripts
   - **Prerequisites**: Use WORKFLOW_CONSOLIDATION.md script removal list
   - Delete benchmark-jvm-only.sh, benchmark-performance.sh, run-performance-comparison.sh
   - Remove integration/jvm-vs-native-comparison.sh, integration/native-performance-test.sh
@@ -206,7 +206,7 @@ This implementation plan provides a systematic approach to refactoring the chess
   - integration/src/commonTest/kotlin/com/chessrl/integration/RobustTrainingValidatorTest.kt
   - _Requirements: 6_
 
-- [ ] 4.3 Clean Up Code Quality Issues
+- [x] 4.3 Clean Up Code Quality Issues
   - Remove all commented-out code and debug print statements
   - Standardize Kotlin naming conventions and code style throughout
   - Remove experimental remnants and unused imports
