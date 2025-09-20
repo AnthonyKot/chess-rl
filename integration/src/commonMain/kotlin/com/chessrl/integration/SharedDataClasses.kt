@@ -39,39 +39,9 @@ enum class TrendDirection {
     UNKNOWN
 }
 
-/**
- * Recommendation priority levels
- */
-enum class RecommendationPriority {
-    LOW,
-    MEDIUM, 
-    HIGH,
-    CRITICAL
-}
 
-/**
- * Report types for training reports
- */
-enum class ReportType {
-    COMPREHENSIVE,
-    PERFORMANCE,
-    GAME_QUALITY,
-    VALIDATION,
-    ISSUES
-}
 
-/**
- * Visualization types for analysis
- */
-enum class VisualizationType {
-    BOARD,
-    LEARNING_CURVE,
-    PERFORMANCE_METRICS,
-    HEATMAP,
-    ARROW_DIAGRAM,
-    PROBABILITY_BARS,
-    DECISION_TREE
-}
+
 
 // Performance metrics
 
@@ -164,38 +134,9 @@ sealed class CommandResult {
 
 // Dashboard commands
 
-/**
- * Simple dashboard command record data class
- */
-data class DashboardCommandRecord(
-    val type: String,
-    val timestamp: Long,
-    val input: String
-)
 
-// Dashboard supporting classes
 
-/**
- * Session information for training dashboard
- */
-data class SessionInfo(
-    val sessionId: Long,
-    val totalEpisodes: Int,
-    val totalSteps: Int,
-    val sessionDuration: Long
-)
 
-/**
- * Current training statistics
- */
-data class CurrentStatistics(
-    val currentEpisode: Double,
-    val averageReward: Double,
-    val winRate: Double,
-    val drawRate: Double,
-    val lossRate: Double,
-    val gameLength: Double
-)
 
 /**
  * Trend analysis for metrics
@@ -207,79 +148,9 @@ data class TrendAnalysis(
     val efficiencyTrend: Double
 )
 
-/**
- * System health status
- */
-data class SystemHealth(
-    val status: HealthStatus,
-    val score: Double,
-    val warnings: Int,
-    val errors: Int
-)
-
-/**
- * Health status enumeration
- */
-enum class HealthStatus {
-    HEALTHY,
-    WARNING,
-    CRITICAL
-}
-
-/**
- * Training efficiency metrics
- */
-data class TrainingEfficiency(
-    val episodesPerSecond: Double,
-    val batchesPerSecond: Double,
-    val memoryUsage: Double,
-    val cpuUsage: Double
-)
-
-/**
- * Interface information for dashboard
- */
-data class InterfaceInfo(
-    val sessionId: String,
-    val sessionDuration: Long,
-    val dashboardUpdateInterval: Long,
-    val lastUpdate: Long,
-    val activeFeatures: List<String>
-)
-
-/**
- * Training dashboard data structure
- */
-data class TrainingDashboard(
-    val sessionInfo: SessionInfo,
-    val currentStats: CurrentStatistics,
-    val recentTrends: TrendAnalysis,
-    val systemHealth: SystemHealth,
-    val activeIssues: List<ActiveIssue>,
-    val performanceMetrics: PerformanceMetrics,
-    val gameQualityMetrics: GameQualityMetrics,
-    val trainingEfficiency: TrainingEfficiency,
-    val lastUpdate: Long,
-    val interfaceInfo: InterfaceInfo? = null
-)
-
-/**
- * Training issue data class
- */
-// ActiveIssue is defined in MonitoringDataClasses.kt and used in dashboards
-
 // Optimization recommendations
 
-/**
- * Optimization recommendations
- */
-data class OptimizationRecommendation(
-    val category: String,
-    val expectedImprovement: Double,
-    val implementationEffort: String
-)
 
-// Duplicate definitions removed - these are already defined above
 
 // Unified self-play result models
 

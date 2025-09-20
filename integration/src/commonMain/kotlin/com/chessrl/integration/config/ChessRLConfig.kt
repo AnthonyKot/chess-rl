@@ -128,6 +128,9 @@ data class ChessRLConfig(
         if (maxConcurrentGames > 8) {
             warnings.add("High concurrent games count ($maxConcurrentGames) may impact performance")
         }
+        if (maxConcurrentGames > Runtime.getRuntime().availableProcessors()) {
+            warnings.add("Concurrent games ($maxConcurrentGames) exceeds available CPU cores (${Runtime.getRuntime().availableProcessors()})")
+        }
         if (hiddenLayers.any { it > 1024 }) {
             warnings.add("Large hidden layers (${hiddenLayers.filter { it > 1024 }}) may require significant memory")
         }

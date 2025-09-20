@@ -35,7 +35,7 @@ class TrainingValidator(
         gameResults: List<SelfPlayGameResult>
     ): ValidationResult {
         
-        val timestamp = getCurrentTimeMillis()
+        val timestamp = System.currentTimeMillis()
         val issues = mutableListOf<ValidationIssue>()
         val warnings = mutableListOf<String>()
         val recommendations = mutableListOf<String>()

@@ -323,7 +323,7 @@ class SeedManager private constructor() {
         val event = SeedEvent(
             type = type,
             seed = seed,
-            timestamp = getCurrentTimeMillis(),
+            timestamp = System.currentTimeMillis(),
             description = description
         )
         seedHistory.add(event)
@@ -396,7 +396,12 @@ object SeededOperations {
     /**
      * Generate seeded Gaussian random number
      */
-    fun nextGaussian(random: Random): Double = random.nextGaussian()
+    fun nextGaussian(random: Random): Double {
+        // Simple Box-Muller transform for Gaussian distribution
+        val u1 = random.nextDouble()
+        val u2 = random.nextDouble()
+        return kotlin.math.sqrt(-2.0 * kotlin.math.ln(u1)) * kotlin.math.cos(2.0 * kotlin.math.PI * u2)
+    }
     
     /**
      * Shuffle array with seeded random
@@ -441,11 +446,11 @@ object SeededOperations {
         return when (initType) {
             WeightInitType.XAVIER -> {
                 val scale = kotlin.math.sqrt(1.0 / size)
-                DoubleArray(size) { random.nextGaussian() * scale }
+                DoubleArray(size) { nextGaussian(random) * scale }
             }
             WeightInitType.HE -> {
                 val scale = kotlin.math.sqrt(2.0 / size)
-                DoubleArray(size) { random.nextGaussian() * scale }
+                DoubleArray(size) { nextGaussian(random) * scale }
             }
             WeightInitType.UNIFORM -> {
                 val bound = kotlin.math.sqrt(6.0 / size)

@@ -34,7 +34,7 @@ class BaselineEvaluator(
         println("🎲 Evaluating against random opponent...")
         
         val results = mutableListOf<GameResult>()
-        val startTime = getCurrentTimeMillis()
+        val startTime = System.currentTimeMillis()
         
         repeat(config.gamesPerOpponent) { gameIndex ->
             val gameResult = playGameAgainstRandomOpponent(agent, environment, gameIndex)
@@ -56,7 +56,7 @@ class BaselineEvaluator(
             averageGameLength = averageGameLength,
             averageReward = averageReward,
             gameResults = results,
-            evaluationTime = getCurrentTimeMillis() - startTime
+            evaluationTime = System.currentTimeMillis() - startTime
         )
     }
     
@@ -71,7 +71,7 @@ class BaselineEvaluator(
         println("🧠 Evaluating against heuristic opponent...")
         
         val results = mutableListOf<GameResult>()
-        val startTime = getCurrentTimeMillis()
+        val startTime = System.currentTimeMillis()
         
         repeat(config.gamesPerOpponent) { gameIndex ->
             val gameResult = playGameAgainstHeuristicOpponent(agent, environment, gameIndex)
@@ -93,7 +93,7 @@ class BaselineEvaluator(
             averageGameLength = averageGameLength,
             averageReward = averageReward,
             gameResults = results,
-            evaluationTime = getCurrentTimeMillis() - startTime
+            evaluationTime = System.currentTimeMillis() - startTime
         )
     }
     
@@ -108,7 +108,7 @@ class BaselineEvaluator(
         println("♛ Evaluating against material-focused opponent...")
         
         val results = mutableListOf<GameResult>()
-        val startTime = getCurrentTimeMillis()
+        val startTime = System.currentTimeMillis()
         
         repeat(config.gamesPerOpponent) { gameIndex ->
             val gameResult = playGameAgainstMaterialOpponent(agent, environment, gameIndex)
@@ -130,7 +130,7 @@ class BaselineEvaluator(
             averageGameLength = averageGameLength,
             averageReward = averageReward,
             gameResults = results,
-            evaluationTime = getCurrentTimeMillis() - startTime
+            evaluationTime = System.currentTimeMillis() - startTime
         )
     }
     
@@ -142,7 +142,7 @@ class BaselineEvaluator(
         gameIndex: Int
     ): GameResult {
         
-        val gameStartTime = getCurrentTimeMillis()
+        val gameStartTime = System.currentTimeMillis()
         var state = environment.reset()
         var totalReward = 0.0
         var moveCount = 0
@@ -181,7 +181,7 @@ class BaselineEvaluator(
             outcome = outcome,
             moveCount = moveCount,
             reward = totalReward,
-            gameLength = getCurrentTimeMillis() - gameStartTime,
+            gameLength = System.currentTimeMillis() - gameStartTime,
             agentPlayedWhite = agentPlaysWhite
         )
     }
@@ -192,7 +192,7 @@ class BaselineEvaluator(
         gameIndex: Int
     ): GameResult {
         
-        val gameStartTime = getCurrentTimeMillis()
+        val gameStartTime = System.currentTimeMillis()
         var state = environment.reset()
         var totalReward = 0.0
         var moveCount = 0
@@ -230,7 +230,7 @@ class BaselineEvaluator(
             outcome = outcome,
             moveCount = moveCount,
             reward = totalReward,
-            gameLength = getCurrentTimeMillis() - gameStartTime,
+            gameLength = System.currentTimeMillis() - gameStartTime,
             agentPlayedWhite = agentPlaysWhite
         )
     }
@@ -241,7 +241,7 @@ class BaselineEvaluator(
         gameIndex: Int
     ): GameResult {
         
-        val gameStartTime = getCurrentTimeMillis()
+        val gameStartTime = System.currentTimeMillis()
         var state = environment.reset()
         var totalReward = 0.0
         var moveCount = 0
@@ -279,7 +279,7 @@ class BaselineEvaluator(
             outcome = outcome,
             moveCount = moveCount,
             reward = totalReward,
-            gameLength = getCurrentTimeMillis() - gameStartTime,
+            gameLength = System.currentTimeMillis() - gameStartTime,
             agentPlayedWhite = agentPlaysWhite
         )
     }

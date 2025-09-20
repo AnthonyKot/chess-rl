@@ -31,7 +31,7 @@ class CheckpointManager(
         metadata: CheckpointMetadata
     ): CheckpointInfo {
         
-        val checkpointStartTime = getCurrentTimeMillis()
+        val checkpointStartTime = System.currentTimeMillis()
         
         try {
             // Generate checkpoint path
@@ -85,7 +85,7 @@ class CheckpointManager(
             // Perform cleanup if needed
             performCheckpointCleanup()
             
-            val checkpointEndTime = getCurrentTimeMillis()
+            val checkpointEndTime = System.currentTimeMillis()
             val checkpointDuration = checkpointEndTime - checkpointStartTime
             
             println("💾 Checkpoint created: version $version (${checkpointDuration}ms)")
@@ -123,7 +123,7 @@ class CheckpointManager(
      * Load a checkpoint and restore agent state
      */
     fun loadCheckpoint(checkpointInfo: CheckpointInfo, agent: ChessAgent): LoadResult {
-        val loadStartTime = getCurrentTimeMillis()
+        val loadStartTime = System.currentTimeMillis()
         
         try {
             // Validate checkpoint before loading (existence-based; warn only)
@@ -145,7 +145,7 @@ class CheckpointManager(
             
             totalCheckpointsLoaded++
             
-            val loadEndTime = getCurrentTimeMillis()
+            val loadEndTime = System.currentTimeMillis()
             val loadDuration = loadEndTime - loadStartTime
             
             println("📂 Checkpoint loaded: version ${checkpointInfo.version} (${loadDuration}ms)")
@@ -392,7 +392,7 @@ class CheckpointManager(
      * Generate checkpoint path based on version and metadata
      */
     private fun generateCheckpointPath(version: Int, metadata: CheckpointMetadata): String {
-        val timestamp = getCurrentTimeMillis()
+        val timestamp = System.currentTimeMillis()
         val baseFilename = "checkpoint_v${version}_c${metadata.cycle}_${timestamp}"
         val extension = if (config.compressionEnabled) ".json.gz" else ".json"
         return "${config.baseDirectory}/${baseFilename}${extension}"

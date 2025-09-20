@@ -4,6 +4,8 @@ import com.chessrl.integration.backend.DqnLearningBackend
 import com.chessrl.integration.backend.LearningBackend
 import com.chessrl.integration.backend.LearningSession
 import com.chessrl.integration.config.ChessRLConfig
+import com.chessrl.integration.error.*
+import com.chessrl.integration.logging.ChessRLLogger
 import com.chessrl.rl.*
 import kotlin.math.abs
 import kotlin.random.Random
@@ -24,7 +26,10 @@ class TrainingPipeline(
     // Consolidated components
     private val trainingValidator = TrainingValidator(config)
     private val metricsCollector = MetricsCollector(config)
-    // Per-agent locks to guard non-thread-safe selectAction implementations
+    private val logger = ChessRLLogger.forComponent("TrainingPipeline")
+    private val errorHandler = ErrorHandler()
+    
+    // Agent locks for sequential self-play (when multi-process is not available)
     private lateinit var mainAgentLock: Any
     private lateinit var opponentAgentLock: Any
     
@@ -45,26 +50,36 @@ class TrainingPipeline(
      */
     fun initialize(): Boolean {
         return try {
-            println("🔧 Initializing Training Pipeline")
-            println(config.getSummary())
+            val startTime = System.currentTimeMillis()
+            logger.info("Initializing Training Pipeline")
+            ChessRLLogger.logConfiguration(config)
             
-            // Validate configuration
+            // Validate configuration with error handling
             val validation = config.validate()
             validation.printResults()
-            validation.throwIfInvalid()
             
-            // Initialize seed if specified
-            config.seed?.let { seed ->
-                try {
-                    SeedManager.initializeWithSeed(seed)
-                    println("🎲 Deterministic mode initialized with seed: $seed")
-                } catch (e: Exception) {
-                    println("⚠️ Failed to initialize deterministic mode: ${e.message}")
+            if (!validation.isValid) {
+                val firstError = validation.errors.firstOrNull()
+                if (firstError != null) {
+                    throw ConfigurationError.InvalidParameter("configuration", "invalid", firstError)
+                } else {
+                    validation.throwIfInvalid()
                 }
             }
             
-            // Initialize learning backend/session
-            val learningSession = backend.createSession(config)
+            // Initialize seed if specified
+            config.seed?.let { seed ->
+                SafeExecution.withErrorHandling("seed initialization") {
+                    SeedManager.initializeWithSeed(seed)
+                    logger.info("Deterministic mode initialized with seed: $seed")
+                } ?: logger.warn("Failed to initialize deterministic mode, continuing with random seed")
+            }
+            
+            // Initialize learning backend/session with error handling
+            val learningSession = SafeExecution.withErrorHandling("backend initialization") {
+                backend.createSession(config)
+            } ?: throw TrainingError.InitializationFailed("learning backend", RuntimeException("Backend creation failed"))
+            
             session = learningSession
             val mainAgent = learningSession.mainAgent
             
@@ -83,12 +98,19 @@ class TrainingPipeline(
                 )
             )
             
-            // Initialize consolidated components
-            metricsCollector.initialize()
+            // Initialize consolidated components with error handling
+            SafeExecution.withErrorHandling("metrics collector initialization") {
+                metricsCollector.initialize()
+            } ?: logger.warn("Metrics collector initialization failed, continuing without metrics")
             
             // Initialize experience manager with seeded replay random if available
-            val replayRnd = runCatching { SeedManager.getInstance().getReplayBufferRandom() }
-                .getOrElse { Random.Default }
+            val replayRnd = SafeExecution.withGracefulDegradation(
+                operation = "replay buffer random initialization",
+                fallback = Random.Default
+            ) {
+                SeedManager.getInstance().getReplayBufferRandom()
+            }
+            
             experienceManager = ExperienceManager(
                 maxBufferSize = config.maxExperienceBuffer,
                 cleanupRatio = 0.1,
@@ -96,10 +118,14 @@ class TrainingPipeline(
             )
 
             // Initialize evaluation RNG (seeded when available)
-            evalRandom = runCatching { SeedManager.getInstance().createSeededRandom("evaluation") }
-                .getOrElse { Random.Default }
+            evalRandom = SafeExecution.withGracefulDegradation(
+                operation = "evaluation random initialization",
+                fallback = Random.Default
+            ) {
+                SeedManager.getInstance().createSeededRandom("evaluation")
+            }
 
-            // Initialize agent locks (private lock objects, not the agent instances)
+            // Initialize agent locks for sequential fallback (private lock objects, not the agent instances)
             mainAgentLock = Any()
             opponentAgentLock = Any()
 
@@ -108,12 +134,13 @@ class TrainingPipeline(
                 environment?.getValidActions(state) ?: emptyList()
             }
             
-            println("✅ Training Pipeline initialized successfully")
+            val duration = System.currentTimeMillis() - startTime
+            ChessRLLogger.logInitialization("Training Pipeline", true, duration = duration)
             true
             
         } catch (e: Exception) {
-            println("❌ Failed to initialize training pipeline: ${e.message}")
-            e.printStackTrace()
+            ChessRLLogger.logInitialization("Training Pipeline", false, e.message)
+            logger.error("Initialization failed", e)
             false
         }
     }
@@ -129,9 +156,9 @@ class TrainingPipeline(
         val session = this.session ?: throw IllegalStateException("Pipeline not initialized")
         val environment = this.environment ?: throw IllegalStateException("Pipeline not initialized")
         
-        println("🚀 Starting Training Pipeline")
-        println("Total Cycles: ${config.maxCycles}")
-        println("=" * 60)
+        logger.info("Starting Training Pipeline")
+        logger.info("Total Cycles: ${config.maxCycles}")
+        logger.info("=".repeat(60))
         
         isTraining = true
         currentCycle = 0
@@ -141,18 +168,30 @@ class TrainingPipeline(
         totalGamesPlayed = 0
         totalExperiencesCollected = 0
         
-        val startTime = getCurrentTimeMillis()
+        val startTime = System.currentTimeMillis()
         
         return try {
-            // Main training loop
+            // Main training loop with error recovery
             for (cycle in 1..config.maxCycles) {
                 currentCycle = cycle
                 
-                println("\n🔄 Training Cycle $cycle/${config.maxCycles}")
-                println("-" * 40)
+                logger.info("")
+                logger.info("Training Cycle $cycle/${config.maxCycles}")
+                logger.info("-".repeat(40))
                 
-                // Execute training cycle with structured concurrency
-                val cycleResult = runTrainingCycle(session, environment)
+                // Reset error counts at the beginning of each cycle
+                errorHandler.resetErrorCounts()
+                
+                // Execute training cycle with error handling
+                val cycleResult = SafeExecution.withErrorHandling("training cycle $cycle") {
+                    runTrainingCycle(session, environment)
+                }
+                
+                if (cycleResult == null) {
+                    logger.error("Training cycle $cycle failed completely, attempting to continue")
+                    continue
+                }
+                
                 cycleHistory.add(cycleResult)
                 
                 // Collect metrics and validate training
@@ -171,14 +210,14 @@ class TrainingPipeline(
                 
                 // Report validation issues
                 if (!validationResult.isValid) {
-                    println("⚠️ Validation issues detected:")
+                    logger.warn("Validation issues detected:")
                     validationResult.issues.forEach { issue ->
-                        println("   ${issue.severity}: ${issue.message}")
+                        logger.warn("  ${issue.severity}: ${issue.message}")
                     }
                     if (validationResult.recommendations.isNotEmpty()) {
-                        println("   Recommendations:")
+                        logger.info("  Recommendations:")
                         validationResult.recommendations.forEach { rec ->
-                            println("   - $rec")
+                            logger.info("  - $rec")
                         }
                     }
                 }
@@ -186,7 +225,7 @@ class TrainingPipeline(
                 // Update best performance
                 if (cycleResult.averageReward > bestPerformance) {
                     bestPerformance = cycleResult.averageReward
-                    println("🏆 New best performance: $bestPerformance")
+                    logger.info("🏆 New best performance: $bestPerformance")
                     
                     // Save best model
                     saveCheckpoint(session, cycle, bestPerformance, isBest = true)
@@ -209,12 +248,12 @@ class TrainingPipeline(
                 
                 // Early stopping check (simple convergence detection)
                 if (shouldStopEarly()) {
-                    println("🎯 Early stopping triggered at cycle $cycle")
+                    logger.info("🎯 Early stopping triggered at cycle $cycle")
                     break
                 }
             }
             
-            val endTime = getCurrentTimeMillis()
+            val endTime = System.currentTimeMillis()
             val totalDuration = endTime - startTime
             
             // Save final checkpoint
@@ -223,12 +262,13 @@ class TrainingPipeline(
             // Finalize metrics collection
             metricsCollector.finalize()
             
-            println("\n🏁 Training Completed!")
-            println("Total cycles: $currentCycle")
-            println("Total duration: ${totalDuration}ms")
-            println("Best performance: $bestPerformance")
-            println("Total games played: $totalGamesPlayed")
-            println("Total experiences collected: $totalExperiencesCollected")
+            logger.info("")
+            logger.info("🏁 Training Completed!")
+            logger.info("Total cycles: $currentCycle")
+            logger.info("Total duration: ${totalDuration}ms")
+            logger.info("Best performance: $bestPerformance")
+            logger.info("Total games played: $totalGamesPlayed")
+            logger.info("Total experiences collected: $totalExperiencesCollected")
             
             TrainingResults(
                 totalCycles = currentCycle,
@@ -241,8 +281,7 @@ class TrainingPipeline(
             )
             
         } catch (e: Exception) {
-            println("❌ Training failed: ${e.message}")
-            e.printStackTrace()
+            logger.error("Training failed", e)
             throw e
         } finally {
             isTraining = false
@@ -256,31 +295,31 @@ class TrainingPipeline(
         session: LearningSession,
         environment: ChessEnvironment
     ): TrainingCycleResult {
-        val cycleStartTime = getCurrentTimeMillis()
+        val cycleStartTime = System.currentTimeMillis()
         
         // Clear any stale action masks from previous cycles
         // (ValidActionRegistry removed - using direct environment calls)
         
         // Phase 1: Concurrent self-play game generation
-        println("🎮 Phase 1: Self-play generation (${config.gamesPerCycle} games)")
+        logger.info("🎮 Phase 1: Self-play generation (${config.gamesPerCycle} games)")
         val gameResults = runSelfPlayGames(session)
         
         // Phase 2: Experience processing and training
-        println("🧠 Phase 2: Experience processing and training")
+        logger.info("🧠 Phase 2: Experience processing and training")
         val trainingMetrics = processExperiencesAndTrain(gameResults, session)
         
         // Phase 3: Performance evaluation
-        println("📊 Phase 3: Performance evaluation")
+        logger.info("📊 Phase 3: Performance evaluation")
         val evaluationMetrics = evaluatePerformance(session.mainAgent)
         
-        val cycleEndTime = getCurrentTimeMillis()
+        val cycleEndTime = System.currentTimeMillis()
         val cycleDuration = cycleEndTime - cycleStartTime
         
         // Update totals
         totalGamesPlayed += gameResults.size
         totalExperiencesCollected += gameResults.sumOf { it.experiences.size }
         
-        return TrainingCycleResult(
+        val result = TrainingCycleResult(
             cycle = currentCycle,
             gamesPlayed = gameResults.size,
             experiencesCollected = gameResults.sumOf { it.experiences.size },
@@ -292,31 +331,153 @@ class TrainingPipeline(
             gameResults = gameResults,
             trainingMetrics = trainingMetrics
         )
+        
+        // Log structured training cycle results
+        ChessRLLogger.logTrainingCycle(
+            cycle = currentCycle,
+            totalCycles = config.maxCycles,
+            gamesPlayed = result.gamesPlayed,
+            avgReward = result.averageReward,
+            winRate = result.winRate,
+            avgGameLength = result.averageGameLength,
+            duration = cycleDuration
+        )
+        
+        return result
     }
     
     private fun runSelfPlayGames(session: LearningSession): List<SelfPlayGameResult> {
+        return if (config.maxConcurrentGames > 1) {
+            runMultiProcessSelfPlay(session)
+        } else {
+            runSequentialSelfPlay(session)
+        }
+    }
+    
+    private fun runMultiProcessSelfPlay(session: LearningSession): List<SelfPlayGameResult> {
+        // Try multi-process approach first
+        return try {
+            // Save current model for worker processes
+            val tempModelPath = "${config.checkpointDirectory}/temp_model_${System.currentTimeMillis()}.json"
+            session.saveCheckpoint(tempModelPath)
+            
+            // Use JVM-specific multi-process implementation
+            val multiProcessSelfPlay = createMultiProcessSelfPlay()
+            
+            if (multiProcessSelfPlay != null) {
+                // Use reflection to call methods
+                val isAvailableMethod = multiProcessSelfPlay::class.java.getMethod("isAvailable")
+                val isAvailable = isAvailableMethod.invoke(multiProcessSelfPlay) as Boolean
+                
+                if (isAvailable) {
+                    logger.info("Using multi-process self-play (${config.maxConcurrentGames} concurrent games)")
+                    val startTime = System.currentTimeMillis()
+                    
+                    val runSelfPlayGamesMethod = multiProcessSelfPlay::class.java.getMethod("runSelfPlayGames", String::class.java)
+                    @Suppress("UNCHECKED_CAST")
+                    val results = runSelfPlayGamesMethod.invoke(multiProcessSelfPlay, tempModelPath) as List<SelfPlayGameResult>
+                    val duration = System.currentTimeMillis() - startTime
+                    
+                    // Get speedup factor
+                    val getSpeedupFactorMethod = multiProcessSelfPlay::class.java.getMethod("getSpeedupFactor")
+                    val speedupFactor = getSpeedupFactorMethod.invoke(multiProcessSelfPlay) as Double
+                    
+                    // Log performance
+                    ChessRLLogger.logSelfPlayPerformance(
+                        approach = "multi-process",
+                        gamesPlayed = results.size,
+                        totalDuration = duration,
+                        avgGameDuration = if (results.isNotEmpty()) results.map { it.gameDuration }.average().toLong() else 0L,
+                        speedupFactor = speedupFactor
+                    )
+                
+                // Cleanup temp model
+                try {
+                    java.io.File(tempModelPath).delete()
+                } catch (e: Exception) {
+                    logger.warn("Failed to cleanup temp model: ${e.message}")
+                }
+                
+                    reportSelfPlayResults(results)
+                    results
+                } else {
+                    logger.warn("Multi-process not available, falling back to sequential")
+                    runSequentialSelfPlay(session)
+                }
+            } else {
+                logger.warn("Multi-process not available, falling back to sequential")
+                runSequentialSelfPlay(session)
+            }
+            
+        } catch (e: Exception) {
+            val error = MultiProcessError.ProcessStartFailed(-1, e)
+            val result = errorHandler.handleError(error)
+            
+            if (result.shouldUseFallback) {
+                logger.info("Falling back to sequential execution")
+                runSequentialSelfPlay(session)
+            } else {
+                throw e
+            }
+        }
+    }
+    
+    private fun runSequentialSelfPlay(session: LearningSession): List<SelfPlayGameResult> {
+        logger.info("Using sequential self-play (${config.gamesPerCycle} games)")
+        val startTime = System.currentTimeMillis()
         val results = mutableListOf<SelfPlayGameResult>()
-        repeat(config.gamesPerCycle) {
-            runSelfPlayGame(
-                gameId = totalGamesPlayed + results.size + 1,
-                whiteAgent = session.mainAgent,
-                blackAgent = session.opponentAgent,
-                environment = createGameEnvironment(),
-                whiteLock = mainAgentLock,
-                blackLock = opponentAgentLock
-            )?.let { results.add(it) }
+        
+        repeat(config.gamesPerCycle) { gameIndex ->
+            val gameId = totalGamesPlayed + results.size + 1
+            
+            SafeExecution.withErrorHandling("self-play game $gameId") {
+                runSelfPlayGame(
+                    gameId = gameId,
+                    whiteAgent = session.mainAgent,
+                    blackAgent = session.opponentAgent,
+                    environment = createGameEnvironment(),
+                    whiteLock = mainAgentLock,
+                    blackLock = opponentAgentLock
+                )
+            }?.let { results.add(it) }
         }
 
+        val duration = System.currentTimeMillis() - startTime
+        ChessRLLogger.logSelfPlayPerformance(
+            approach = "sequential",
+            gamesPlayed = results.size,
+            totalDuration = duration,
+            avgGameDuration = if (results.isNotEmpty()) results.map { it.gameDuration }.average().toLong() else 0L
+        )
+
+        reportSelfPlayResults(results)
+        return results
+    }
+    
+    private fun reportSelfPlayResults(results: List<SelfPlayGameResult>) {
         val outcomes = results.groupingBy { it.gameOutcome }.eachCount()
         val wins = outcomes[GameOutcome.WHITE_WINS] ?: 0
         val losses = outcomes[GameOutcome.BLACK_WINS] ?: 0
         val draws = outcomes[GameOutcome.DRAW] ?: 0
         val avgLength = if (results.isNotEmpty()) results.map { it.gameLength }.average() else 0.0
 
-        println("✅ Self-play completed: $wins wins, $losses losses, $draws draws")
-        println("   Average game length: ${"%.1f".format(avgLength)} moves")
-
-        return results
+        logger.info("Self-play completed: $wins wins, $losses losses, $draws draws")
+        logger.info("Average game length: ${"%.1f".format(avgLength)} moves")
+    }
+    
+    /**
+     * Create multi-process self-play manager (JVM-specific)
+     * Returns null on non-JVM platforms
+     */
+    private fun createMultiProcessSelfPlay(): Any? {
+        return try {
+            // Use reflection to avoid compile-time dependency on JVM-specific class
+            val clazz = Class.forName("com.chessrl.integration.MultiProcessSelfPlay")
+            val constructor = clazz.getConstructor(ChessRLConfig::class.java)
+            constructor.newInstance(config)
+        } catch (e: Exception) {
+            null // Not available on this platform
+        }
     }
     
     /**
@@ -331,7 +492,7 @@ class TrainingPipeline(
         blackLock: Any
     ): SelfPlayGameResult? {
         return try {
-            val startTime = getCurrentTimeMillis()
+            val startTime = System.currentTimeMillis()
             val experiences = mutableListOf<Experience<DoubleArray, Int>>()
             
             // Reset environment
@@ -385,7 +546,7 @@ class TrainingPipeline(
                 experiences[experiences.lastIndex] = penalizedExperience
             }
             
-            val endTime = getCurrentTimeMillis()
+            val endTime = System.currentTimeMillis()
             val gameDuration = endTime - startTime
             
             // Determine game outcome
@@ -408,7 +569,8 @@ class TrainingPipeline(
             )
             
         } catch (e: Exception) {
-            println("⚠️ Game $gameId failed: ${e.message}")
+            val error = TrainingError.SelfPlayFailed(gameId, e)
+            errorHandler.handleError(error)
             null
         }
     }
@@ -437,8 +599,8 @@ class TrainingPipeline(
         if (experienceManager.getBufferSize() >= config.batchSize) {
             val numBatches = (experienceManager.getBufferSize() / config.batchSize).coerceAtMost(10) // Limit batches per cycle
             
-            repeat(numBatches) {
-                try {
+            repeat(numBatches) { batchIndex ->
+                SafeExecution.withErrorHandling("batch training $batchIndex") {
                     // Sample batch from experience manager
                     val batch = experienceManager.sampleBatch(config.batchSize)
                     
@@ -449,9 +611,10 @@ class TrainingPipeline(
                     totalGradientNorm += updateResult.gradientNorm
                     totalPolicyEntropy += updateResult.policyEntropy
                     batchCount++
-                    
-                } catch (e: Exception) {
-                    println("⚠️ Batch training failed: ${e.message}")
+                } ?: run {
+                    // Batch training failed, but we can continue with other batches
+                    val error = TrainingError.BatchTrainingFailed(config.batchSize, RuntimeException("Batch training failed"))
+                    errorHandler.handleError(error)
                 }
             }
         }
@@ -462,7 +625,15 @@ class TrainingPipeline(
         val avgPolicyEntropy = if (batchCount > 0) totalPolicyEntropy / batchCount else 0.0
         val avgReward = newExperiences.map { it.reward }.average()
         
-        println("   Training: ${batchCount} batches, loss=${"%.4f".format(avgLoss)}, grad=${"%.4f".format(avgGradientNorm)}, entropy=${"%.4f".format(avgPolicyEntropy)}")
+        // Log training metrics
+        ChessRLLogger.logTrainingMetrics(
+            batchCount = batchCount,
+            avgLoss = avgLoss,
+            avgGradientNorm = avgGradientNorm,
+            avgPolicyEntropy = avgPolicyEntropy,
+            bufferSize = experienceManager.getBufferSize(),
+            bufferCapacity = config.maxExperienceBuffer
+        )
         
         return TrainingMetrics(
             batchCount = batchCount,
@@ -478,7 +649,7 @@ class TrainingPipeline(
      * Evaluate agent performance against baseline.
      */
     private fun evaluatePerformance(agent: ChessAgent): EvaluationMetrics {
-        println("🔍 Evaluating agent performance...")
+        logger.debug("Evaluating agent performance...")
 
         val evaluationGames = config.evaluationGames
 
@@ -489,7 +660,7 @@ class TrainingPipeline(
         var losses = 0
         
         repeat(evaluationGames) { gameIndex ->
-            try {
+            SafeExecution.withErrorHandling("evaluation game $gameIndex") {
                 val agentPlaysWhite = if (startWhite) (gameIndex % 2 == 0) else (gameIndex % 2 != 0)
                 val outcome = runEvaluationGame(agent, agentPlaysWhite)
                 when (outcome) {
@@ -498,8 +669,10 @@ class TrainingPipeline(
                     GameOutcome.DRAW -> draws++
                     else -> Unit
                 }
-            } catch (e: Exception) {
-                println("⚠️ Evaluation game $gameIndex failed: ${e.message}")
+            } ?: run {
+                // Evaluation game failed, but we can continue with other games
+                val error = TrainingError.EvaluationFailed(RuntimeException("Evaluation game $gameIndex failed"))
+                errorHandler.handleError(error)
             }
         }
         
@@ -508,12 +681,23 @@ class TrainingPipeline(
         val drawRate = draws.toDouble() / total
         val lossRate = losses.toDouble() / total
         
-        return EvaluationMetrics(
+        val result = EvaluationMetrics(
             gamesPlayed = total,
             winRate = winRate,
             drawRate = drawRate,
             lossRate = lossRate
         )
+        
+        // Log evaluation results
+        ChessRLLogger.logEvaluation(
+            gamesPlayed = total,
+            winRate = winRate,
+            drawRate = drawRate,
+            lossRate = lossRate,
+            avgGameLength = 0.0 // Could be enhanced to track this
+        )
+        
+        return result
     }
     
     /**
@@ -581,30 +765,39 @@ class TrainingPipeline(
     }
     
     private fun updateOpponentStrategy(session: LearningSession) {
-        println("🔄 Updating opponent strategy (backend: ${backend.id})")
+        logger.debug("Updating opponent strategy (backend: ${backend.id})")
         session.updateOpponent()
     }
 
     private fun saveCheckpoint(session: LearningSession, cycle: Int, performance: Double, isBest: Boolean) {
-        try {
-            val checkpointDir = config.checkpointDirectory
-            val filename = if (isBest) {
-                "$checkpointDir/best_model.json"
-            } else {
-                "$checkpointDir/checkpoint_cycle_${cycle}.json"
-            }
-
+        val checkpointDir = config.checkpointDirectory
+        val filename = if (isBest) {
+            "$checkpointDir/best_model.json"
+        } else {
+            "$checkpointDir/checkpoint_cycle_${cycle}.json"
+        }
+        
+        val success = SafeExecution.withErrorHandling("checkpoint save") {
             if (isBest) {
                 session.saveBest(filename)
             } else {
                 session.saveCheckpoint(filename)
             }
-            
-            val label = if (isBest) "best" else "regular"
-            println("💾 Saved $label checkpoint: $filename (performance: ${"%.4f".format(performance)})")
-            
-        } catch (e: Exception) {
-            println("⚠️ Failed to save checkpoint: ${e.message}")
+            true
+        } != null
+        
+        val type = if (isBest) "best" else "regular"
+        ChessRLLogger.logCheckpoint(
+            type = type,
+            path = if (success) filename else "failed",
+            cycle = cycle,
+            performance = performance,
+            success = success
+        )
+        
+        if (!success) {
+            val error = TrainingError.CheckpointFailed(filename, RuntimeException("Checkpoint save failed"))
+            errorHandler.handleError(error)
         }
     }
     
@@ -669,7 +862,7 @@ class TrainingPipeline(
     fun stopTraining() {
         if (isTraining) {
             isTraining = false
-            println("🛑 Training stopped by user")
+            logger.info("🛑 Training stopped by user")
         }
     }
     
@@ -685,6 +878,48 @@ class TrainingPipeline(
             totalGamesPlayed = totalGamesPlayed,
             totalExperiencesCollected = totalExperiencesCollected,
             experienceBufferSize = experienceManager.getBufferSize()
+        )
+    }
+    
+    /**
+     * Get system health status and error statistics
+     */
+    fun getSystemHealth(): SystemHealthStatus {
+        val errorStats = errorHandler.getErrorStats()
+        val totalErrors = errorStats.values.sum()
+        val criticalErrors = errorStats.filterKeys { key ->
+            key.contains("CRITICAL") || key.contains("INIT_FAILED")
+        }.values.sum()
+        
+        val healthLevel = when {
+            criticalErrors > 0 -> HealthLevel.CRITICAL
+            totalErrors > 20 -> HealthLevel.POOR
+            totalErrors > 10 -> HealthLevel.DEGRADED
+            totalErrors > 0 -> HealthLevel.GOOD
+            else -> HealthLevel.EXCELLENT
+        }
+        
+        val recommendations = mutableListOf<String>()
+        
+        if (errorStats.containsKey("MULTIPROCESS_START_FAILED")) {
+            recommendations.add("Consider reducing maxConcurrentGames or using sequential mode")
+        }
+        if (errorStats.containsKey("TRAINING_BATCH_FAILED")) {
+            recommendations.add("Consider reducing batch size or learning rate")
+        }
+        if (errorStats.containsKey("MODEL_INFERENCE_FAILED")) {
+            recommendations.add("Check neural network architecture and input data")
+        }
+        if (totalErrors > 15) {
+            recommendations.add("Consider restarting training with different configuration")
+        }
+        
+        return SystemHealthStatus(
+            healthLevel = healthLevel,
+            totalErrors = totalErrors,
+            criticalErrors = criticalErrors,
+            errorBreakdown = errorStats,
+            recommendations = recommendations
         )
     }
 }
@@ -750,3 +985,19 @@ data class TrainingStatus(
     val totalExperiencesCollected: Int,
     val experienceBufferSize: Int
 )
+
+data class SystemHealthStatus(
+    val healthLevel: HealthLevel,
+    val totalErrors: Int,
+    val criticalErrors: Int,
+    val errorBreakdown: Map<String, Int>,
+    val recommendations: List<String>
+)
+
+enum class HealthLevel {
+    EXCELLENT,  // No errors
+    GOOD,       // Few minor errors
+    DEGRADED,   // Some errors but system functional
+    POOR,       // Many errors, performance impacted
+    CRITICAL    // Critical errors, system may fail
+}

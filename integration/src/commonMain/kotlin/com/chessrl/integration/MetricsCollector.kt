@@ -27,7 +27,7 @@ class MetricsCollector(
      * Initialize the metrics collector.
      */
     fun initialize() {
-        startTime = getCurrentTimeMillis()
+        startTime = System.currentTimeMillis()
         metricsHistory.clear()
         totalGamesPlayed = 0
         totalExperiencesCollected = 0
@@ -44,7 +44,7 @@ class MetricsCollector(
         experienceBufferSize: Int
     ): CycleMetrics {
         
-        val timestamp = getCurrentTimeMillis()
+        val timestamp = System.currentTimeMillis()
         
         // Episode length metrics
         val episodeLengths = gameResults.map { it.gameLength }
@@ -164,7 +164,7 @@ class MetricsCollector(
         val lossTrend = calculateTrendSafe(recentHistory) { it.averageLoss }
 
         println("\n📊 Training Progress - Cycle $cycle")
-        println("-" * 50)
+        println("-".repeat(50))
         
         // Episode metrics
         println("🎮 Episode Metrics:")
@@ -210,7 +210,7 @@ class MetricsCollector(
             println("   Manual: ${"%.1f".format(currentMetrics.terminationAnalysis.manualTerminationRate * 100)}%")
         }
         
-        println("-" * 50)
+        println("-".repeat(50))
     }
     
     /**
@@ -339,7 +339,7 @@ class MetricsCollector(
      * Finalize metrics collection.
      */
     fun finalize() {
-        val totalTime = getCurrentTimeMillis() - startTime
+        val totalTime = System.currentTimeMillis() - startTime
         println("📊 Metrics collection completed. Total time: ${formatDuration(totalTime)}")
         
         val summary = getTrainingSummary()
