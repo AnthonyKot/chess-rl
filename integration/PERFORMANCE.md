@@ -2,6 +2,8 @@
 
 ## Overview
 
+Note: This document predates consolidation. Replace older pipeline names with `TrainingPipeline` when mapping results to current code.
+
 This document summarizes the performance characteristics, benchmarks, and recommendations for the Chess RL training pipeline implementation on Kotlin/Native. The analysis is based on comprehensive end-to-end testing of the training system with realistic configurations.
 
 ## Performance Benchmark Results

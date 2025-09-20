@@ -50,12 +50,15 @@ evaluationGames: Int = 100
 
 ### 2.2 Configuration Parser ✅
 
-**Location**: `integration/src/commonMain/kotlin/com/chessrl/integration/config/ConfigParser.kt`
+**Location**: 
+- `integration/src/commonMain/kotlin/com/chessrl/integration/config/ConfigParser.kt` (multiplatform)
+- `integration/src/jvmMain/kotlin/com/chessrl/integration/config/JvmConfigParser.kt` (JVM-specific file loading)
 
 **Key Features**:
 - **Command-line argument parsing** with proper defaults
-- **YAML and JSON parsing** support (basic implementation)
-- **Profile loading** from built-in profiles
+- **YAML and JSON parsing** support (basic implementation for direct content)
+- **Profile loading** from built-in profiles (ConfigParser) and files (JvmConfigParser)
+- **Integration with existing ProfilesLoader** for proper YAML file parsing
 - **Validation integration** with clear error messages
 - **Forward compatibility** (ignores unknown arguments)
 
@@ -102,6 +105,15 @@ evaluationGames: Int = 100
    - 500 evaluation games
    - Single-threaded for consistency
    - Deterministic seed (12345)
+
+### 2.4 Pluggable Learning Backends ✅
+
+**Location**: `integration/src/commonMain/kotlin/com/chessrl/integration/backend/LearningBackend.kt`
+
+**Key Features**:
+- Added `LearningBackend` and `LearningSession` abstractions so the training pipeline no longer hardcodes a specific RL engine
+- Provided `DqnLearningBackend` as the default implementation, mirroring existing behaviour while keeping the door open for DL4J
+- `TrainingPipeline` now accepts a backend instance, making backend swaps a one-line change (or simple CLI flag)
 
 ## Removed Components
 
@@ -188,11 +200,34 @@ if (!validation.isValid) {
 ✅ **Remove 40+ experimental parameters** and consolidate to <20 essential ones  
 ✅ **Requirements 3 satisfied**: Central configuration system implemented
 
+## Issues Identified and Resolved
+
+### ✅ Fixed: Misleading loadProfileFromFile method
+- **Issue**: Method claimed to read files but only returned built-in profiles
+- **Fix**: Added clear documentation, created JvmConfigParser for actual file loading
+- **Result**: Proper separation between multiplatform (built-in) and JVM-specific (file-based) functionality
+
+### ✅ Fixed: YAML parsing limitations  
+- **Issue**: Basic YAML parser couldn't handle nested structure or array syntax
+- **Fix**: Enhanced parseYaml to handle [512, 256, 128] array format and integrated with existing ProfilesLoader
+- **Result**: Supports both direct YAML content and proper file-based profile loading
+
+### ✅ Fixed: Integration with existing ProfilesLoader
+- **Issue**: Duplication of YAML parsing responsibilities
+- **Fix**: Created JvmConfigParser that bridges ProfilesLoader output to ChessRLConfig
+- **Result**: Reuses existing robust YAML parsing while providing new configuration interface
+
+### ✅ Fixed: Documentation accuracy
+- **Issue**: Documentation claimed full YAML/JSON support when file reading was stubbed
+- **Fix**: Updated documentation to clarify multiplatform vs JVM-specific capabilities
+- **Result**: Accurate documentation of current capabilities and limitations
+
 ## Files Created/Modified
 
 ### New Files:
 - `integration/src/commonMain/kotlin/com/chessrl/integration/config/ChessRLConfig.kt`
 - `integration/src/commonMain/kotlin/com/chessrl/integration/config/ConfigParser.kt`
+- `integration/src/jvmMain/kotlin/com/chessrl/integration/config/JvmConfigParser.kt`
 - `integration/src/commonMain/kotlin/com/chessrl/integration/config/ConfigDemo.kt`
 - `integration/src/jvmMain/kotlin/com/chessrl/integration/config/ConfigDemoRunner.kt`
 - `integration/src/commonTest/kotlin/com/chessrl/integration/config/ChessRLConfigTest.kt`

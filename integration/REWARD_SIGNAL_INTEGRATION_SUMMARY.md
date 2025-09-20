@@ -1,5 +1,7 @@
 # Reward Signal Integration Fix - Task 3 Summary
 
+Note: Original implementation notes reference `ChessTrainingPipeline`. In the consolidated codebase this logic lives in `TrainingPipeline` (step‑limit detection and penalty application).
+
 ## Overview
 This document summarizes the implementation of Task 3: Fix Reward Signal Integration, which addresses the critical bug where ONGOING games were incorrectly treated as draws, breaking the RL reward signal.
 

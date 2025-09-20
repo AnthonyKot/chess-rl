@@ -30,30 +30,21 @@ chess-rl-bot/
 │   ├── ExplorationStrategy.kt (epsilon-greedy, etc.)
 │   └── RLAlgorithms.kt (DQN implementation)
 │
-└── integration/ (CONSOLIDATE - 90 files, massive redundancy)
-    ├── Training Controllers: 8 classes → 1 class
-    │   ├── AdvancedSelfPlayTrainingPipeline.kt (KEEP - main pipeline)
-    │   ├── RealSelfPlayController.kt (CONSOLIDATE)
-    │   ├── SelfPlayController.kt (CONSOLIDATE)
-    │   ├── ChessTrainingPipeline.kt (CONSOLIDATE)
-    │   ├── SelfPlaySystem.kt (CONSOLIDATE)
-    │   ├── SystemOptimizationCoordinator.kt (REMOVE - experimental)
-    │   ├── TrainingDebugger.kt (REMOVE - debugging)
-    │   └── TrainingMonitoringSystem.kt (REMOVE - over-engineered)
+└── integration/ (CONSOLIDATED)
+    ├── Training Controllers: 8 classes → 1 class (COMPLETED)
+    │   ├── TrainingPipeline.kt (consolidated training, replaces AdvancedSelfPlayTrainingPipeline/ChessTrainingPipeline/Controllers)
+    │   ├── SystemOptimizationCoordinator.kt (REMOVED - experimental)
+    │   ├── TrainingDebugger.kt (REMOVED - debugging)
+    │   └── TrainingMonitoringSystem.kt (REMOVED - over-engineered)
     │
-    ├── Validators: 6 classes → 1 class
-    │   ├── RobustTrainingValidator.kt (KEEP - comprehensive)
-    │   ├── ChessTrainingValidator.kt (CONSOLIDATE)
-    │   ├── TrainingValidator.kt (CONSOLIDATE)
-    │   ├── TrainingIssueDetector.kt (CONSOLIDATE)
-    │   ├── ConvergenceDetector.kt (CONSOLIDATE)
-    │   └── EarlyStoppingDetector.kt (CONSOLIDATE)
+    ├── Validators: 6 classes → 1 class (COMPLETED)
+    │   ├── TrainingValidator.kt (consolidated; includes chess-specific and core checks)
     │
-    ├── Metrics: 12 classes → 1 class
-    │   ├── AdvancedMetricsCollector.kt (KEEP - comprehensive)
-    │   ├── RealTimeMonitor.kt (CONSOLIDATE)
-    │   ├── PerformanceMonitor.kt (CONSOLIDATE)
-    │   ├── ChessProgressTracker.kt (CONSOLIDATE)
+    ├── Metrics: 12 classes → 1 class (IN PROGRESS/REDUCED)
+    │   ├── MetricsCollector.kt (consolidated essential metrics)
+    │   ├── RealTimeMonitor.kt (CONSOLIDATE → replaced by metrics reporting)
+    │   ├── PerformanceMonitor.kt (CONSOLIDATE → replaced)
+    │   ├── ChessProgressTracker.kt (CONSOLIDATE → folded into validator/metrics)
     │   ├── GameAnalyzer.kt (CONSOLIDATE)
     │   ├── NeuralNetworkAnalyzer.kt (CONSOLIDATE)
     │   ├── ExperienceBufferAnalyzer.kt (CONSOLIDATE)
@@ -148,7 +139,7 @@ rl-framework: no dependencies (leaf module)
 - **TrainingDebugger.kt**: Debug-only functionality (REMOVE)
 - **TrainingMonitoringSystem.kt**: Over-engineered monitoring (REMOVE)
 
-**Consolidation**: Merge into single `TrainingPipeline.kt` with essential functionality
+**Consolidation**: Completed — unified as `TrainingPipeline.kt` using `ChessRLConfig`
 
 ### Validators (6 → 1):
 - **RobustTrainingValidator.kt**: Most comprehensive (KEEP as base)
@@ -158,7 +149,7 @@ rl-framework: no dependencies (leaf module)
 - **ConvergenceDetector.kt**: Convergence detection (merge into main)
 - **EarlyStoppingDetector.kt**: Early stopping (merge into main)
 
-**Consolidation**: Single `TrainingValidator.kt` with all validation logic
+**Consolidation**: Completed — single `TrainingValidator.kt` with core + chess checks
 
 ### Metrics Collection (12 → 1):
 - **AdvancedMetricsCollector.kt**: Most comprehensive (KEEP as base)

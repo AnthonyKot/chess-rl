@@ -27,8 +27,8 @@ data class MatchupDiagnostics(
 )
 
 object MatchupDiagnosticsBuilder {
-    fun from(results: SelfPlayResults): MatchupDiagnostics {
-        val total = results.gameResults.size
+    fun from(gameResults: List<SelfPlayGameResult>): MatchupDiagnostics {
+        val total = gameResults.size
         if (total == 0) {
             return MatchupDiagnostics(
                 totalGames = 0,
@@ -49,18 +49,18 @@ object MatchupDiagnosticsBuilder {
             )
         }
 
-        val whiteWins = results.gameResults.count { it.gameOutcome == GameOutcome.WHITE_WINS }
-        val blackWins = results.gameResults.count { it.gameOutcome == GameOutcome.BLACK_WINS }
-        val draws = results.gameResults.count { it.gameOutcome == GameOutcome.DRAW }
+        val whiteWins = gameResults.count { it.gameOutcome == GameOutcome.WHITE_WINS }
+        val blackWins = gameResults.count { it.gameOutcome == GameOutcome.BLACK_WINS }
+        val draws = gameResults.count { it.gameOutcome == GameOutcome.DRAW }
 
-        val endedNaturally = results.gameResults.count { it.terminationReason == EpisodeTerminationReason.GAME_ENDED }
-        val stepLimitEnded = results.gameResults.count { it.terminationReason == EpisodeTerminationReason.STEP_LIMIT }
-        val manualStops = results.gameResults.count { it.terminationReason == EpisodeTerminationReason.MANUAL }
+        val endedNaturally = gameResults.count { it.terminationReason == EpisodeTerminationReason.GAME_ENDED }
+        val stepLimitEnded = gameResults.count { it.terminationReason == EpisodeTerminationReason.STEP_LIMIT }
+        val manualStops = gameResults.count { it.terminationReason == EpisodeTerminationReason.MANUAL }
 
-        val lengths = results.gameResults.map { it.gameLength }
+        val lengths = gameResults.map { it.gameLength }
         val avgLen = if (lengths.isNotEmpty()) lengths.average() else 0.0
-        val winLengths = results.gameResults.filter { it.gameOutcome == GameOutcome.WHITE_WINS || it.gameOutcome == GameOutcome.BLACK_WINS }.map { it.gameLength }
-        val drawLengths = results.gameResults.filter { it.gameOutcome == GameOutcome.DRAW }.map { it.gameLength }
+        val winLengths = gameResults.filter { it.gameOutcome == GameOutcome.WHITE_WINS || it.gameOutcome == GameOutcome.BLACK_WINS }.map { it.gameLength }
+        val drawLengths = gameResults.filter { it.gameOutcome == GameOutcome.DRAW }.map { it.gameLength }
 
         val avgWinLen = if (winLengths.isNotEmpty()) winLengths.average() else null
         val avgDrawLen = if (drawLengths.isNotEmpty()) drawLengths.average() else null
@@ -89,4 +89,3 @@ object MatchupDiagnosticsBuilder {
         )
     }
 }
-

@@ -10,13 +10,17 @@ package com.chessrl.integration
  */
 object ValidActionRegistry {
     private val map = mutableMapOf<DoubleArray, List<Int>>()
+    private val lock = Any()
 
     fun put(state: DoubleArray, actions: List<Int>) {
-        map[state] = actions
+        synchronized(lock) {
+            map[state] = actions
+        }
     }
 
-    fun get(state: DoubleArray): List<Int>? = map[state]
+    fun get(state: DoubleArray): List<Int>? = synchronized(lock) { map[state] }
 
-    fun clear() = map.clear()
+    fun clear() {
+        synchronized(lock) { map.clear() }
+    }
 }
-

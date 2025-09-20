@@ -102,7 +102,7 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Remove all experimental profiles from current profiles.yaml
   - _Requirements: 3_
 
-- [ ] 3. Integration Package Consolidation
+- [x] 3. Integration Package Consolidation
   - **Prerequisites**: Read ARCHITECTURE_ANALYSIS.md from Step 1.2 for consolidation plan
   - Merge 50+ redundant classes in integration package into essential components
   - Consolidate multiple training controllers into single TrainingPipeline
@@ -110,21 +110,21 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Remove all experimental, demo, and debug classes
   - _Requirements: 2_
 
-- [ ] 3.1 Consolidate Training Controllers
+- [x] 3.1 Consolidate Training Controllers
   - Merge RealSelfPlayController.kt + SelfPlayController.kt into TrainingPipeline.kt
   - Implement coroutine-based concurrent self-play using structured concurrency
   - Add proper error handling and recovery for failed games
   - Remove experimental training variations and complex monitoring
   - _Requirements: 2, 4_
 
-- [ ] 3.2 Merge Validation and Monitoring Classes
+- [x] 3.2 Merge Validation and Monitoring Classes
   - Consolidate RobustTrainingValidator.kt + ChessTrainingValidator.kt + TrainingValidator.kt into single TrainingValidator.kt
   - Merge AdvancedMetricsCollector.kt + RealTimeMonitor.kt into MetricsCollector.kt
   - Keep only essential metrics: episode length, buffer utilization, Q-value stats
   - Remove complex monitoring dashboards and experimental validation
   - _Requirements: 2, 7_
 
-- [ ] 3.3 Consolidate Experience Management
+- [x] 3.3 Consolidate Experience Management
   - Merge AdvancedExperienceManager.kt + ExperienceBufferAnalyzer.kt into ExperienceManager.kt
   - Implement simple circular buffer with fixed cleanup strategy
   - Remove experimental sampling strategies and complex buffer analysis
@@ -137,7 +137,21 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Remove debug demos, visualization interfaces, and manual validation tools
   - Clean up commented-out code, debug prints, and experimental remnants
   - Remove experimental build scripts and documentation
-  - _Requirements: 6_
+  - Order of operations
+    1. Remove the “Safe to remove now” set and the listed tests in one pass.
+    2. Run a quick build: ./gradlew :integration:build.
+    3. If green, optionally remove the “Nice-to-trim” files if you’re not using the monitoring stack.
+  - Keep (in use; don’t remove)
+  - Seeded components used by seeded agents and tests:
+      - integration/src/commonMain/kotlin/com/chessrl/integration/SeededComponents.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/RealChessAgentFactory.kt (references Seeded* types)
+      - integration/src/commonTest/kotlin/com/chessrl/integration/DeterministicTrainingTest.kt
+  - Game analysis utilities used by chess-engine interactive browser:
+      - integration/src/commonMain/kotlin/com/chessrl/integration/GameAnalyzer.kt
+      - chess-engine/src/commonMain/kotlin/com/chessrl/chess/InteractiveGameBrowser.kt (uses GameAnalyzer)
+  - Notes
+    - CLIRunner remains usable (:integration:runCli) and already calls the consolidated TrainingPipeline.
+    - Seeded components are actively used by seeded agent creation; don’t delete those unless you refactor RealChessAgentFactory to avoid them.
 
 - [ ] 4.1 Delete Experimental Classes
   - **Prerequisites**: Use ARCHITECTURE_ANALYSIS.md specific deletion list
@@ -146,7 +160,34 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Remove VisualizationDemo.kt, ManualValidationDemo.kt, HyperparameterOptimizer.kt
   - Delete NativeOptimizer.kt, PerformanceOptimizer.kt, TrainingReportGenerator.kt
   - Clean up _excluded/ directory with quarantined code
-  - _Requirements: 6_
+  - Safe to remove now (no prod references; demo/experimental)
+  - Demos/console
+      - integration/src/commonMain/kotlin/com/chessrl/integration/ManualValidationDemo.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/MinimalDeterministicDemo.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/RobustValidationDemo.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/SelfPlayIntegrationDemo.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/SystemOptimizationDemo.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/ValidationConsole.kt
+  - Experimental optimizers and over-engineering
+      - integration/src/commonMain/kotlin/com/chessrl/integration/HyperparameterOptimizer.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/NativeOptimizer.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/PerformanceOptimizer.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/TrainingReportGenerator.kt
+  - Logging and metrics utilities (unused in consolidated flow)
+      - integration/src/commonMain/kotlin/com/chessrl/integration/logging/LightweightLogger.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/metrics/MetricsExporter.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/metrics/MetricsStandardizer.kt
+  - Advanced/legacy analyzers (not used by the consolidated pipeline)
+      - integration/src/commonMain/kotlin/com/chessrl/integration/AdvancedExperienceManager.kt
+      - integration/src/commonMain/kotlin/com/chessrl/integration/MatchupDiagnostics.kt
+  - Config demos (optional; keep only if you use them)
+      - integration/src/commonMain/kotlin/com/chessrl/integration/config/ConfigDemo.kt
+      - integration/src/jvmMain/kotlin/com/chessrl/integration/config/ConfigDemoRunner.kt
+  - Shell scripts (docs already marked them as remove)
+      - integration/jvm-vs-native-comparison.sh
+      - integration/native-performance-test.sh
+      - integration/performance-comparison.sh
+      - integration/run_debugging_tests.sh
 
 - [ ] 4.2 Remove Experimental Build Scripts
   - **Prerequisites**: Use WORKFLOW_CONSOLIDATION.md script removal list
@@ -154,6 +195,15 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Remove integration/jvm-vs-native-comparison.sh, integration/native-performance-test.sh
   - Delete integration/performance-comparison.sh, integration/run_debugging_tests.sh
   - Clean up experimental documentation files
+  - Tests to remove/disable (reference removed or deprecated classes)
+  - integration/src/commonTest/kotlin/com/chessrl/integration/AdvancedSelfPlayTrainingPipelineTest.kt
+  - integration/src/commonTest/kotlin/com/chessrl/integration/AdvancedPipelineControlTest.kt
+  - integration/src/commonTest/kotlin/com/chessrl/integration/AdvancedSelfPlayPerformanceTestSimple.kt
+  - integration/src/commonTest/kotlin/com/chessrl/integration/TrainingDebuggerTest.kt
+  - integration/src/commonTest/kotlin/com/chessrl/integration/TrainingValidationIntegrationTest.kt
+  - integration/src/commonTest/kotlin/com/chessrl/integration/ExperienceBufferAnalyzerTest.kt
+  - integration/src/commonTest/kotlin/com/chessrl/integration/SelfPlayTrainingPipelineValidationTest.kt
+  - integration/src/commonTest/kotlin/com/chessrl/integration/RobustTrainingValidatorTest.kt
   - _Requirements: 6_
 
 - [ ] 4.3 Clean Up Code Quality Issues
@@ -161,7 +211,10 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Standardize Kotlin naming conventions and code style throughout
   - Remove experimental remnants and unused imports
   - Ensure consistent error handling patterns
-  - _Requirements: 6_
+  - Nice-to-trim if unused in your workflows
+    - integration/src/commonMain/kotlin/com/chessrl/integration/MonitoringDataClasses.kt
+    - integration/src/commonMain/kotlin/com/chessrl/integration/DashboardDataClasses.kt
+      (These support a larger monitoring stack; the consolidated pipeline uses MetricsCollector.)
 
 - [ ] 5. Implement Simplified and Reliable Architecture
   - Investigate and implement the simplest reliable approach for training parallelism
@@ -231,6 +284,10 @@ This implementation plan provides a systematic approach to refactoring the chess
 
 - [ ] 7. Simplified CLI Implementation
   - **Prerequisites**: Read WORKFLOW_CONSOLIDATION.md from Step 1.3 for CLI consolidation plan
+  - Replace complex CLIRunner with simple entry points that use consolidated TrainingPipeline
+  - Parse args via ConfigParser.parseArgs(args) or JvmConfigParser.loadProfile(profile)
+  - Instantiate TrainingPipeline(config) and call initialize() + runTraining()
+  - Add --profile flag for fast-debug, long-train, eval-only profiles
   - Replace complex CLI with 3 essential commands: --train, --evaluate, --play
   - Consolidate multiple evaluation commands into single --evaluate with options
   - Remove experimental CLI flags and debug options
@@ -239,8 +296,10 @@ This implementation plan provides a systematic approach to refactoring the chess
 
 - [ ] 7.1 Create Simplified CLI Interface
   - **Prerequisites**: Use WORKFLOW_CONSOLIDATION.md CLI consolidation plan
+  - Replace legacy CLIRunner with simple entry points using ConfigParser.parseArgs(args)
   - Implement ChessRLCLI with 3 main commands: train, evaluate, play
   - Add essential options: --config, --profile, --cycles, --games, --seed, --model
+  - Use JvmConfigParser.loadProfile(profile) for --profile flag (fast-debug, long-train, eval-only)
   - Remove 20+ experimental CLI flags and consolidate functionality
   - Provide clear help text with usage examples
   - _Requirements: 9_
@@ -250,6 +309,13 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Add options for baseline type (heuristic, minimax), opponent models, game count
   - Remove complex evaluation workflows and experimental evaluation metrics
   - Ensure evaluation produces consistent, comparable results
+  - _Requirements: 9_
+
+- [ ] 7.3 Optional CLI Improvements
+  - Integrate CheckpointManager consistently (replace simple agent.save() calls)
+  - Replace manual concurrency thresholds with ChessRLConfig values to avoid duplication
+  - Remove ValidActionRegistry once RL framework masking covers all call sites
+  - Ensure all CLI commands use TrainingPipeline(config).initialize() + runTraining() pattern
   - _Requirements: 9_
 
 - [ ] 8. Training Effectiveness Validation

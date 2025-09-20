@@ -1,435 +1,371 @@
 package com.chessrl.integration
 
+import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.rl.*
 import kotlin.math.*
 
 /**
- * Comprehensive training validation framework for chess RL
- * Provides validation for policy updates, convergence analysis, and training issue detection
+ * Consolidated training validator that combines functionality from:
+ * - RobustTrainingValidator.kt (comprehensive validation)
+ * - ChessTrainingValidator.kt (chess-specific validation)
+ * - TrainingValidator.kt (core policy validation)
+ * 
+ * Provides essential validation for training stability and chess-specific metrics
+ * while keeping only the most important validation checks for reliability.
  */
 class TrainingValidator(
-    private val config: ValidationConfig = ValidationConfig()
+    private val config: ChessRLConfig = ChessRLConfig()
 ) {
     
-    private val validationHistory = mutableListOf<ValidationSnapshot>()
-    private val issueHistory = mutableListOf<TrainingIssueEvent>()
+    // Validation history for trend analysis
+    private val validationHistory = mutableListOf<ValidationResult>()
+    private val gameHistory = mutableListOf<GameAnalysis>()
+    
+    // Smoothed metrics for stability
     private var smoothedGradientNorm: Double? = null
     private var smoothedPolicyEntropy: Double? = null
+    private var smoothedLoss: Double? = null
     
     /**
-     * Validate a policy update and detect potential issues
+     * Validate a training cycle with both policy and chess-specific checks.
      */
-    fun validatePolicyUpdate(
-        beforeMetrics: RLMetrics,
-        afterMetrics: RLMetrics,
-        updateResult: PolicyUpdateResult,
-        episodeNumber: Int
-    ): PolicyValidationResult {
+    fun validateTrainingCycle(
+        cycle: Int,
+        trainingMetrics: TrainingMetrics,
+        gameResults: List<SelfPlayGameResult>
+    ): ValidationResult {
         
+        val timestamp = getCurrentTimeMillis()
         val issues = mutableListOf<ValidationIssue>()
         val warnings = mutableListOf<String>()
         val recommendations = mutableListOf<String>()
         
-        // Numerical stability checks
-        validateNumericalStability(updateResult, issues, warnings)
+        // 1. Core policy validation
+        validatePolicyMetrics(trainingMetrics, issues, warnings, recommendations)
         
-        // Gradient analysis
-        validateGradients(updateResult, issues, warnings, recommendations)
+        // 2. Chess-specific validation
+        validateChessMetrics(gameResults, issues, warnings, recommendations)
         
-        // Policy entropy analysis
-        validatePolicyEntropy(updateResult, issues, warnings, recommendations)
+        // 3. Learning progress validation
+        validateLearningProgress(issues, warnings, recommendations)
         
-        // Learning progress analysis
-        validateLearningProgress(beforeMetrics, afterMetrics, issues, warnings, recommendations)
+        // Update smoothed metrics
+        updateSmoothedMetrics(trainingMetrics)
         
-        // Q-value analysis (for DQN)
-        updateResult.qValueMean?.let { qMean ->
-            updateResult.targetValueMean?.let { targetMean ->
-                validateQValues(qMean, targetMean, issues, warnings, recommendations)
-            }
-        }
-        
-        // Compute optional smoothed gradient norm (EMA)
-        val rawGrad = updateResult.gradientNorm
-        val smoothedGrad = if (config.enableGradientSmoothing) {
-            val alpha = config.gradientSmoothingAlpha.coerceIn(0.0, 1.0)
-            smoothedGradientNorm = if (smoothedGradientNorm == null) rawGrad else alpha * rawGrad + (1 - alpha) * smoothedGradientNorm!!
-            smoothedGradientNorm
-        } else null
-
-        // Compute optional smoothed policy entropy (EMA)
-        val rawEntropy = updateResult.policyEntropy
-        val smoothedEntropy = if (config.enableEntropySmoothing) {
-            val alpha = config.entropySmoothingAlpha.coerceIn(0.0, 1.0)
-            smoothedPolicyEntropy = if (smoothedPolicyEntropy == null) rawEntropy else alpha * rawEntropy + (1 - alpha) * smoothedPolicyEntropy!!
-            smoothedPolicyEntropy
-        } else null
-
         // Create validation result
-        val result = PolicyValidationResult(
-            episodeNumber = episodeNumber,
+        val result = ValidationResult(
+            cycle = cycle,
+            timestamp = timestamp,
             isValid = issues.isEmpty(),
             issues = issues,
             warnings = warnings,
             recommendations = recommendations,
-            updateMetrics = updateResult,
-            smoothedGradientNorm = smoothedGrad,
-            smoothedPolicyEntropy = smoothedEntropy,
-            beforeMetrics = beforeMetrics,
-            afterMetrics = afterMetrics,
-            timestamp = getCurrentTimeMillis()
+            trainingMetrics = trainingMetrics,
+            gameAnalysis = analyzeGames(gameResults),
+            smoothedGradientNorm = smoothedGradientNorm,
+            smoothedPolicyEntropy = smoothedPolicyEntropy,
+            smoothedLoss = smoothedLoss
         )
         
-        // Record validation snapshot
-        recordValidationSnapshot(result)
+        // Record validation
+        validationHistory.add(result)
         
-        // Record issues if any
-        if (issues.isNotEmpty()) {
-            recordTrainingIssues(issues, episodeNumber)
+        // Limit history size
+        if (validationHistory.size > 100) {
+            validationHistory.removeAt(0)
         }
         
         return result
     }
     
     /**
-     * Analyze training convergence based on historical metrics
+     * Validate core policy training metrics.
      */
-    fun analyzeConvergence(
-        trainingHistory: List<RLMetrics>,
-        windowSize: Int = config.convergenceWindowSize
-    ): ConvergenceAnalysis {
-        
-        if (trainingHistory.size < windowSize) {
-            return ConvergenceAnalysis(
-                status = com.chessrl.rl.ConvergenceStatus.INSUFFICIENT_DATA,
-                confidence = 0.0,
-                trendDirection = TrendDirection.UNKNOWN,
-                stabilityScore = 0.0,
-                recommendations = listOf("Need at least $windowSize episodes for convergence analysis")
-            )
-        }
-        
-        val recentMetrics = trainingHistory.takeLast(windowSize)
-        val rewards = recentMetrics.map { it.averageReward }
-        val losses = recentMetrics.map { it.policyLoss }
-        
-        // Calculate trend and stability
-        val rewardTrend = calculateTrend(rewards)
-        val lossTrend = calculateTrend(losses)
-        val rewardStability = calculateStability(rewards)
-        val lossStability = calculateStability(losses)
-        
-        // Determine convergence status
-        val avgReward = rewards.average()
-        val status = determineConvergenceStatus(rewardTrend, lossTrend, rewardStability, lossStability, avgReward)
-        val confidence = calculateConvergenceConfidence(rewardStability, lossStability)
-        val trendDirection = determineTrendDirection(rewardTrend)
-        var stabilityScore = (rewardStability + lossStability) / 2.0
-        // Small-window penalty only for very small windows (< 10)
-        val smallWindowPenalty = if (recentMetrics.size < 10) 0.2 else 0.0
-        stabilityScore = (stabilityScore - smallWindowPenalty).coerceIn(0.0, 1.0)
-        
-        // Generate recommendations
-        val recommendations = generateConvergenceRecommendations(status, rewardTrend, lossTrend, stabilityScore)
-        
-        return ConvergenceAnalysis(
-            status = status,
-            confidence = confidence,
-            trendDirection = trendDirection,
-            stabilityScore = stabilityScore,
-            rewardTrend = rewardTrend,
-            lossTrend = lossTrend,
-            rewardStability = rewardStability,
-            lossStability = lossStability,
-            recommendations = recommendations
-        )
-    }
-    
-    /**
-     * Detect and classify training issues
-     */
-    fun detectTrainingIssues(
-        metrics: RLMetrics,
-        updateResult: PolicyUpdateResult? = null
-    ): List<TrainingIssueDetection> {
-        
-        val detections = mutableListOf<TrainingIssueDetection>()
-        
-        // Gradient-related issues
-        updateResult?.let { result ->
-            if (result.gradientNorm > config.explodingGradientThreshold) {
-                detections.add(TrainingIssueDetection(
-                    issue = com.chessrl.rl.TrainingIssue.EXPLODING_GRADIENTS,
-                    severity = IssueSeverity.HIGH,
-                    value = result.gradientNorm,
-                    threshold = config.explodingGradientThreshold,
-                    description = "Gradient norm (${result.gradientNorm}) exceeds threshold",
-                    recommendations = listOf(
-                        "Apply gradient clipping",
-                        "Reduce learning rate",
-                        "Check network architecture"
-                    )
-                ))
-            }
-            
-            if (result.gradientNorm < config.vanishingGradientThreshold) {
-                detections.add(TrainingIssueDetection(
-                    issue = com.chessrl.rl.TrainingIssue.VANISHING_GRADIENTS,
-                    severity = IssueSeverity.MEDIUM,
-                    value = result.gradientNorm,
-                    threshold = config.vanishingGradientThreshold,
-                    description = "Gradient norm (${result.gradientNorm}) below threshold",
-                    recommendations = listOf(
-                        "Increase learning rate",
-                        "Use different activation functions",
-                        "Check network initialization"
-                    )
-                ))
-            }
-            
-            // Policy collapse detection
-            if (result.policyEntropy < config.policyCollapseThreshold) {
-                detections.add(TrainingIssueDetection(
-                    issue = com.chessrl.rl.TrainingIssue.POLICY_COLLAPSE,
-                    severity = IssueSeverity.HIGH,
-                    value = result.policyEntropy,
-                    threshold = config.policyCollapseThreshold,
-                    description = "Policy entropy (${result.policyEntropy}) indicates policy collapse",
-                    recommendations = listOf(
-                        "Increase exploration rate",
-                        "Add entropy regularization",
-                        "Use different exploration strategy"
-                    )
-                ))
-            }
-        }
-        
-        // Exploration issues
-        if (metrics.explorationRate < config.insufficientExplorationThreshold) {
-            detections.add(TrainingIssueDetection(
-                issue = com.chessrl.rl.TrainingIssue.EXPLORATION_INSUFFICIENT,
-                severity = IssueSeverity.MEDIUM,
-                value = metrics.explorationRate,
-                threshold = config.insufficientExplorationThreshold,
-                description = "Exploration rate (${metrics.explorationRate}) may be too low",
-                recommendations = listOf(
-                    "Increase exploration rate",
-                    "Use different exploration strategy",
-                    "Add exploration bonus"
-                )
-            ))
-        }
-        
-        // Q-value overestimation (for DQN)
-        metrics.qValueStats?.let { qStats ->
-            if (qStats.meanQValue > config.qValueOverestimationThreshold) {
-                detections.add(TrainingIssueDetection(
-                    issue = com.chessrl.rl.TrainingIssue.VALUE_OVERESTIMATION,
-                    severity = IssueSeverity.MEDIUM,
-                    value = qStats.meanQValue,
-                    threshold = config.qValueOverestimationThreshold,
-                    description = "Mean Q-value (${qStats.meanQValue}) indicates overestimation",
-                    recommendations = listOf(
-                        "Use double DQN",
-                        "Reduce learning rate",
-                        "Increase target network update frequency"
-                    )
-                ))
-            }
-        }
-        
-        // Learning rate issues based on loss behavior
-        if (metrics.policyLoss.isNaN() || metrics.policyLoss.isInfinite()) {
-            detections.add(TrainingIssueDetection(
-                issue = com.chessrl.rl.TrainingIssue.LEARNING_RATE_TOO_HIGH,
-                severity = IssueSeverity.HIGH,
-                value = metrics.policyLoss,
-                threshold = Double.NaN,
-                description = "Loss is NaN/Infinite, likely due to high learning rate",
-                recommendations = listOf(
-                    "Reduce learning rate significantly",
-                    "Check gradient clipping",
-                    "Restart training with lower learning rate"
-                )
-            ))
-        }
-        
-        return detections
-    }
-    
-    /**
-     * Get validation statistics and summary
-     */
-    fun getValidationSummary(): ValidationSummary {
-        val totalValidations = validationHistory.size
-        val validValidations = validationHistory.count { it.result.isValid }
-        val totalIssues = issueHistory.size
-        
-        val issuesByType: Map<com.chessrl.rl.TrainingIssue, Int> = issueHistory
-            .flatMap { event ->
-                event.issues.map { issue ->
-                    when (issue.type) {
-                        IssueType.EXPLODING_GRADIENTS -> com.chessrl.rl.TrainingIssue.EXPLODING_GRADIENTS
-                        IssueType.VANISHING_GRADIENTS -> com.chessrl.rl.TrainingIssue.VANISHING_GRADIENTS
-                        IssueType.POLICY_COLLAPSE -> com.chessrl.rl.TrainingIssue.POLICY_COLLAPSE
-                        IssueType.NUMERICAL_INSTABILITY, IssueType.LOSS_EXPLOSION -> com.chessrl.rl.TrainingIssue.LEARNING_RATE_TOO_HIGH
-                        IssueType.Q_VALUE_OVERESTIMATION -> com.chessrl.rl.TrainingIssue.VALUE_OVERESTIMATION
-                        IssueType.EXPLORATION_INSUFFICIENT -> com.chessrl.rl.TrainingIssue.EXPLORATION_INSUFFICIENT
-                    }
-                }
-            }
-            .groupingBy { it }
-            .eachCount()
-        
-        val recentIssues = issueHistory.takeLast(10)
-        
-        return ValidationSummary(
-            totalValidations = totalValidations,
-            validValidations = validValidations,
-            validationRate = if (totalValidations > 0) validValidations.toDouble() / totalValidations else 0.0,
-            totalIssues = totalIssues,
-            issuesByType = issuesByType,
-            recentIssues = recentIssues,
-            lastValidation = validationHistory.lastOrNull()?.result
-        )
-    }
-    
-    /**
-     * Clear validation history (for testing or reset)
-     */
-    fun clearHistory() {
-        validationHistory.clear()
-        issueHistory.clear()
-    }
-    
-    // Private helper methods
-    
-    private fun validateNumericalStability(
-        updateResult: PolicyUpdateResult,
-        issues: MutableList<ValidationIssue>,
-        warnings: MutableList<String>
-    ) {
-        if (updateResult.loss.isNaN() || updateResult.loss.isInfinite()) {
-            issues.add(ValidationIssue(
-                type = IssueType.NUMERICAL_INSTABILITY,
-                severity = IssueSeverity.HIGH,
-                message = "Loss is NaN or Infinite: ${updateResult.loss}",
-                value = updateResult.loss
-            ))
-            warnings.add("Loss produced non-finite value; check learning rate/initialization")
-        }
-        
-        if (updateResult.gradientNorm.isNaN() || updateResult.gradientNorm.isInfinite()) {
-            issues.add(ValidationIssue(
-                type = IssueType.NUMERICAL_INSTABILITY,
-                severity = IssueSeverity.HIGH,
-                message = "Gradient norm is NaN or Infinite: ${updateResult.gradientNorm}",
-                value = updateResult.gradientNorm
-            ))
-            warnings.add("Gradient norm is non-finite; consider gradient clipping or smaller steps")
-        }
-    }
-    
-    private fun validateGradients(
-        updateResult: PolicyUpdateResult,
+    private fun validatePolicyMetrics(
+        metrics: TrainingMetrics,
         issues: MutableList<ValidationIssue>,
         warnings: MutableList<String>,
         recommendations: MutableList<String>
     ) {
-        val gradToCheck = if (config.enableGradientSmoothing && smoothedGradientNorm != null) smoothedGradientNorm!! else updateResult.gradientNorm
+        
+        // Check for numerical instability
+        if (metrics.averageLoss.isNaN() || metrics.averageLoss.isInfinite()) {
+            issues.add(ValidationIssue(
+                type = IssueType.NUMERICAL_INSTABILITY,
+                severity = IssueSeverity.HIGH,
+                message = "Loss is NaN or Infinite: ${metrics.averageLoss}",
+                value = metrics.averageLoss
+            ))
+            recommendations.add("Reduce learning rate significantly")
+        }
+        
+        if (metrics.averageGradientNorm.isNaN() || metrics.averageGradientNorm.isInfinite()) {
+            issues.add(ValidationIssue(
+                type = IssueType.NUMERICAL_INSTABILITY,
+                severity = IssueSeverity.HIGH,
+                message = "Gradient norm is NaN or Infinite: ${metrics.averageGradientNorm}",
+                value = metrics.averageGradientNorm
+            ))
+            recommendations.add("Apply gradient clipping")
+        }
+        
+        // Check gradient norms (use smoothed values if available)
+        val gradNorm = smoothedGradientNorm ?: metrics.averageGradientNorm
         when {
-            gradToCheck > config.explodingGradientThreshold -> {
+            gradNorm > 10.0 -> {
                 issues.add(ValidationIssue(
                     type = IssueType.EXPLODING_GRADIENTS,
                     severity = IssueSeverity.HIGH,
-                    message = "Gradient norm too high: ${gradToCheck}",
-                    value = gradToCheck
+                    message = "Gradient norm too high: $gradNorm",
+                    value = gradNorm
                 ))
                 recommendations.add("Apply gradient clipping or reduce learning rate")
             }
-            gradToCheck < config.vanishingGradientThreshold -> {
-                warnings.add("Gradient norm very low: ${gradToCheck}")
-                recommendations.add("Consider increasing learning rate or changing architecture")
+            gradNorm < 1e-6 -> {
+                warnings.add("Gradient norm very low: $gradNorm")
+                recommendations.add("Consider increasing learning rate")
             }
-            gradToCheck > config.gradientWarningThreshold -> {
-                warnings.add("Gradient norm elevated: ${gradToCheck}")
+            gradNorm > 5.0 -> {
+                warnings.add("Gradient norm elevated: $gradNorm")
             }
         }
-    }
-    
-    private fun validatePolicyEntropy(
-        updateResult: PolicyUpdateResult,
-        issues: MutableList<ValidationIssue>,
-        warnings: MutableList<String>,
-        recommendations: MutableList<String>
-    ) {
-        val entropyToCheck = if (config.enableEntropySmoothing && smoothedPolicyEntropy != null) smoothedPolicyEntropy!! else updateResult.policyEntropy
+        
+        // Check policy entropy (use smoothed values if available)
+        val entropy = smoothedPolicyEntropy ?: metrics.averagePolicyEntropy
         when {
-            entropyToCheck < config.policyCollapseThreshold -> {
+            entropy < 0.1 -> {
                 issues.add(ValidationIssue(
                     type = IssueType.POLICY_COLLAPSE,
                     severity = IssueSeverity.HIGH,
-                    message = "Policy entropy too low: ${entropyToCheck}",
-                    value = entropyToCheck
+                    message = "Policy entropy too low: $entropy",
+                    value = entropy
                 ))
-                recommendations.add("Increase exploration or add entropy regularization")
+                recommendations.add("Increase exploration rate")
             }
-            entropyToCheck < config.entropyWarningThreshold -> {
-                warnings.add("Policy entropy low: ${entropyToCheck}")
+            entropy < 0.5 -> {
+                warnings.add("Policy entropy low: $entropy")
                 recommendations.add("Monitor exploration and consider entropy bonus")
             }
         }
+        
+        // Check loss trends
+        val loss = smoothedLoss ?: metrics.averageLoss
+        if (validationHistory.isNotEmpty()) {
+            val previousLoss = validationHistory.last().smoothedLoss ?: validationHistory.last().trainingMetrics.averageLoss
+            val lossChange = loss - previousLoss
+            
+            if (lossChange > 5.0) {
+                issues.add(ValidationIssue(
+                    type = IssueType.LOSS_EXPLOSION,
+                    severity = IssueSeverity.HIGH,
+                    message = "Loss increased dramatically: $lossChange",
+                    value = lossChange
+                ))
+                recommendations.add("Reduce learning rate immediately")
+            }
+        }
     }
     
-    private fun validateLearningProgress(
-        beforeMetrics: RLMetrics,
-        afterMetrics: RLMetrics,
+    /**
+     * Validate chess-specific metrics.
+     */
+    private fun validateChessMetrics(
+        gameResults: List<SelfPlayGameResult>,
         issues: MutableList<ValidationIssue>,
         warnings: MutableList<String>,
         recommendations: MutableList<String>
     ) {
-        val rewardChange = afterMetrics.averageReward - beforeMetrics.averageReward
-        val lossChange = afterMetrics.policyLoss - beforeMetrics.policyLoss
         
-        // Check for reward stagnation
-        if (afterMetrics.explorationRate < config.insufficientExplorationThreshold) {
-            if (abs(rewardChange) < config.rewardStagnationThreshold || rewardChange < 0.0) {
-                warnings.add("Reward stagnation with low exploration")
-                recommendations.add("Increase exploration rate or change strategy")
+        if (gameResults.isEmpty()) {
+            warnings.add("No games to analyze")
+            return
+        }
+        
+        // Check average game length
+        val avgGameLength = gameResults.map { it.gameLength }.average()
+        when {
+            avgGameLength < 10.0 -> {
+                issues.add(ValidationIssue(
+                    type = IssueType.GAMES_TOO_SHORT,
+                    severity = IssueSeverity.MEDIUM,
+                    message = "Games too short (avg: $avgGameLength)",
+                    value = avgGameLength
+                ))
+                recommendations.add("Check if agent is making illegal moves")
+            }
+            avgGameLength > 150.0 -> {
+                warnings.add("Games very long (avg: $avgGameLength)")
+                recommendations.add("Consider adjusting reward structure")
             }
         }
         
-        // Check for loss explosion
-        if (lossChange > config.lossExplosionThreshold) {
+        // Check game outcomes
+        val outcomes = gameResults.groupingBy { it.gameOutcome }.eachCount()
+        val total = gameResults.size
+        val drawRate = (outcomes[GameOutcome.DRAW] ?: 0).toDouble() / total
+        
+        if (drawRate > 0.7) {
             issues.add(ValidationIssue(
-                type = IssueType.LOSS_EXPLOSION,
-                severity = IssueSeverity.HIGH,
-                message = "Loss increased dramatically: ${lossChange}",
-                value = lossChange
+                type = IssueType.TOO_MANY_DRAWS,
+                severity = IssueSeverity.MEDIUM,
+                message = "High draw rate: ${drawRate * 100}%",
+                value = drawRate
             ))
-            recommendations.add("Reduce learning rate immediately")
+            recommendations.add("Adjust reward structure to discourage draws")
+        }
+        
+        // Check for step limit terminations
+        val stepLimitGames = gameResults.count { it.terminationReason == EpisodeTerminationReason.STEP_LIMIT }
+        val stepLimitRate = stepLimitGames.toDouble() / total
+        
+        if (stepLimitRate > 0.5) {
+            warnings.add("High step limit termination rate: ${stepLimitRate * 100}%")
+            recommendations.add("Consider increasing max steps per game or improving training")
+        }
+        
+        // Simple move diversity check
+        val allMoves = gameResults.flatMap { game ->
+            // Extract move strings from experiences (simplified)
+            game.experiences.mapIndexed { index, _ -> "move_$index" }
+        }
+        
+        if (allMoves.isNotEmpty()) {
+            val uniqueMoves = allMoves.toSet()
+            val diversityRatio = uniqueMoves.size.toDouble() / allMoves.size
+            
+            if (diversityRatio < 0.3 && allMoves.size > 100) {
+                issues.add(ValidationIssue(
+                    type = IssueType.LOW_MOVE_DIVERSITY,
+                    severity = IssueSeverity.HIGH,
+                    message = "Low move diversity: ${diversityRatio * 100}%",
+                    value = diversityRatio
+                ))
+                recommendations.add("Increase exploration rate")
+            }
         }
     }
     
-    private fun validateQValues(
-        qMean: Double,
-        targetMean: Double,
+    /**
+     * Validate learning progress over time.
+     */
+    private fun validateLearningProgress(
         issues: MutableList<ValidationIssue>,
         warnings: MutableList<String>,
         recommendations: MutableList<String>
     ) {
-        if (qMean > config.qValueOverestimationThreshold) {
-            warnings.add("Q-values may be overestimated: mean = $qMean")
-            recommendations.add("Consider using double DQN or reducing learning rate")
+        
+        if (validationHistory.size < 10) return // Need more data
+        
+        // Check for stagnation
+        val recentHistory = validationHistory.takeLast(10)
+        val recentRewards = recentHistory.map { it.trainingMetrics.averageReward }
+        val rewardTrend = calculateTrend(recentRewards)
+        val rewardStability = calculateStability(recentRewards)
+        
+        // Check for learning stagnation
+        if (abs(rewardTrend) < 0.001 && rewardStability > 0.8) {
+            warnings.add("Training may be stagnating (trend: $rewardTrend)")
+            recommendations.add("Consider increasing exploration rate or adjusting learning parameters")
         }
         
-        val qTargetDiff = abs(qMean - targetMean)
-        if (qTargetDiff >= config.qTargetDivergenceThreshold) {
-            warnings.add("Q-values diverging from targets: diff = $qTargetDiff")
-            recommendations.add("Update target network more frequently")
+        // Check for declining performance
+        if (rewardTrend < -0.01) {
+            issues.add(ValidationIssue(
+                type = IssueType.DECLINING_PERFORMANCE,
+                severity = IssueSeverity.MEDIUM,
+                message = "Performance declining (trend: $rewardTrend)",
+                value = rewardTrend
+            ))
+            recommendations.add("Reduce learning rate or check for training instabilities")
+        }
+        
+        // Check convergence
+        if (rewardStability > 0.9 && abs(rewardTrend) < 0.005) {
+            val avgReward = recentRewards.average()
+            if (avgReward > 0.5) {
+                warnings.add("Training appears to have converged")
+                recommendations.add("Consider stopping training or reducing learning rate")
+            }
         }
     }
     
+    /**
+     * Analyze games for quality metrics.
+     */
+    private fun analyzeGames(gameResults: List<SelfPlayGameResult>): GameAnalysis {
+        if (gameResults.isEmpty()) {
+            return GameAnalysis(
+                averageGameLength = 0.0,
+                gameCompletionRate = 0.0,
+                drawRate = 0.0,
+                stepLimitRate = 0.0,
+                qualityScore = 0.0
+            )
+        }
+        
+        val avgGameLength = gameResults.map { it.gameLength }.average()
+        val completedGames = gameResults.count { it.terminationReason == EpisodeTerminationReason.GAME_ENDED }
+        val gameCompletionRate = completedGames.toDouble() / gameResults.size
+        val drawRate = gameResults.count { it.gameOutcome == GameOutcome.DRAW }.toDouble() / gameResults.size
+        val stepLimitRate = gameResults.count { it.terminationReason == EpisodeTerminationReason.STEP_LIMIT }.toDouble() / gameResults.size
+        
+        // Calculate overall quality score
+        val lengthScore = when {
+            avgGameLength < 10 -> 0.3
+            avgGameLength > 200 -> 0.5
+            else -> 1.0
+        }
+        val completionScore = gameCompletionRate
+        val diversityScore = 1.0 - drawRate // Lower draw rate = higher diversity
+        
+        val qualityScore = (lengthScore + completionScore + diversityScore) / 3.0
+        
+        val analysis = GameAnalysis(
+            averageGameLength = avgGameLength,
+            gameCompletionRate = gameCompletionRate,
+            drawRate = drawRate,
+            stepLimitRate = stepLimitRate,
+            qualityScore = qualityScore
+        )
+        
+        gameHistory.add(analysis)
+        
+        // Limit history size
+        if (gameHistory.size > 100) {
+            gameHistory.removeAt(0)
+        }
+        
+        return analysis
+    }
+    
+    /**
+     * Update smoothed metrics using exponential moving average.
+     */
+    private fun updateSmoothedMetrics(metrics: TrainingMetrics) {
+        val alpha = 0.2 // Smoothing factor
+        
+        smoothedGradientNorm = if (smoothedGradientNorm == null) {
+            metrics.averageGradientNorm
+        } else {
+            alpha * metrics.averageGradientNorm + (1 - alpha) * smoothedGradientNorm!!
+        }
+        
+        smoothedPolicyEntropy = if (smoothedPolicyEntropy == null) {
+            metrics.averagePolicyEntropy
+        } else {
+            alpha * metrics.averagePolicyEntropy + (1 - alpha) * smoothedPolicyEntropy!!
+        }
+        
+        smoothedLoss = if (smoothedLoss == null) {
+            metrics.averageLoss
+        } else {
+            alpha * metrics.averageLoss + (1 - alpha) * smoothedLoss!!
+        }
+    }
+    
+    /**
+     * Calculate trend using linear regression.
+     */
     private fun calculateTrend(values: List<Double>): Double {
         if (values.size < 2) return 0.0
         
@@ -446,6 +382,9 @@ class TrainingValidator(
         return if (denominator != 0.0) numerator / denominator else 0.0
     }
     
+    /**
+     * Calculate stability (inverse of coefficient of variation).
+     */
     private fun calculateStability(values: List<Double>): Double {
         if (values.size < 2) return 0.0
         
@@ -453,7 +392,6 @@ class TrainingValidator(
         val variance = values.map { (it - mean).pow(2) }.average()
         val stdDev = sqrt(variance)
         
-        // Stability score: higher is more stable (inverse of coefficient of variation)
         return if (abs(mean) > 1e-8) {
             1.0 / (1.0 + stdDev / abs(mean))
         } else {
@@ -461,186 +399,136 @@ class TrainingValidator(
         }
     }
     
-    private fun determineConvergenceStatus(
-        rewardTrend: Double,
-        lossTrend: Double,
-        rewardStability: Double,
-        lossStability: Double,
-        avgReward: Double
-    ): com.chessrl.rl.ConvergenceStatus {
-        val isStable = rewardStability > config.stabilityThreshold && lossStability > config.stabilityThreshold
-        val isImproving = rewardTrend > config.improvementThreshold
-        val isLossDecreasing = lossTrend < -config.improvementThreshold
+    /**
+     * Get validation summary.
+     */
+    fun getValidationSummary(): ValidationSummary {
+        val totalValidations = validationHistory.size
+        val validValidations = validationHistory.count { it.isValid }
+        val recentIssues = validationHistory.takeLast(10).flatMap { it.issues }
+        
+        return ValidationSummary(
+            totalValidations = totalValidations,
+            validValidations = validValidations,
+            validationRate = if (totalValidations > 0) validValidations.toDouble() / totalValidations else 0.0,
+            recentIssues = recentIssues,
+            lastValidation = validationHistory.lastOrNull()
+        )
+    }
+    
+    /**
+     * Clear validation history.
+     */
+    fun clearHistory() {
+        validationHistory.clear()
+        gameHistory.clear()
+        smoothedGradientNorm = null
+        smoothedPolicyEntropy = null
+        smoothedLoss = null
+    }
 
-        return when {
-            isStable && (isImproving || isLossDecreasing) -> com.chessrl.rl.ConvergenceStatus.CONVERGED
-            isStable && avgReward > 0.55 -> com.chessrl.rl.ConvergenceStatus.CONVERGED
-            isImproving || isLossDecreasing -> com.chessrl.rl.ConvergenceStatus.IMPROVING
+    /**
+     * Lightweight convergence analysis over RL metrics.
+     * Provided for test compatibility with earlier API expectations.
+     */
+    fun analyzeConvergence(
+        trainingHistory: List<com.chessrl.rl.RLMetrics>,
+        windowSize: Int
+    ): SimpleConvergenceAnalysis {
+        if (trainingHistory.size < 2) {
+            return SimpleConvergenceAnalysis(
+                status = com.chessrl.rl.ConvergenceStatus.INSUFFICIENT_DATA,
+                rewardTrend = 0.0,
+                stability = 0.0
+            )
+        }
+
+        val recent = trainingHistory.takeLast(windowSize.coerceAtMost(trainingHistory.size))
+        val rewards = recent.map { it.averageReward }
+        val trend = calculateTrend(rewards)
+        val stability = calculateStability(rewards)
+
+        val status = when {
+            recent.size < 10 -> com.chessrl.rl.ConvergenceStatus.INSUFFICIENT_DATA
+            stability > 0.9 && kotlin.math.abs(trend) < 0.005 -> com.chessrl.rl.ConvergenceStatus.CONVERGED
+            trend > 0.0 -> com.chessrl.rl.ConvergenceStatus.IMPROVING
             else -> com.chessrl.rl.ConvergenceStatus.STAGNANT
         }
+
+        return SimpleConvergenceAnalysis(status, trend, stability)
     }
-    
-    private fun calculateConvergenceConfidence(rewardStability: Double, lossStability: Double): Double {
-        return (rewardStability + lossStability) / 2.0
-    }
-    
-    private fun determineTrendDirection(trend: Double): TrendDirection {
-        return when {
-            trend > config.improvementThreshold -> TrendDirection.IMPROVING
-            trend < -config.improvementThreshold -> TrendDirection.DECLINING
-            else -> TrendDirection.STABLE
-        }
-    }
-    
-    private fun generateConvergenceRecommendations(
-        status: com.chessrl.rl.ConvergenceStatus,
-        rewardTrend: Double,
-        lossTrend: Double,
-        stabilityScore: Double
-    ): List<String> {
-        val recommendations = mutableListOf<String>()
-        
-        when (status) {
-            com.chessrl.rl.ConvergenceStatus.CONVERGED -> {
-                recommendations.add("Training appears to have converged")
-                if (stabilityScore < 0.8) {
-                    recommendations.add("Consider reducing learning rate for better stability")
-                }
-            }
-            com.chessrl.rl.ConvergenceStatus.IMPROVING -> {
-                recommendations.add("Training is progressing well, continue current settings")
-                if (rewardTrend < 0.01) {
-                    recommendations.add("Progress is slow, consider increasing learning rate")
-                }
-            }
-            com.chessrl.rl.ConvergenceStatus.STAGNANT -> {
-                recommendations.add("Training has stagnated")
-                recommendations.add("Consider increasing exploration rate")
-                recommendations.add("Try different learning rate or network architecture")
-                if (lossTrend > 0) {
-                    recommendations.add("Loss is increasing, reduce learning rate")
-                }
-            }
-            com.chessrl.rl.ConvergenceStatus.INSUFFICIENT_DATA -> {
-                recommendations.add("Continue training to gather more data")
+
+    /**
+     * Validate a policy update (compatibility helper for integration tests).
+     */
+    fun validatePolicyUpdate(
+        beforeMetrics: com.chessrl.rl.RLMetrics,
+        afterMetrics: com.chessrl.rl.RLMetrics,
+        updateResult: com.chessrl.rl.PolicyUpdateResult,
+        episode: Int
+    ): PolicyValidationResult {
+        val rlValidator = com.chessrl.rl.RLValidator()
+        // Use the RL validator's checks and augment with episode/context if needed
+        val core = rlValidator.validatePolicyUpdate(beforeMetrics, afterMetrics, updateResult)
+        val detectedIssues = rlValidator.detectTrainingIssues(afterMetrics).toMutableList()
+
+        // Map string issues from core validator to TrainingIssue when possible
+        core.issues.forEach { msg ->
+            when {
+                msg.contains("Exploding gradients", ignoreCase = true) -> detectedIssues.add(com.chessrl.rl.TrainingIssue.EXPLODING_GRADIENTS)
+                msg.contains("Vanishing gradients", ignoreCase = true) -> detectedIssues.add(com.chessrl.rl.TrainingIssue.VANISHING_GRADIENTS)
+                msg.contains("Policy collapse", ignoreCase = true) -> detectedIssues.add(com.chessrl.rl.TrainingIssue.POLICY_COLLAPSE)
+                msg.contains("Insufficient exploration", ignoreCase = true) -> detectedIssues.add(com.chessrl.rl.TrainingIssue.EXPLORATION_INSUFFICIENT)
             }
         }
-        
-        return recommendations
-    }
-    
-    private fun recordValidationSnapshot(result: PolicyValidationResult) {
-        val snapshot = ValidationSnapshot(
-            timestamp = getCurrentTimeMillis(),
-            episodeNumber = result.episodeNumber,
-            result = result
+
+        return PolicyValidationResult(
+            episode = episode,
+            isValid = core.isValid,
+            issues = detectedIssues,
+            recommendations = core.recommendations
         )
-        
-        validationHistory.add(snapshot)
-        
-        // Limit history size
-        if (validationHistory.size > config.maxHistorySize) {
-            validationHistory.removeAt(0)
-        }
-    }
-    
-    private fun recordTrainingIssues(issues: List<ValidationIssue>, episodeNumber: Int) {
-        val event = TrainingIssueEvent(
-            timestamp = getCurrentTimeMillis(),
-            episodeNumber = episodeNumber,
-            issues = issues
-        )
-        
-        issueHistory.add(event)
-        
-        // Limit history size
-        if (issueHistory.size > config.maxHistorySize) {
-            issueHistory.removeAt(0)
-        }
     }
 }
 
 /**
- * Configuration for training validation
+ * Data classes for validation results
  */
-data class ValidationConfig(
-    // Gradient thresholds
-    val explodingGradientThreshold: Double = 10.0,
-    val vanishingGradientThreshold: Double = 1e-6,
-    val gradientWarningThreshold: Double = 5.0,
-    val enableGradientSmoothing: Boolean = false,
-    val gradientSmoothingAlpha: Double = 0.2,
-    
-    // Policy entropy thresholds
-    val policyCollapseThreshold: Double = 0.1,
-    val entropyWarningThreshold: Double = 0.5,
-    val enableEntropySmoothing: Boolean = false,
-    val entropySmoothingAlpha: Double = 0.2,
-    
-    // Exploration thresholds
-    val insufficientExplorationThreshold: Double = 0.01,
-    
-    // Q-value thresholds
-    val qValueOverestimationThreshold: Double = 100.0,
-    val qTargetDivergenceThreshold: Double = 50.0,
-    
-    // Learning progress thresholds
-    val rewardStagnationThreshold: Double = 0.001,
-    val lossExplosionThreshold: Double = 10.0,
-    
-    // Convergence analysis
-    val convergenceWindowSize: Int = 50,
-    val stabilityThreshold: Double = 0.7,
-    val improvementThreshold: Double = 0.001,
-    
-    // History management
-    val maxHistorySize: Int = 1000
-)
 
-/**
- * Result of policy update validation
- */
-data class PolicyValidationResult(
-    val episodeNumber: Int,
+data class ValidationResult(
+    val cycle: Int,
+    val timestamp: Long,
     val isValid: Boolean,
     val issues: List<ValidationIssue>,
     val warnings: List<String>,
     val recommendations: List<String>,
-    val updateMetrics: PolicyUpdateResult,
+    val trainingMetrics: TrainingMetrics,
+    val gameAnalysis: GameAnalysis,
     val smoothedGradientNorm: Double?,
     val smoothedPolicyEntropy: Double?,
-    val beforeMetrics: RLMetrics,
-    val afterMetrics: RLMetrics,
-    val timestamp: Long
+    val smoothedLoss: Double?
 )
 
-/**
- * Validation issue with details
- */
 data class ValidationIssue(
     val type: IssueType,
     val severity: IssueSeverity,
     val message: String,
-    val value: Double,
-    val threshold: Double? = null
+    val value: Double
 )
 
-/**
- * Types of validation issues
- */
 enum class IssueType {
     NUMERICAL_INSTABILITY,
     EXPLODING_GRADIENTS,
     VANISHING_GRADIENTS,
     POLICY_COLLAPSE,
     LOSS_EXPLOSION,
-    Q_VALUE_OVERESTIMATION,
+    GAMES_TOO_SHORT,
+    TOO_MANY_DRAWS,
+    LOW_MOVE_DIVERSITY,
+    DECLINING_PERFORMANCE,
     EXPLORATION_INSUFFICIENT
 }
 
-/**
- * Severity levels for issues
- */
 enum class IssueSeverity {
     LOW,
     MEDIUM,
@@ -648,65 +536,57 @@ enum class IssueSeverity {
     CRITICAL
 }
 
-/**
- * Convergence analysis result
- */
-data class ConvergenceAnalysis(
-    val status: com.chessrl.rl.ConvergenceStatus,
-    val confidence: Double,
-    val trendDirection: TrendDirection,
-    val stabilityScore: Double,
-    val rewardTrend: Double = 0.0,
-    val lossTrend: Double = 0.0,
-    val rewardStability: Double = 0.0,
-    val lossStability: Double = 0.0,
-    val recommendations: List<String>
+data class GameAnalysis(
+    val averageGameLength: Double,
+    val gameCompletionRate: Double,
+    val drawRate: Double,
+    val stepLimitRate: Double,
+    val qualityScore: Double
 )
 
-/**
- * Trend direction for metrics
- */
-// Using shared TrendDirection from SharedDataClasses.kt
-
-/**
- * Training issue detection result
- */
-data class TrainingIssueDetection(
-    val issue: TrainingIssue,
-    val severity: IssueSeverity,
-    val value: Double,
-    val threshold: Double,
-    val description: String,
-    val recommendations: List<String>
-)
-
-/**
- * Validation summary statistics
- */
 data class ValidationSummary(
     val totalValidations: Int,
     val validValidations: Int,
     val validationRate: Double,
+    val recentIssues: List<ValidationIssue>,
+    val lastValidation: ValidationResult?
+)
+
+/**
+ * Simple convergence analysis result for test compatibility.
+ */
+data class SimpleConvergenceAnalysis(
+    val status: com.chessrl.rl.ConvergenceStatus,
+    val rewardTrend: Double,
+    val stability: Double
+)
+
+/**
+ * Policy update validation result for integration tests (RL issue-based).
+ */
+data class PolicyValidationResult(
+    val episode: Int,
+    val isValid: Boolean,
+    val issues: List<com.chessrl.rl.TrainingIssue>,
+    val recommendations: List<String>
+)
+
+/**
+ * Aggregate summary over multiple policy validation results.
+ */
+data class PolicyValidationSummary(
     val totalIssues: Int,
-    val issuesByType: Map<com.chessrl.rl.TrainingIssue, Int>,
-    val recentIssues: List<TrainingIssueEvent>,
-    val lastValidation: PolicyValidationResult?
-)
+    val issuesByType: Map<com.chessrl.rl.TrainingIssue, Int>
+) {
+    companion object {
+        fun from(results: List<PolicyValidationResult>): PolicyValidationSummary {
+            val allIssues = results.flatMap { it.issues }
+            val byType = allIssues.groupingBy { it }.eachCount()
+            return PolicyValidationSummary(totalIssues = allIssues.size, issuesByType = byType)
+        }
+    }
+}
 
-/**
- * Validation snapshot for history tracking
- */
-data class ValidationSnapshot(
-    val timestamp: Long,
-    val episodeNumber: Int,
-    val result: PolicyValidationResult
-)
-
-/**
- * Training issue event for history tracking
- */
-data class TrainingIssueEvent(
-    val timestamp: Long,
-    val episodeNumber: Int,
-    val issues: List<ValidationIssue>
-)
+// Convenience alias for older tests
+fun summarizePolicyValidations(results: List<PolicyValidationResult>): PolicyValidationSummary =
+    PolicyValidationSummary.from(results)

@@ -1,6 +1,9 @@
 package com.chessrl.integration
 
 import com.chessrl.chess.PieceColor
+import com.chessrl.integration.backend.DqnLearningBackend
+import com.chessrl.integration.backend.LearningBackend
+import com.chessrl.integration.config.ChessRLConfig
 import kotlin.math.abs
 
 object CLIRunner {
@@ -166,7 +169,7 @@ object CLIRunner {
             runCatching { agent.load(path) }.onFailure { println("Warning: failed to load checkpoint: ${it.message}") }
         } ?: run {
             if (args.contains("--load-best")) {
-                val dir = args.getAfter("--checkpoint-dir") ?: AdvancedSelfPlayConfig().checkpointDirectory
+                val dir = args.getAfter("--checkpoint-dir") ?: "checkpoints"
                 resolveBestModelPath(dir)?.let { best ->
                     val resolved = resolvePath(best)
                     // Print performance score if sidecar meta exists
@@ -199,8 +202,8 @@ object CLIRunner {
             }
         }
         // Align evaluation rewards with profile when available (no per-step shaping)
-        val evalWin = profile?.get("winReward")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().winReward
-        val evalLoss = profile?.get("lossReward")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().lossReward
+        val evalWin = profile?.get("winReward")?.toDoubleOrNull() ?: 1.0
+        val evalLoss = profile?.get("lossReward")?.toDoubleOrNull() ?: -1.0
         val evalDraw = profile?.get("drawReward")?.toDoubleOrNull() ?: 0.0
         val enableAdjudication = args.contains("--adjudicate")
         val resignMaterial = args.getAfter("--resign-material")?.toIntOrNull() ?: 9
@@ -228,7 +231,7 @@ object CLIRunner {
         var wins = 0
         var draws = 0
         var losses = 0
-        val results = mutableListOf<EvaluationGameResult>()
+        val results = mutableListOf<EvaluationGameSummary>()
         // Draw breakdown
         var drawStepLimit = 0
         var drawStalemate = 0
@@ -344,11 +347,11 @@ object CLIRunner {
             }
             totalLen += steps
             results.add(
-                EvaluationGameResult(
-                    gameIndex = idx,
-                    gameLength = steps,
-                    totalReward = rewardSum,
-                    gameOutcome = raw,
+                EvaluationGameSummary(
+                    index = idx,
+                    moveCount = steps,
+                    score = rewardSum,
+                    outcome = raw,
                     finalPosition = env.getCurrentBoard().toFEN()
                 )
             )
@@ -555,7 +558,7 @@ object CLIRunner {
                     noProg = if (capture || inCheck) 0 else noProg + 1
                     lastTotals = (wNow to bNow)
                     val matDiff = wNow - bNow
-                    if (kotlin.math.abs(matDiff) >= resignMaterial) {
+                    if (abs(matDiff) >= resignMaterial) {
                         adjudicatedOutcomeA = if (matDiff > 0) {
                             if (aStartsWhite) 1 else -1
                         } else {
@@ -573,8 +576,8 @@ object CLIRunner {
             val status = env.getGameStatus().name
             val stepLimited = steps >= maxSteps && !env.isTerminal(state)
             val outcomeA = when {
-                forcedOutcomeFromInvalid != null -> forcedOutcomeFromInvalid ?: 0
-                adjudicatedOutcomeA != null -> adjudicatedOutcomeA ?: 0
+                forcedOutcomeFromInvalid != null -> forcedOutcomeFromInvalid!!
+                adjudicatedOutcomeA != null -> adjudicatedOutcomeA!!
                 trippedLocalThreefold -> 0
                 status.contains("WHITE_WINS") -> if (aStartsWhite) 1 else -1
                 status.contains("BLACK_WINS") -> if (!aStartsWhite) 1 else -1
@@ -652,7 +655,7 @@ object CLIRunner {
 
     private fun trainAdvanced(args: List<String>) {
         val cycles = args.getAfter("--cycles")?.toIntOrNull() ?: 3
-        val resumeBest = args.contains("--resume-best")
+        
         // Profiles support: load profiles.yaml and apply overrides if --profile is provided
         val profileName = args.getAfter("--profile")
         val profilesPathArg = args.getAfter("--profiles")
@@ -665,16 +668,11 @@ object CLIRunner {
         )
         val profile = profileName?.let { profiles[it] }
 
-        // Determine algorithm from profile (default DQN)
-        val algo = AgentType.DQN // Policy-gradient path removed; default to DQN
-
-        // Use a more learnable default and merge profile/CLI overrides
-        // Optional hidden layer override from CLI or profile
+        // Parse hidden layers from CLI or profile
         val hiddenFromCli = args.getAfter("--hidden")?.let { raw ->
             raw.split(",", " ", ";").mapNotNull { it.trim().toIntOrNull() }.filter { it > 0 }
         }
         val hiddenFromProfile = profile?.get("hiddenLayers")?.let { raw ->
-            // Accept formats like "512,256" or "[512, 256]"
             raw.trim().removePrefix("[").removeSuffix("]")
                 .split(",", " ", ";")
                 .mapNotNull { it.trim().toIntOrNull() }
@@ -682,104 +680,72 @@ object CLIRunner {
                 .takeIf { it.isNotEmpty() }
         }
 
-        val epsStart = args.getAfter("--eps-start")?.toDoubleOrNull()
-        val epsEnd = args.getAfter("--eps-end")?.toDoubleOrNull()
-        val epsCycles = args.getAfter("--eps-cycles")?.toIntOrNull()
-
-        val tunedConfig = AdvancedSelfPlayConfig(
-            hiddenLayers = hiddenFromCli ?: hiddenFromProfile ?: AdvancedSelfPlayConfig().hiddenLayers,
-            initialGamesPerCycle = profile?.get("initialGamesPerCycle")?.toIntOrNull() ?: AdvancedSelfPlayConfig().initialGamesPerCycle,
-            minGamesPerCycle = profile?.get("minGamesPerCycle")?.toIntOrNull() ?: AdvancedSelfPlayConfig().minGamesPerCycle,
-            maxGamesPerCycle = profile?.get("maxGamesPerCycle")?.toIntOrNull() ?: AdvancedSelfPlayConfig().maxGamesPerCycle,
-            maxStepsPerGame = args.getAfter("--max-steps")?.toIntOrNull()
-                ?: profile?.get("maxStepsPerGame")?.toIntOrNull() ?: 100,
-            enablePositionRewards = profile?.get("enablePositionRewards")?.toBooleanStrictOrNull() ?: true,
+        // Create ChessRLConfig with CLI and profile overrides
+        val config = ChessRLConfig(
+            // Neural Network Configuration
+            hiddenLayers = hiddenFromCli ?: hiddenFromProfile ?: listOf(512, 256, 128),
+            learningRate = profile?.get("learningRate")?.toDoubleOrNull() ?: 0.001,
+            batchSize = profile?.get("batchSize")?.toIntOrNull() ?: 64,
+            
+            // RL Training Configuration
+            explorationRate = profile?.get("explorationRate")?.toDoubleOrNull() ?: 0.1,
+            targetUpdateFrequency = args.getAfter("--target-update")?.toIntOrNull()
+                ?: profile?.get("targetUpdateFrequency")?.toIntOrNull() ?: 100,
+            maxExperienceBuffer = profile?.get("maxExperienceBuffer")?.toIntOrNull() ?: 50000,
+            
+            // Self-Play Configuration
+            gamesPerCycle = profile?.get("gamesPerCycle")?.toIntOrNull() ?: 20,
             maxConcurrentGames = args.getAfter("--concurrency")?.toIntOrNull()
                 ?: profile?.get("maxConcurrentGames")?.toIntOrNull() ?: 4,
-            explorationRate = profile?.get("explorationRate")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().explorationRate,
-            targetUpdateFrequency = args.getAfter("--target-update")?.toIntOrNull()
-                ?: profile?.get("targetUpdateFrequency")?.toIntOrNull() ?: AdvancedSelfPlayConfig().targetUpdateFrequency,
-            enableDoubleDQN = args.contains("--double-dqn") || (profile?.get("enableDoubleDQN")?.toBooleanStrictOrNull() ?: false),
-            explorationWarmupCycles = profile?.get("explorationWarmupCycles")?.toIntOrNull() ?: AdvancedSelfPlayConfig().explorationWarmupCycles,
-            explorationWarmupRate = profile?.get("explorationWarmupRate")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().explorationWarmupRate,
-            epsDecayStart = epsStart,
-            epsDecayEnd = epsEnd,
-            epsDecayCycles = epsCycles,
-            rollbackWarmupCycles = profile?.get("rollbackWarmupCycles")?.toIntOrNull() ?: AdvancedSelfPlayConfig().rollbackWarmupCycles,
-            enableModelRollback = profile?.get("enableModelRollback")?.toBooleanStrictOrNull() ?: AdvancedSelfPlayConfig().enableModelRollback,
-            checkpointDirectory = args.getAfter("--checkpoint-dir")
-                ?: profile?.get("checkpointDirectory") ?: AdvancedSelfPlayConfig().checkpointDirectory,
-            checkpointInterval = args.getAfter("--checkpoint-interval")?.toIntOrNull()
-                ?: profile?.get("checkpointInterval")?.toIntOrNull() ?: AdvancedSelfPlayConfig().checkpointInterval,
-            stepLimitPenalty = profile?.get("stepLimitPenalty")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().stepLimitPenalty,
+            maxStepsPerGame = args.getAfter("--max-steps")?.toIntOrNull()
+                ?: profile?.get("maxStepsPerGame")?.toIntOrNull() ?: 80,
+            maxCycles = cycles,
+            
+            // Reward Structure
+            winReward = profile?.get("winReward")?.toDoubleOrNull() ?: 1.0,
+            lossReward = profile?.get("lossReward")?.toDoubleOrNull() ?: -1.0,
             drawReward = args.getAfter("--draw-reward")?.toDoubleOrNull()
-                ?: profile?.get("drawReward")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().drawReward,
-            stepPenalty = args.getAfter("--step-penalty")?.toDoubleOrNull()
-                ?: profile?.get("stepPenalty")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().stepPenalty,
-            gameLengthNormalization = profile?.get("gameLengthNormalization")?.toBooleanStrictOrNull()
-                ?: AdvancedSelfPlayConfig().gameLengthNormalization,
-            batchSize = profile?.get("batchSize")?.toIntOrNull() ?: AdvancedSelfPlayConfig().batchSize,
-            treatStepLimitAsDrawForReporting = profile?.get("treatStepLimitAsDraw")?.toBooleanStrictOrNull() ?: AdvancedSelfPlayConfig().treatStepLimitAsDrawForReporting,
-            autoCleanupOnFinish = if (args.contains("--no-cleanup")) false else (profile?.get("autoCleanupOnFinish")?.toBooleanStrictOrNull() ?: AdvancedSelfPlayConfig().autoCleanupOnFinish),
-            opponentWarmupCycles = profile?.get("opponentWarmupCycles")?.toIntOrNull() ?: AdvancedSelfPlayConfig().opponentWarmupCycles,
-            opponentUpdateStrategy = profile?.get("opponentUpdateStrategy")?.let { raw ->
-                runCatching { OpponentUpdateStrategy.valueOf(raw.trim().uppercase()) }.getOrElse { AdvancedSelfPlayConfig().opponentUpdateStrategy }
-            } ?: AdvancedSelfPlayConfig().opponentUpdateStrategy,
-            opponentUpdateFrequency = profile?.get("opponentUpdateFrequency")?.toIntOrNull() ?: AdvancedSelfPlayConfig().opponentUpdateFrequency,
-            opponentHistoryLag = profile?.get("opponentHistoryLag")?.toIntOrNull() ?: AdvancedSelfPlayConfig().opponentHistoryLag,
-            enableLocalThreefoldDraw = args.contains("--local-threefold") || (profile?.get("enableLocalThreefoldDraw")?.toBooleanStrictOrNull() ?: AdvancedSelfPlayConfig().enableLocalThreefoldDraw),
-            localThreefoldThreshold = args.getAfter("--threefold-threshold")?.toIntOrNull()
-                ?: profile?.get("localThreefoldThreshold")?.toIntOrNull() ?: AdvancedSelfPlayConfig().localThreefoldThreshold,
-            repetitionPenalty = args.getAfter("--repetition-penalty")?.toDoubleOrNull()
-                ?: profile?.get("repetitionPenalty")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().repetitionPenalty,
-            repetitionPenaltyAfter = args.getAfter("--repetition-penalty-after")?.toIntOrNull()
-                ?: profile?.get("repetitionPenaltyAfter")?.toIntOrNull() ?: AdvancedSelfPlayConfig().repetitionPenaltyAfter,
-            // Elo removed; best selection uses head-to-head vs previous best
-            retention = CheckpointRetention(
-                keepBest = if (args.contains("--no-keep-best")) false else (profile?.get("keepBest")?.toBooleanStrictOrNull() ?: true),
-                keepLastN = args.getAfter("--keep-last")?.toIntOrNull() ?: (profile?.get("keepLastN")?.toIntOrNull() ?: 2),
-                keepEveryN = args.getAfter("--keep-every")?.toIntOrNull() ?: profile?.get("keepEveryN")?.toIntOrNull()
-            )
+                ?: profile?.get("drawReward")?.toDoubleOrNull() ?: -0.2,
+            stepLimitPenalty = profile?.get("stepLimitPenalty")?.toDoubleOrNull() ?: -1.0,
+            
+            // System Configuration
+            seed = args.getAfter("--seed")?.toLongOrNull(),
+            checkpointInterval = args.getAfter("--checkpoint-interval")?.toIntOrNull()
+                ?: profile?.get("checkpointInterval")?.toIntOrNull() ?: 5,
+            checkpointDirectory = args.getAfter("--checkpoint-dir")
+                ?: profile?.get("checkpointDirectory") ?: "checkpoints",
+            evaluationGames = profile?.get("evaluationGames")?.toIntOrNull() ?: 100
         )
+
         // Helpful context for locating outputs
         runCatching {
             val cwd = java.nio.file.Paths.get("").toAbsolutePath().normalize().toString()
             println("Working directory: $cwd")
-            println("Checkpoints directory (relative): ${tunedConfig.checkpointDirectory}")
+            println("Checkpoints directory (relative): ${config.checkpointDirectory}")
         }
-        val pipeline = AdvancedSelfPlayTrainingPipeline(tunedConfig, agentType = algo)
-        check(pipeline.initialize())
-        // Load model from CLI or profile (profile used only if CLI flag not provided and not resuming best)
-        val cliLoad = args.getAfter("--load")
-        val profileLoad = profile?.get("loadModelPath")
-        fun resolveExistingPath(p: String?): String? {
-            if (p.isNullOrBlank()) return null
-            val candidates = listOf(
-                java.nio.file.Path.of(p),
-                java.nio.file.Path.of("..", p),
-                java.nio.file.Path.of("../..", p)
-            )
-            return candidates.firstOrNull { java.nio.file.Files.exists(it) }?.toString()
+
+        // Select learning backend
+        val backendId = args.getAfter("--backend")?.lowercase() ?: "dqn"
+        val backend = createBackend(backendId)
+        if (backend.id != backendId) {
+            println("Unknown backend '$backendId', falling back to '${backend.id}'.")
         }
-        when {
-            cliLoad != null -> pipeline.loadCheckpointPath(resolveExistingPath(cliLoad) ?: cliLoad)
-            resumeBest -> {
-                // Try canonical best in checkpoint dir; fallback to in-memory (no-op if none)
-                val dir = tunedConfig.checkpointDirectory
-                val best = resolveBestModelPath(dir)
-                if (best != null) {
-                    pipeline.loadCheckpointPath(best)
-                } else {
-                    pipeline.loadBestCheckpoint()
-                }
-            }
-            !profileLoad.isNullOrBlank() -> {
-                val resolved = resolveExistingPath(profileLoad) ?: profileLoad
-                pipeline.loadCheckpointPath(resolved)
-            }
+
+        // Create and initialize training pipeline
+        val pipeline = TrainingPipeline(config, backend)
+        check(pipeline.initialize()) { "Failed to initialize training pipeline" }
+
+        // TODO: Add checkpoint loading support for the new pipeline
+        // This would require implementing load/save methods in the new TrainingPipeline
+        
+        // Run training
+        runCatching {
+            val results = pipeline.runTraining()
+            println("Training completed: cycles=${results.totalCycles}, bestPerf=${results.bestPerformance}")
+        }.onFailure { e ->
+            println("Training failed: ${e.message}")
+            e.printStackTrace()
         }
-        val results = pipeline.runAdvancedTraining(cycles)
-        println("Training completed: cycles=${results.totalCycles}, bestModel=${results.bestModelVersion}, bestPerf=${results.bestPerformance}")
     }
 
     private fun playHuman(args: List<String>) {
@@ -796,7 +762,7 @@ object CLIRunner {
             runCatching { agent.load(path) }.onFailure { println("Warning: failed to load checkpoint: ${it.message}") }
         } ?: run {
             if (args.contains("--load-best")) {
-                val dir = args.getAfter("--checkpoint-dir") ?: AdvancedSelfPlayConfig().checkpointDirectory
+                val dir = args.getAfter("--checkpoint-dir") ?: "checkpoints"
                 resolveBestModelPath(dir)?.let { best ->
                     val resolved = resolvePath(best)
                     runCatching { agent.load(resolved) }.onFailure { println("Warning: failed to load best model: ${it.message}") }
@@ -871,6 +837,13 @@ object CLIRunner {
         println("Game over: ${status}")
     }
 
+    private fun createBackend(id: String): LearningBackend {
+        return when (id.lowercase()) {
+            "dqn", "default" -> DqnLearningBackend()
+            else -> DqnLearningBackend()
+        }
+    }
+
     private fun List<String>.getAfter(flag: String): String? {
         val i = indexOf(flag)
         return if (i >= 0 && i + 1 < size) this[i + 1] else null
@@ -910,6 +883,7 @@ object CLIRunner {
                   --no-keep-best             Do not force keeping the best checkpoint
                   --keep-last K              Keep last K checkpoints (default 2)
                   --keep-every N             Also keep every N-th checkpoint (sparse history)
+                  --backend NAME            Select learning backend (dqn)
               --play-human [--as white|black] [--max-steps M] [--seed S] [--load PATH|--load-best [--checkpoint-dir DIR]]
                 Play against the agent in the console. Enter moves like e2e4; 'q' to quit.
             """.trimIndent()

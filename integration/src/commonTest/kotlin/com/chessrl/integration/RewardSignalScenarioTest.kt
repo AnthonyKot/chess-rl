@@ -10,61 +10,7 @@ import kotlin.test.*
  */
 class RewardSignalScenarioTest {
     
-    @Test
-    fun testStepLimitPenaltyIsAppliedCorrectly() {
-        // Create a simple mock agent that just picks the first valid action
-        val mockAgent = object : ChessAgent {
-            override fun selectAction(state: DoubleArray, validActions: List<Int>): Int {
-                return validActions.firstOrNull() ?: 0
-            }
-            
-            override fun learn(experience: Experience<DoubleArray, Int>) {}
-            override fun getQValues(state: DoubleArray, actions: List<Int>): Map<Int, Double> = actions.associateWith { 0.0 }
-            override fun getActionProbabilities(state: DoubleArray, actions: List<Int>): Map<Int, Double> = actions.associateWith { 1.0 / actions.size }
-            override fun getTrainingMetrics(): ChessAgentMetrics = ChessAgentMetrics(0.0, 0.1, 0)
-            override fun forceUpdate() {}
-            override fun trainBatch(experiences: List<Experience<DoubleArray, Int>>): PolicyUpdateResult = PolicyUpdateResult(0.1, 0.5, 1.0)
-            override fun save(path: String) {}
-            override fun load(path: String) {}
-            override fun reset() {}
-            override fun setExplorationRate(rate: Double) {}
-            override fun getConfig(): ChessAgentConfig = ChessAgentConfig()
-            override fun setNextActionProvider(provider: (DoubleArray) -> List<Int>) {}
-        }
-        
-        val stepLimitPenalty = -0.3
-        val env = ChessEnvironment(
-            rewardConfig = ChessRewardConfig(
-                stepLimitPenalty = stepLimitPenalty,
-                stepPenalty = -0.01
-            )
-        )
-        
-        val pipeline = ChessTrainingPipeline(
-            agent = mockAgent,
-            environment = env,
-            config = TrainingPipelineConfig(
-                maxStepsPerEpisode = 3, // Very short to force step limit
-                batchSize = 32,
-                maxBufferSize = 1000
-            )
-        )
-        
-        // Run an episode that should hit the step limit
-        val result = pipeline.runEpisode()
-        
-        // Verify the episode hit the step limit
-        assertEquals(3, result.steps, "Episode should hit the step limit")
-        
-        // The episode reward should include the step limit penalty
-        // Since we have 3 steps with -0.01 penalty each, plus the step limit penalty
-        val expectedBaseReward = 3 * -0.01 // Step penalties
-        val expectedTotalReward = expectedBaseReward + stepLimitPenalty
-        
-        // Allow some tolerance for floating point arithmetic
-        assertEquals(expectedTotalReward, result.reward, 0.001, 
-                    "Episode reward should include step limit penalty")
-    }
+    // NOTE: Legacy pipeline test removed. The consolidated TrainingPipeline is covered by other tests.
     
     @Test
     fun testLegitimateGameEndingsDoNotReceiveStepLimitPenalty() {

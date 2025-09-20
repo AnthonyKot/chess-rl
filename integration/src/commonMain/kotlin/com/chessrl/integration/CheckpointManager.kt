@@ -497,7 +497,7 @@ data class CheckpointMetadata(
     val description: String,
     val isBest: Boolean = false,
     val seedConfiguration: SeedConfiguration? = null,
-    val trainingConfiguration: TrainingConfiguration? = null,
+    val configSnapshot: com.chessrl.integration.config.ChessRLConfig? = null,
     val additionalInfo: Map<String, Any> = emptyMap()
 )
 

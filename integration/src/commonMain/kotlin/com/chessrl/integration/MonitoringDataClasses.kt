@@ -236,6 +236,21 @@ enum class RecommendationType {
 
 // Using shared RecommendationPriority from SharedDataClasses.kt
 
+/**
+ * Summary of convergence analysis used in reports/dashboards.
+ */
+data class ConvergenceAnalysis(
+    val status: com.chessrl.rl.ConvergenceStatus,
+    val confidence: Double,
+    val trendDirection: TrendDirection,
+    val stabilityScore: Double,
+    val rewardTrend: Double,
+    val lossTrend: Double,
+    val rewardStability: Double,
+    val lossStability: Double,
+    val recommendations: List<String>
+)
+
 // Dashboard and monitoring interfaces
 
 /**

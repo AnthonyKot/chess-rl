@@ -56,7 +56,7 @@ maxConcurrentGames: 4           # Reduce for memory constraints
 
 Purpose: Run a reliable self-learning chess experiment by focusing on the minimal, correct core. Temporarily detach over‑engineered or unfinished layers. Each detached area below lists where to return and what to align before re‑enabling.
 
-## Core — Keep and Stabilize First
+## Core — Keep and Stabilize First (Updated)
 
 - chess-engine (rules, move gen, FEN/PGN)
   - `chess-engine/src/commonMain/kotlin/com/chessrl/chess/*`
@@ -64,12 +64,12 @@ Purpose: Run a reliable self-learning chess experiment by focusing on the minima
   - `nn-package/src/commonMain/kotlin/com/chessrl/nn/*`
 - rl-framework (interfaces + minimal algorithms)
   - `rl-framework/src/commonMain/kotlin/com/chessrl/rl/*`
-- integration — minimal path for self-play + training
+- integration — minimal path for self-play + training (consolidated)
   - Environment: `integration/ChessEnvironment.kt`
-  - Agent + Factory (wrapping real NN): `integration/ChessAgent.kt`, `integration/ChessAgentFactory.kt`, `integration/RealChessAgentFactory.kt`
-  - Self-play system/controller (unified result model): `integration/SelfPlaySystem.kt`, `integration/SelfPlayController.kt`, `integration/RealSelfPlayController.kt`
-  - Training pipeline (batching, metrics): `integration/ChessTrainingPipeline.kt`
-  - Minimal metrics collector (no dashboards): `integration/AdvancedMetricsCollector.kt`
+  - Agent + Factory: `integration/ChessAgent.kt`, `integration/ChessAgentFactory.kt`, `integration/RealChessAgentFactory.kt`
+  - Training pipeline: `integration/TrainingPipeline.kt` (replaces controllers and ChessTrainingPipeline)
+  - Validation: `integration/TrainingValidator.kt`
+  - Metrics: `integration/MetricsCollector.kt`
 
 Immediate next core fixes (must-have for “real learning”)
 - DQN batched updates and target-network sync: implemented via `agent.trainBatch` and configurable `targetUpdateFrequency`.
@@ -132,7 +132,7 @@ Additional files removed/quarantined (2025‑09‑14 sync)
 - integration/src/commonMain/kotlin/com/chessrl/integration/ChessAgentDemo.kt
 - integration/src/commonMain/kotlin/com/chessrl/integration/TrainingPipelineDemo.kt
 - integration/src/commonMain/kotlin/com/chessrl/integration/RealTrainingVerification.kt
-  Reason: high API drift (named params/enums/types). Re‑enable after core shapes are stable; port to shared data classes and factories.
+  Reason: high API drift (named params/enums/types). Re‑enable after core shapes are stable; port to `ChessRLConfig` + `TrainingPipeline`.
 
 - integration/src/commonMain/kotlin/com/chessrl/integration/TrainingControlInterface.kt
   Reason: heavy API drift vs consolidated monitoring/reporting shapes; not needed for Monitoring tests. Re‑enable by aligning to SharedDataClasses/MonitoringDataClasses and current agent/controller APIs.

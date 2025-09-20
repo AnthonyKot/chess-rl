@@ -77,52 +77,6 @@ class DeterministicTrainingTest {
     }
     
     @Test
-    fun testTrainingConfigurationValidation() {
-        // Valid configuration
-        val validConfig = TrainingConfiguration(
-            seed = 12345L,
-            deterministicMode = true,
-            episodes = 100,
-            batchSize = 32,
-            learningRate = 0.001,
-            explorationRate = 0.1
-        )
-        
-        val validation = validConfig.validate()
-        assertTrue(validation.isValid, "Valid configuration should pass validation")
-        assertTrue(validation.errors.isEmpty(), "No errors expected for valid config")
-        
-        // Invalid configuration
-        val invalidConfig = TrainingConfiguration(
-            episodes = -1, // Invalid
-            batchSize = 0, // Invalid
-            learningRate = 2.0, // Invalid
-            explorationRate = -0.5 // Invalid
-        )
-        
-        val invalidValidation = invalidConfig.validate()
-        assertFalse(invalidValidation.isValid, "Invalid configuration should fail validation")
-        assertTrue(invalidValidation.errors.isNotEmpty(), "Errors expected for invalid config")
-    }
-    
-    @Test
-    fun testDeterministicTestMode() {
-        val testSeed = 99999L
-        
-        // Create test configuration
-        val testConfig = ConfigurationParser.createTestConfiguration(testSeed)
-        
-        assertEquals(testSeed, testConfig.seed)
-        assertTrue(testConfig.deterministicMode)
-        assertTrue(testConfig.enableDebugMode)
-        assertEquals("test-config", testConfig.configurationName)
-        
-        // Validate test configuration
-        val validation = testConfig.validate()
-        assertTrue(validation.isValid, "Test configuration should be valid")
-    }
-    
-    @Test
     fun testSeededOperations() {
         val seedManager = SeedManager.initializeWithSeed(77777L)
         val random = seedManager.getGeneralRandom()
@@ -236,10 +190,9 @@ class DeterministicTrainingTest {
         val seedManager = SeedManager.initializeWithSeed(66666L)
         val seedConfig = seedManager.getSeedConfiguration()
         
-        val trainingConfig = TrainingConfiguration(
-            seed = 66666L,
-            deterministicMode = true,
-            episodes = 50
+        val configSnapshot = com.chessrl.integration.config.ChessRLConfig(
+            maxCycles = 50,
+            seed = 66666L
         )
         
         val metadata = CheckpointMetadata(
@@ -247,14 +200,14 @@ class DeterministicTrainingTest {
             performance = 0.85,
             description = "Test checkpoint with seed config",
             seedConfiguration = seedConfig,
-            trainingConfiguration = trainingConfig
+            configSnapshot = configSnapshot
         )
         
         assertNotNull(metadata.seedConfiguration)
         assertEquals(66666L, metadata.seedConfiguration?.masterSeed)
         assertTrue(metadata.seedConfiguration?.isDeterministicMode == true)
         
-        assertNotNull(metadata.trainingConfiguration)
-        assertEquals(50, metadata.trainingConfiguration?.episodes)
+        assertNotNull(metadata.configSnapshot)
+        assertEquals(50, metadata.configSnapshot?.maxCycles)
     }
 }

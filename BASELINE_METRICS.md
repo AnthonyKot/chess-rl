@@ -1,5 +1,7 @@
 # Pre-Refactoring Baseline Metrics
 
+Note: These metrics reflect the state before integration consolidation. They are kept for historical comparison and are no longer representative of the current, simplified codebase. Re‑measure after the `TrainingPipeline`/`TrainingValidator` rollout.
+
 ## Code Complexity Baseline
 
 ### Lines of Code by Module

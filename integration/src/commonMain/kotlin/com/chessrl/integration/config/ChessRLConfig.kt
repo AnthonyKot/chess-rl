@@ -198,7 +198,7 @@ data class ChessRLConfig(
             appendLine("  Network: ${hiddenLayers.joinToString("x")} layers, lr=$learningRate, batch=$batchSize")
             appendLine("  RL: exploration=$explorationRate, target_update=$targetUpdateFrequency, buffer=$maxExperienceBuffer")
             appendLine("  Self-play: $gamesPerCycle games/cycle, $maxConcurrentGames concurrent, $maxStepsPerGame max_steps")
-            appendLine("  Rewards: win=$winReward, loss=$lossReward, draw=$drawReward, step_penalty=$stepLimitPenalty")
+            appendLine("  Rewards: win=$winReward, loss=$lossReward, draw=$drawReward, step_limit_penalty=$stepLimitPenalty")
             appendLine("  System: ${seed?.let { "seed=$it" } ?: "random"}, checkpoints every $checkpointInterval cycles")
         }
     }

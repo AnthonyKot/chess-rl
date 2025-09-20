@@ -8,20 +8,20 @@ A complete chess RL training system with advanced self-play, neural networks, an
 
 ### Train a Chess Agent (Recommended)
 ```bash
-# Start training with optimized settings and parallel self-play
-./gradlew :integration:runCli -Dargs="--train-advanced --cycles 10 --profile dqn_unlock_elo_prioritized --concurrency 8"
+# Start training with the streamlined pipeline and DQN backend
+./gradlew :integration:runCli -Dargs="--train-advanced --profile fast-debug --cycles 5 --backend dqn"
 ```
 
 ### Evaluate Against Baseline
 ```bash
-# Test your trained agent against heuristic opponent
-./gradlew :integration:runCli -Dargs="--eval-baseline --games 100 --load-best"
+# Test your trained agent against the heuristic opponent
+./gradlew :integration:runCli -Dargs="--eval-baseline --games 50 --load-best"
 ```
 
 ### Head-to-Head Comparison
 ```bash
-# Compare two trained models
-./gradlew :integration:runCli -Dargs="--eval-h2h --games 100 --loadA model_a.json --loadB model_b.json"
+# Compare two checkpoints
+./gradlew :integration:runCli -Dargs="--eval-h2h --games 50 --loadA path/to/model_a.json --loadB path/to/model_b.json"
 ```
 
 ## 🏗️ Architecture
@@ -53,20 +53,20 @@ chess-rl-bot/
 
 ## 📊 Key Features
 
-### **Advanced Self-Play Training**
-- **Concurrent Games**: 1-8 parallel self-play games for faster training
-- **Smart Evaluation**: Head-to-head model comparison with realistic outcomes
-- **Adaptive Scheduling**: Dynamic adjustment of games per cycle based on performance
+### **Streamlined Training Pipeline**
+- **Pluggable backends**: DQN backend included, DL4J-ready through the new abstraction layer
+- **Concurrent self-play**: Structured-concurrency games for faster data generation
+- **Lightweight validation**: Core learning/quality checks ready for custom extensions
 
-### **Production-Ready Pipeline**
-- **Checkpointing**: Automatic model versioning with rollback capabilities
-- **Monitoring**: Real-time metrics and performance tracking
-- **Validation**: Comprehensive training issue detection and recovery
+### **Production-Ready Features**
+- **Checkpointing**: Automatic snapshots of best/regular models
+- **Metrics**: Essential training telemetry with buffer/episode tracking
+- **Deterministic mode**: Central SeedManager enables reproducible runs
 
-### **Optimized Performance**
-- **JVM-First**: 5-8x faster training than native compilation
-- **Memory Efficient**: Handles 50K+ experiences with circular buffers
-- **Batch Processing**: Optimized for 32-128 batch sizes
+### **Performance Baseline**
+- **JVM execution**: High-throughput training on commodity hardware
+- **Experience replay**: Circular buffer handling 50K+ entries
+- **Batch updates**: Tuned defaults (32-128) with backend control
 
 ## 🎮 Training Profiles
 
@@ -331,183 +331,35 @@ class ChessEnvironment {
 
 ---
 
-### **Task 3: Self-Play Training Pipeline** ✅
+### **Task 3: Self-Play Training Pipeline (Consolidated)** ✅
 
-**Problem**: No integrated self-play training system for continuous agent improvement.
+The training system is consolidated into `TrainingPipeline` using the unified `ChessRLConfig`.
 
-**Solution**: Complete self-play training pipeline with concurrent game execution and experience management.
+Key updates:
+- Single orchestrator: `integration/TrainingPipeline.kt`
+- Structured concurrency for self-play
+- Built-in checkpointing + simple evaluation
 
+Minimal usage example:
 ```kotlin
-// Advanced self-play training pipeline
-class AdvancedSelfPlayTrainingPipeline {
-    fun runAdvancedTraining(totalCycles: Int): AdvancedTrainingResults {
-        for (cycle in 1..totalCycles) {
-            // Phase 1: Concurrent self-play generation
-            val selfPlayResults = selfPlaySystem.runSelfPlayGames(
-                whiteAgent = mainAgent,
-                blackAgent = opponentAgent,
-                numGames = config.gamesPerCycle
-            )
-            
-            // Phase 2: Experience processing with quality analysis
-            val experienceResults = experienceManager.processExperiences(
-                newExperiences = selfPlayResults.experiences,
-                gameResults = selfPlayResults.gameResults
-            )
-            
-            // Phase 3: Batch training with validation
-            val trainingResults = performValidatedBatchTraining(
-                experienceManager, trainingValidator, cycle
-            )
-            
-            // Phase 4: Performance evaluation and model selection
-            val performance = evaluatePerformance(mainAgent, cycle)
-            if (performance.outcomeScore > bestPerformance) {
-                saveAsBestModel(mainAgent, cycle)
-            }
-        }
-    }
-}
-```
-
-**Key Features**:
-- **Concurrent Execution**: 4-8 parallel games for 4x speedup
-- **Experience Management**: Quality-based filtering and circular buffers
-- **Automatic Checkpointing**: Best model tracking with rollback capabilities
-- **Comprehensive Monitoring**: Real-time metrics and convergence detection
-
-**Performance**:
-```
-📊 Training Results:
-   Total games: 200
-   Total experiences: 8,000
-   Training duration: 45,000ms
-   Throughput: 16 games/minute
-   Best performance: 0.742
+val cfg = com.chessrl.integration.config.ChessRLConfig().forFastDebug()
+val pipeline = com.chessrl.integration.TrainingPipeline(cfg)
+check(pipeline.initialize())
+// In a coroutine scope
+// runBlocking { val results = pipeline.runTraining() }
 ```
 
 ---
 
-### **Task 4: Training Pipeline Validation** ✅
+### **Task 4: Training Validation (Consolidated)** ✅
 
-**Problem**: No systematic validation of training quality and learning progress.
-
-**Solution**: Comprehensive validation system with learning detection and issue diagnosis.
-
-```kotlin
-// Robust training validation with learning detection
-class RobustTrainingValidator {
-    fun validateTraining(
-        cycle: Int,
-        trainingMetrics: RLMetrics,
-        gameResults: List<SelfPlayGameResult>
-    ): RobustValidationResult {
-        
-        // Detect learning vs stagnation
-        val learningStatus = detectLearningStatus()
-        
-        // Validate policy updates
-        val policyValidation = trainingValidator.validatePolicyUpdate(
-            beforeMetrics = preMetrics,
-            afterMetrics = postMetrics,
-            updateResult = updateResult
-        )
-        
-        // Evaluate against baselines
-        val baselineEvaluation = baselineEvaluator.evaluateAgainstBaselines(
-            agent = mainAgent,
-            environment = environment
-        )
-        
-        // Generate recommendations
-        val recommendations = generateRecommendations(
-            learningStatus, policyValidation, baselineEvaluation
-        )
-        
-        return RobustValidationResult(
-            isValid = policyValidation.isValid,
-            shouldStop = earlyStoppingDetector.shouldStop(),
-            learningStatus = learningStatus,
-            recommendations = recommendations
-        )
-    }
-}
-```
-
-**Validation Capabilities**:
-- **Learning Detection**: Automatic identification of learning vs stagnation
-- **Baseline Evaluation**: Performance against heuristic opponents
-- **Issue Diagnosis**: Gradient explosion, policy collapse, numerical instability
-- **Early Stopping**: Automatic training termination when appropriate
-
-**Example Output**:
-```
-🔍 ROBUST VALIDATION SUMMARY - Cycle 5
-📊 Overall Status: ✅ Valid, ✅ Continue Training
-📈 Learning Status: LEARNING (confidence: 0.85)
-🎯 Baseline Performance: 0.73 vs random, 0.45 vs heuristic
-💡 Recommendations:
-   - Learning is progressing well - continue current approach
-   - Consider reducing exploration rate (current: 0.15)
-```
+Validation is provided by `integration/TrainingValidator.kt`, combining core stability checks and chess‑specific sanity checks (entropy, gradient norms, draw rate, step‑limit terminations). Use it alongside `TrainingPipeline`.
 
 ---
 
-### **Task 5: Robust Training Validation** ✅
+### **Task 5: Robust Training Validation (Archived)**
 
-**Problem**: Basic validation was insufficient for production training reliability.
-
-**Solution**: Production-grade validation system with comprehensive monitoring and automated issue detection.
-
-```kotlin
-// Enhanced validation with chess-specific analysis
-class RobustTrainingValidator {
-    private val chessValidator = ChessTrainingValidator()
-    private val progressTracker = ChessProgressTracker()
-    private val earlyStoppingDetector = EarlyStoppingDetector()
-    
-    fun performComprehensiveValidation(): RobustValidationResult {
-        // Chess-specific learning analysis
-        val chessProgression = chessValidator.analyzeLearningProgression()
-        
-        // Progress tracking with skill metrics
-        val progressUpdate = progressTracker.updateProgress(
-            gameResults = gameResults,
-            trainingMetrics = metrics
-        )
-        
-        // Early stopping analysis
-        val stoppingRecommendation = earlyStoppingDetector.analyzeStoppingCriteria(
-            learningStatus = learningStatus,
-            performanceHistory = performanceHistory
-        )
-        
-        return RobustValidationResult(
-            chessProgression = chessProgression,
-            progressUpdate = progressUpdate,
-            stoppingRecommendation = stoppingRecommendation,
-            overallAssessment = "Training progressing well with measurable chess improvement"
-        )
-    }
-}
-```
-
-**Advanced Features**:
-- **Chess Learning Analysis**: Move diversity, tactical improvement, game quality trends
-- **Skill Progression Tracking**: Opening, middlegame, endgame skill development
-- **Automated Issue Detection**: 15+ types of training issues with automated diagnosis
-- **Production Monitoring**: Real-time dashboards and alerting
-
-**Chess-Specific Metrics**:
-```kotlin
-data class ChessProgressUpdate(
-    val skillProgression: SkillProgression,
-    val chessImprovementScore: Double,
-    val tacticalImprovement: TacticalAnalysis,
-    val gameQualityTrend: Double,
-    val moveDiversityTrend: Double
-)
-```
+The prior multi‑class validation stack has been folded into the single `TrainingValidator`. Advanced dashboards/demos are archived.
 
 ---
 
@@ -516,6 +368,8 @@ data class ChessProgressUpdate(
 **Problem**: Training system limited to small-scale experiments, not production workloads.
 
 **Solution**: Comprehensive scaling infrastructure with production-ready performance and monitoring.
+
+Note: Where prior docs reference multiple controllers/monitors, use the consolidated `TrainingPipeline` + `MetricsCollector` instead.
 
 ```kotlin
 // Scaled training system with production capabilities

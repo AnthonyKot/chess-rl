@@ -1,5 +1,7 @@
 # Self-Play Training Pipeline Validation Summary
 
+Note: This document summarizes validation performed prior to consolidation. The current code uses the consolidated `TrainingPipeline`/`TrainingValidator` pair; findings here remain conceptually valid but class names may differ.
+
 ## Task 4: Validate Self-Play Training Pipeline - COMPLETED ✅
 
 This document summarizes the comprehensive validation of the self-play training pipeline, confirming that the critical game state detection bug has been fixed and the training system is working correctly.

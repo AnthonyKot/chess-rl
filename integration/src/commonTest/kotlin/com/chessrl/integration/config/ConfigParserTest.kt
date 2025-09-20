@@ -113,6 +113,30 @@ class ConfigParserTest {
     }
     
     @Test
+    fun testParseYamlArrayFormat() {
+        val yaml = """
+            hiddenLayers: [1024, 512, 256]
+            learningRate: 0.001
+        """.trimIndent()
+        
+        val config = ConfigParser.parseYaml(yaml)
+        
+        assertEquals(listOf(1024, 512, 256), config.hiddenLayers)
+        assertEquals(0.001, config.learningRate)
+    }
+    
+    @Test
+    fun testParseYamlSpaceSeparated() {
+        val yaml = """
+            hiddenLayers: 768 512 256 128
+        """.trimIndent()
+        
+        val config = ConfigParser.parseYaml(yaml)
+        
+        assertEquals(listOf(768, 512, 256, 128), config.hiddenLayers)
+    }
+    
+    @Test
     fun testParseYamlIgnoresComments() {
         val yaml = """
             # This is a comment

@@ -1,5 +1,7 @@
 # Deep Q-Network (DQN) for Chess — Theory and Implementation Map
 
+Note: References to `ChessTrainingPipeline.kt`, `AdvancedSelfPlayTrainingPipeline.kt`, and `SelfPlaySystem.kt` reflect the pre‑consolidation naming. The consolidated orchestrator is `integration/TrainingPipeline.kt`.
+
 This note explains how canonical DQN works in theory, how we map it to the chess setting in this repo, and where the current implementation deviates from the ideal. It’s written to help you make informed decisions and to revisit details over time.
 
 ## 1) Conceptual Overview
@@ -26,9 +28,7 @@ Key components in “vanilla” DQN:
 Files to know (main pathnames abbreviated):
 - rl-framework/RLAlgorithms.kt: DQNAlgorithm (Q-learning, target updates, replay), exploration strategies, metrics types
 - integration/RealChessAgentFactory.kt: Builds real DQN agent (FeedforwardNetwork + Adam + Huber + replay), wires target frequency
-- integration/ChessTrainingPipeline.kt: Wires next-state masking provider into the agent (agent.setNextActionProvider)
-- integration/AdvancedSelfPlayTrainingPipeline.kt: Orchestrates self-play → experience processing → validated batch training → evaluation, checkpoints, rollback
-- integration/SelfPlaySystem.kt: (Now) concurrent self-play with per-game threads; produces EnhancedExperience
+- integration/TrainingPipeline.kt: Orchestrates self-play → experience processing → batch training → evaluation and checkpointing; also wires next‑state masking
 - integration/ChessEnvironment.kt: Encodes state, validates and executes moves, computes rewards, exposes valid actions
 - nn-package/NeuralNetwork.kt: FeedforwardNetwork (layers, training loop, Adam, Huber), model save/load (JVM)
 
