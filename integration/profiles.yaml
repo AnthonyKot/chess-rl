@@ -2,8 +2,8 @@
     # Unlock phase with prioritized replay + optimized for large network
     hiddenLayers: 768,512,256  # Balanced capacity vs speed
     enableDoubleDQN: true
-    maxStepsPerGame: 100
-    maxConcurrentGames: 6  # Reduced for larger network memory usage
+    maxStepsPerGame: 80
+    maxConcurrentGames: 8
     
     # Learning parameters optimized for larger network
     learningRate: 0.0005  # Lower for stability
@@ -21,8 +21,8 @@
     # Reward structure
     enablePositionRewards: false
     drawReward: -0.2
-    stepLimitPenalty: 0
-    stepPenalty: -0.002
+    stepLimitPenalty: -1.0
+    stepPenalty: -0.003
     gameLengthNormalization: false
     
     # Training parameters optimized for large network
@@ -46,6 +46,71 @@
     enableLocalThreefoldDraw: true
     localThreefoldThreshold: 3
     repetitionPenalty: -0.05
+    repetitionPenaltyAfter: 2
+
+  warmup:
+    # Warm-up profile: strong anti-draw shaping, short horizon, opponent warmup
+    hiddenLayers: 512,256,128
+    enableDoubleDQN: true
+    maxStepsPerGame: 80
+    maxConcurrentGames: 8
+    explorationRate: 0.20
+    explorationWarmupCycles: 8
+    explorationWarmupRate: 0.35
+    opponentWarmupCycles: 8
+    opponentUpdateStrategy: HISTORICAL
+    opponentUpdateFrequency: 1
+    opponentHistoryLag: 1
+    enablePositionRewards: false
+    # Reward shaping to unlock decisive outcomes
+    drawReward: -0.2
+    stepLimitPenalty: -1.0
+    stepPenalty: -0.003
+    gameLengthNormalization: false
+    batchSize: 64
+    targetUpdateFrequency: 100
+    checkpointDirectory: checkpoints/warmup
+    checkpointInterval: 2
+    autoCleanupOnFinish: true
+    keepBest: true
+    keepLastN: 2
+    treatStepLimitAsDraw: true
+    replayType: PRIORITIZED
+    enableLocalThreefoldDraw: true
+    localThreefoldThreshold: 3
+    repetitionPenalty: -0.05
+    repetitionPenaltyAfter: 2
+
+  long_run:
+    # Long-run profile: softer shaping, longer horizon, DDQN + slow target sync
+    hiddenLayers: 768,512,256
+    enableDoubleDQN: true
+    maxStepsPerGame: 140
+    maxConcurrentGames: 8
+    explorationRate: 0.15
+    explorationWarmupCycles: 4
+    explorationWarmupRate: 0.25
+    opponentWarmupCycles: 0
+    opponentUpdateStrategy: HISTORICAL
+    opponentUpdateFrequency: 1
+    opponentHistoryLag: 1
+    enablePositionRewards: true
+    drawReward: -0.05
+    stepLimitPenalty: -1.0
+    stepPenalty: -0.001
+    gameLengthNormalization: false
+    batchSize: 96
+    targetUpdateFrequency: 2000
+    checkpointDirectory: checkpoints/long_run
+    checkpointInterval: 5
+    autoCleanupOnFinish: true
+    keepBest: true
+    keepLastN: 3
+    treatStepLimitAsDraw: true
+    replayType: PRIORITIZED
+    enableLocalThreefoldDraw: true
+    localThreefoldThreshold: 3
+    repetitionPenalty: -0.02
     repetitionPenaltyAfter: 2
   dqn_imitation_bootstrap:
     # Warm-start DQN from an imitation checkpoint trained on chess-engine move examples

@@ -115,9 +115,10 @@ What happens (one end‑to‑end cycle)
   - Samples experiences into batches and calls `agent.trainBatch` (DQNAlgorithm.updatePolicy) per batch.
   - Prints per‑batch metrics from the algorithm result (loss, policy entropy, gradient norm; optional EMA and extras).
   - Periodically prints target sync: `🔁 DQN target network synchronized at update=… (freq=…)`.
-- Phase 4 — Evaluation (internal)
-  - Plays a small number of evaluation games to estimate reward/win/draw/loss and outcomeScore = (wins + 0.5·draws)/games.
-  - Peer match vs previous best each cycle: current vs best head‑to‑head; promote on tie or win.
+  - Phase 4 — Evaluation (internal)
+    - Plays a small number of evaluation games to estimate reward/win/draw/loss and outcomeScore = (wins + 0.5·draws)/games.
+    - Peer match vs previous best each cycle: current vs best head‑to‑head; promote on tie or win (no Elo).
+    - Masking/legality: evaluation and H2H enforce strict legal moves. `invalid_moves` should be 0; any >0 indicates an encoder/mapping issue to fix before scaling.
 - Checkpointing
   - Creates an initial checkpoint (v0), regular checkpoints every `checkpointInterval` cycles, and a final checkpoint.
   - Optional retention cleanup at the end (keep best + last K + every Nth) per config/profile.

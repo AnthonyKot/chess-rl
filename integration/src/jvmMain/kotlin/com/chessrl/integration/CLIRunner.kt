@@ -41,6 +41,9 @@ object CLIRunner {
         val depth = args.getAfter("--depth")?.toIntOrNull() ?: 2
         val topk = args.getAfter("--topk")?.toIntOrNull() ?: 5
         val tau = args.getAfter("--tau")?.toDoubleOrNull() ?: 1.0
+        val enableAdjudication = args.contains("--adjudicate")
+        val resignMaterial = args.getAfter("--resign-material")?.toIntOrNull() ?: 9
+        val noProgressPlies = args.getAfter("--no-progress-plies")?.toIntOrNull() ?: 40
 
         // Instantiate Minimax teacher with seeded randomness when available
         val rng = runCatching { SeedManager.getNeuralNetworkRandom() }.getOrElse { kotlin.random.Random.Default }
@@ -48,7 +51,17 @@ object CLIRunner {
         val actionEncoder = ChessActionEncoder()
         val env = ChessEnvironment(
             rewardConfig = ChessRewardConfig(
-                stepLimitPenalty = -0.5
+                winReward = 1.0,
+                lossReward = -1.0,
+                drawReward = 0.0,
+                stepPenalty = 0.0,
+                stepLimitPenalty = -0.5,
+                enablePositionRewards = false,
+                gameLengthNormalization = false,
+                maxGameLength = maxSteps,
+                enableEarlyAdjudication = enableAdjudication,
+                resignMaterialThreshold = resignMaterial,
+                noProgressPlies = noProgressPlies
             )
         )
 
@@ -58,8 +71,9 @@ object CLIRunner {
         var totalLen = 0
 
         println("Evaluating non-NN matchup: WHITE=$white vs BLACK=$black, games=$games, depth=$depth, topk=$topk, tau=$tau")
+        if (enableAdjudication) println("  Early adjudication: resignMaterial=$resignMaterial, noProgressPlies=$noProgressPlies")
 
-        repeat(games) { gi ->
+        repeat(games) { _ ->
             var state = env.reset()
             var steps = 0
             while (!env.isTerminal(state) && steps < maxSteps) {
@@ -188,6 +202,11 @@ object CLIRunner {
         val evalWin = profile?.get("winReward")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().winReward
         val evalLoss = profile?.get("lossReward")?.toDoubleOrNull() ?: AdvancedSelfPlayConfig().lossReward
         val evalDraw = profile?.get("drawReward")?.toDoubleOrNull() ?: 0.0
+        val enableAdjudication = args.contains("--adjudicate")
+        val resignMaterial = args.getAfter("--resign-material")?.toIntOrNull() ?: 9
+        val noProgressPlies = args.getAfter("--no-progress-plies")?.toIntOrNull() ?: 40
+        val enableLocalThreefoldEval = args.contains("--local-threefold")
+        val localThreefoldEvalThreshold = args.getAfter("--threefold-threshold")?.toIntOrNull() ?: 3
         val env = ChessEnvironment(
             rewardConfig = ChessRewardConfig(
                 winReward = evalWin,
@@ -196,7 +215,11 @@ object CLIRunner {
                 stepPenalty = 0.0,
                 stepLimitPenalty = profile?.get("stepLimitPenalty")?.toDoubleOrNull() ?: -0.5,
                 enablePositionRewards = profile?.get("enablePositionRewards")?.toBooleanStrictOrNull() ?: false,
-                maxGameLength = maxSteps
+                maxGameLength = maxSteps,
+                enableEarlyAdjudication = enableAdjudication,
+                resignMaterialThreshold = resignMaterial,
+                noProgressPlies = noProgressPlies,
+                gameLengthNormalization = false
             )
         )
 
@@ -206,8 +229,19 @@ object CLIRunner {
         var draws = 0
         var losses = 0
         val results = mutableListOf<EvaluationGameResult>()
+        // Draw breakdown
+        var drawStepLimit = 0
+        var drawStalemate = 0
+        var drawRepetition = 0
+        var drawFifty = 0
+        var drawInsufficient = 0
+        var drawOther = 0
+        var drawLocalThreefold = 0
 
         var agentStartsWhite = true
+        val dumpDraws = args.contains("--dump-draws")
+        val dumpLimit = args.getAfter("--dump-limit")?.toIntOrNull() ?: 3
+        val drawSamples = mutableListOf<String>()
         repeat(games) { idx ->
             var state = env.reset()
             var rewardSum = 0.0
@@ -217,6 +251,11 @@ object CLIRunner {
                 ColorMode.BLACK -> false
                 ColorMode.ALTERNATE -> agentStartsWhite
             }
+            val startFen = env.getCurrentBoard().toFEN()
+            var midFen: String? = null
+            val moveList = mutableListOf<String>()
+            val fenCounts = mutableMapOf(env.getCurrentBoard().toFEN() to 1)
+            var trippedLocalThreefold = false
             while (!env.isTerminal(state) && steps < maxSteps) {
                 val actions = env.getValidActions(state)
                 if (actions.isEmpty()) break
@@ -230,9 +269,23 @@ object CLIRunner {
                 rewardSum += step.reward
                 state = step.nextState
                 steps++
+                step.info["move"]?.let { moveList.add(it.toString()) }
+                if (midFen == null && steps >= maxSteps / 2) {
+                    midFen = env.getCurrentBoard().toFEN()
+                }
+                if (enableLocalThreefoldEval) {
+                    val fen = env.getCurrentBoard().toFEN()
+                    val cnt = (fenCounts[fen] ?: 0) + 1
+                    fenCounts[fen] = cnt
+                    if (cnt >= localThreefoldEvalThreshold) {
+                        trippedLocalThreefold = true
+                        break
+                    }
+                }
             }
             val status = env.getGameStatus().name
             val raw = when {
+                trippedLocalThreefold -> GameOutcome.DRAW
                 status.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
                 status.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
                 status.contains("DRAW") -> GameOutcome.DRAW
@@ -248,6 +301,40 @@ object CLIRunner {
                 1 -> wins++
                 -1 -> losses++
                 else -> draws++
+            }
+            if (agentOutcome == 0) {
+                val stepLimited = (steps >= maxSteps && !env.isTerminal(state))
+                when {
+                    trippedLocalThreefold -> drawLocalThreefold++
+                    status.contains("STALEMATE") -> drawStalemate++
+                    status.contains("REPETITION") -> drawRepetition++
+                    status.contains("FIFTY_MOVE_RULE") -> drawFifty++
+                    status.contains("INSUFFICIENT_MATERIAL") -> drawInsufficient++
+                    stepLimited -> drawStepLimit++
+                    else -> drawOther++
+                }
+                if (dumpDraws && drawSamples.size < dumpLimit) {
+                    val reason = when {
+                        trippedLocalThreefold -> "LOCAL_THREEFOLD"
+                        status.contains("STALEMATE") -> "STALEMATE"
+                        status.contains("REPETITION") -> "REPETITION"
+                        status.contains("FIFTY_MOVE_RULE") -> "FIFTY_MOVE_RULE"
+                        status.contains("INSUFFICIENT_MATERIAL") -> "INSUFFICIENT_MATERIAL"
+                        stepLimited -> "STEP_LIMIT"
+                        else -> status
+                    }
+                    val finalFen = env.getCurrentBoard().toFEN()
+                    val lastMoves = moveList.takeLast(10).joinToString(",")
+                    drawSamples.add(
+                        "--- Draw #${drawSamples.size + 1} ---\n" +
+                        "Reason: ${reason}\n" +
+                        "Steps: ${steps} / max=${maxSteps}\n" +
+                        "Start FEN: ${startFen}\n" +
+                        (midFen?.let { "Mid FEN: ${it}\n" } ?: "") +
+                        "Final FEN: ${finalFen}\n" +
+                        (if (lastMoves.isNotEmpty()) "Last moves: ${lastMoves}\n" else "")
+                    )
+                }
             }
             // Use terminal outcome score from the agent's perspective
             totalOutcomeScore += when (raw) {
@@ -274,14 +361,27 @@ object CLIRunner {
         val winRate = wins.toDouble() / counted
         val drawRate = draws.toDouble() / counted
         val lossRate = losses.toDouble() / counted
-        // Print concise JSON-like summary (no performance_score)
+        // Optionally dump a few draw samples for debugging
+        if (drawSamples.isNotEmpty()) {
+            drawSamples.forEach { println(it) }
+        }
+        // Print concise JSON-like summary with draw breakdown (no performance_score)
         println("{" +
             "\"games\":$games," +
             "\"avg_reward\":$avgReward," +
             "\"avg_length\":$avgLen," +
             "\"win_rate\":$winRate," +
             "\"draw_rate\":$drawRate," +
-            "\"loss_rate\":$lossRate" +
+            "\"loss_rate\":$lossRate," +
+            "\"draw_details\":{" +
+                "\"step_limit\":$drawStepLimit," +
+                "\"stalemate\":$drawStalemate," +
+                "\"repetition\":$drawRepetition," +
+                "\"fifty_move\":$drawFifty," +
+                "\"insufficient\":$drawInsufficient," +
+                "\"other\":$drawOther," +
+                "\"local_threefold\":$drawLocalThreefold" +
+            "}" +
         "}")
     }
 
@@ -332,6 +432,7 @@ object CLIRunner {
         val agentB = ChessAgentFactory.createDQNAgent(hiddenLayers = hiddenB)
         runCatching { agentA.setExplorationRate(evalEpsilon) }
         runCatching { agentB.setExplorationRate(evalEpsilon) }
+        val actionEncoder = ChessActionEncoder()
 
         val loadedA = runCatching { agentA.load(pathA) }.isSuccess
         val loadedB = runCatching { agentB.load(pathB) }.isSuccess
@@ -393,16 +494,30 @@ object CLIRunner {
                 if (valid.isEmpty()) break
                 val active = env.getCurrentBoard().getActiveColor()
                 val aTurn = (active.name.contains("WHITE") && aStartsWhite) || (active.name.contains("BLACK") && !aStartsWhite)
-                var chosen = if (aTurn) agentA.selectAction(state, valid) else agentB.selectAction(state, valid)
-                if (chosen !in valid) {
+                val preSelected = if (aTurn) agentA.selectAction(state, valid) else agentB.selectAction(state, valid)
+                var chosen = preSelected
+                val presentInValid = chosen in valid
+                if (!presentInValid) {
                     // Guard against any buggy selection; fall back to a valid action
                     chosen = valid.first()
                 }
                 var step = env.step(chosen)
                 if (step.info["error"] != null) {
                     totalInvalid++
-                    // Retry once with a random valid action to avoid getting stuck on invalids
-                    val fallback = valid.random()
+                    // Diagnostic log for the first few invalids
+                    if (totalInvalid <= 12) {
+                        val decodedChosen = runCatching { actionEncoder.decodeAction(chosen).toAlgebraic() }.getOrNull()
+                        val decodedPre = runCatching { actionEncoder.decodeAction(preSelected).toAlgebraic() }.getOrNull()
+                        val fenNow = env.getCurrentBoard().toFEN()
+                        val sampleValid = valid.take(5).map { v -> actionEncoder.decodeAction(v).toAlgebraic() }
+                        val failure = step.info["error"] ?: "?"
+                        println("INVALID sel: aTurn=$aTurn presentInValid=$presentInValid pre=$preSelected($decodedPre) chosen=$chosen($decodedChosen) validCount=${valid.size} sampleValid=${sampleValid}")
+                        println("INVALID fail: $failure")
+                        println("INVALID fen: ${fenNow}")
+                    }
+                    // Retry once with a re-fetched valid list to avoid stale set
+                    val valid2 = env.getValidActions(state)
+                    val fallback = if (valid2.isNotEmpty()) valid2.random() else valid.random()
                     step = env.step(fallback)
                     if (step.info["error"] != null) {
                         totalInvalid++
@@ -458,7 +573,8 @@ object CLIRunner {
             val status = env.getGameStatus().name
             val stepLimited = steps >= maxSteps && !env.isTerminal(state)
             val outcomeA = when {
-                forcedOutcomeFromInvalid != null -> forcedOutcomeFromInvalid!!
+                forcedOutcomeFromInvalid != null -> forcedOutcomeFromInvalid ?: 0
+                adjudicatedOutcomeA != null -> adjudicatedOutcomeA ?: 0
                 trippedLocalThreefold -> 0
                 status.contains("WHITE_WINS") -> if (aStartsWhite) 1 else -1
                 status.contains("BLACK_WINS") -> if (!aStartsWhite) 1 else -1

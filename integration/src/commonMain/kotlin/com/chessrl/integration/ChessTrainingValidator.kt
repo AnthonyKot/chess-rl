@@ -176,7 +176,7 @@ class ChessTrainingValidator(
     fun analyzeLearningProgression(windowSize: Int = config.progressionWindowSize): ChessLearningProgression {
         if (gameHistory.size < windowSize) {
             return ChessLearningProgression(
-                status = LearningStatus.INSUFFICIENT_DATA,
+                status = ChessLearningStatus.INSUFFICIENT_DATA,
                 gameQualityTrend = 0.0,
                 moveDiversityTrend = 0.0,
                 tacticalImprovementTrend = 0.0,
@@ -201,8 +201,8 @@ class ChessTrainingValidator(
             end.moveDiversity.uniqueMoveRatio > start.moveDiversity.uniqueMoveRatio ||
             (1.0 - end.tacticalAnalysis.blunderRate) > (1.0 - start.tacticalAnalysis.blunderRate)
         )
-        if (status == LearningStatus.STAGNANT && improvedByEndpoint) {
-            status = LearningStatus.IMPROVING
+        if (status == ChessLearningStatus.STAGNANT && improvedByEndpoint) {
+            status = ChessLearningStatus.IMPROVING
         }
         
         // Generate recommendations
@@ -458,19 +458,19 @@ class ChessTrainingValidator(
         gameQualityTrend: Double,
         moveDiversityTrend: Double,
         tacticalTrend: Double
-    ): LearningStatus {
+    ): ChessLearningStatus {
         val trends = listOf(gameQualityTrend, moveDiversityTrend, tacticalTrend)
         val improvingCount = trends.count { it > config.improvementThreshold }
         val anyPositive = trends.any { it > 0.0 }
 
         return when {
-            improvingCount >= 1 || anyPositive -> LearningStatus.IMPROVING
-            else -> LearningStatus.STAGNANT
+            improvingCount >= 1 || anyPositive -> ChessLearningStatus.IMPROVING
+            else -> ChessLearningStatus.STAGNANT
         }
     }
     
     private fun generateLearningRecommendations(
-        status: LearningStatus,
+        status: ChessLearningStatus,
         gameQualityTrend: Double,
         moveDiversityTrend: Double,
         tacticalTrend: Double
@@ -478,23 +478,23 @@ class ChessTrainingValidator(
         val recommendations = mutableListOf<String>()
         
         when (status) {
-            LearningStatus.IMPROVING -> {
+            ChessLearningStatus.IMPROVING -> {
                 recommendations.add("Chess learning is progressing well")
                 recommendations.add("Continue current training approach")
             }
-            LearningStatus.MIXED_PROGRESS -> {
+            ChessLearningStatus.MIXED_PROGRESS -> {
                 recommendations.add("Mixed progress in chess learning")
                 if (gameQualityTrend < 0) recommendations.add("Focus on game completion and legal moves")
                 if (moveDiversityTrend < 0) recommendations.add("Increase exploration to improve move diversity")
                 if (tacticalTrend < 0) recommendations.add("Add tactical training or position evaluation")
             }
-            LearningStatus.STAGNANT -> {
+            ChessLearningStatus.STAGNANT -> {
                 recommendations.add("Chess learning has stagnated")
                 recommendations.add("Consider major changes to training approach")
                 recommendations.add("Increase exploration rate significantly")
                 recommendations.add("Add curriculum learning or position-specific training")
             }
-            LearningStatus.INSUFFICIENT_DATA -> {
+            ChessLearningStatus.INSUFFICIENT_DATA -> {
                 recommendations.add("Continue training to gather more chess data")
             }
         }
@@ -649,7 +649,7 @@ data class TacticalAnalysis(
  * Chess learning progression analysis
  */
 data class ChessLearningProgression(
-    val status: LearningStatus,
+    val status: ChessLearningStatus,
     val gameQualityTrend: Double,
     val moveDiversityTrend: Double,
     val tacticalImprovementTrend: Double,
@@ -659,7 +659,7 @@ data class ChessLearningProgression(
 /**
  * Learning status for chess training
  */
-enum class LearningStatus {
+enum class ChessLearningStatus {
     IMPROVING,
     MIXED_PROGRESS,
     STAGNANT,

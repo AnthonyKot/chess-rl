@@ -288,6 +288,13 @@ class AdvancedSelfPlayTrainingPipeline(
                     val peer = runCatching { evaluateAgainstBest(mainAgent, prevBest) }.getOrNull()
                     if (peer != null) {
                         println("   🤝 Peer match vs best: current=${peer.wins}-${peer.draws}-${peer.losses}")
+                        if (peer.draws > 0) {
+                            println(
+                                "   🧩 Draws: step_limit=${peer.drawStepLimit}, repetition=${peer.drawRepetition}, fifty=${peer.drawFifty}, " +
+                                "stalemate=${peer.drawStalemate}, insufficient=${peer.drawInsufficient}, local_threefold=${peer.drawLocalThreefold}, other=${peer.drawOther}"
+                            )
+                            println("   ⏱️ Avg H2H length: ${"%.1f".format(peer.avgLength)} moves")
+                        }
                         peer.wins >= peer.losses
                     } else false
                 }
@@ -777,24 +784,45 @@ class AdvancedSelfPlayTrainingPipeline(
 
         val env = ChessEnvironment(
             rewardConfig = ChessRewardConfig(
-                winReward = 1.0, lossReward = -1.0, drawReward = 0.0,
-                stepPenalty = 0.0, stepLimitPenalty = -0.5, enablePositionRewards = false, gameLengthNormalization = false, maxGameLength = 200
+                winReward = 1.0,
+                lossReward = -1.0,
+                drawReward = 0.0,
+                stepPenalty = 0.0,
+                stepLimitPenalty = -0.5,
+                enablePositionRewards = false,
+                gameLengthNormalization = false,
+                maxGameLength = config.h2hMaxSteps,
+                enableEarlyAdjudication = config.enableH2HAdjudication,
+                resignMaterialThreshold = config.h2hResignMaterialThreshold,
+                noProgressPlies = config.h2hNoProgressPlies
             )
         )
-        // Moderate exploration to break symmetry and prevent repetitive play
-        runCatching { current.setExplorationRate(0.15) }
-        runCatching { opp.setExplorationRate(0.15) }
+        // Mild exploration to break symmetry and prevent repetitive play
+        runCatching { current.setExplorationRate(config.h2hEvalEpsilon) }
+        runCatching { opp.setExplorationRate(config.h2hEvalEpsilon) }
 
         var wins = 0
         var draws = 0
         var losses = 0
+        var totalLen = 0
         var currentIsWhite = true
-        val games = 40
+        val games = config.h2hGames
+        // Draw breakdown counters
+        var drawStepLimit = 0
+        var drawStalemate = 0
+        var drawRepetition = 0
+        var drawFifty = 0
+        var drawInsufficient = 0
+        var drawOther = 0
+        var drawLocalThreefold = 0
         repeat(games) {
             var state = env.reset()
             var steps = 0
-            // Remove flawed local threefold detection - let chess engine handle it properly
-            while (!env.isTerminal(state) && steps < 200) {
+            val startFen = env.getCurrentBoard().toFEN()
+            val fenCounts = mutableMapOf(startFen to 1)
+            var trippedLocalThreefold = false
+            // Let engine adjudication handle long deadlocks; shorter cap to reduce step-limit draws
+            while (!env.isTerminal(state) && steps < config.h2hMaxSteps) {
                 val valid = env.getValidActions(state)
                 if (valid.isEmpty()) break
                 val actColor = env.getCurrentBoard().getActiveColor()
@@ -804,9 +832,22 @@ class AdvancedSelfPlayTrainingPipeline(
                 state = step.nextState
                 steps++
                 if (step.done) break
+                if (config.enableH2HLocalThreefold) {
+                    val fen = env.getCurrentBoard().toFEN()
+                    val cnt = (fenCounts[fen] ?: 0) + 1
+                    fenCounts[fen] = cnt
+                    if (cnt >= config.h2hThreefoldThreshold) {
+                        trippedLocalThreefold = true
+                        break
+                    }
+                }
             }
-            val status = env.getGameStatus().name
+            val effStatus = env.getAdjudicatedOutcome() ?: env.getGameStatus()
+            val status = effStatus.name
+            totalLen += steps
+            val stepLimited = steps >= config.h2hMaxSteps && !env.isTerminal(state)
             val outcomeA = when {
+                trippedLocalThreefold -> 0
                 status.contains("WHITE_WINS") -> if (currentIsWhite) 1 else -1
                 status.contains("BLACK_WINS") -> if (!currentIsWhite) 1 else -1
                 else -> 0  // Legitimate draws or step-limited games
@@ -814,14 +855,50 @@ class AdvancedSelfPlayTrainingPipeline(
             when (outcomeA) {
                 1 -> wins++
                 -1 -> losses++
-                else -> draws++
+                else -> {
+                    draws++
+                    if (trippedLocalThreefold) drawLocalThreefold++
+                    else if (stepLimited) drawStepLimit++ else when {
+                        status.contains("STALEMATE") -> drawStalemate++
+                        status.contains("REPETITION") -> drawRepetition++
+                        status.contains("FIFTY_MOVE_RULE") -> drawFifty++
+                        status.contains("INSUFFICIENT_MATERIAL") -> drawInsufficient++
+                        else -> drawOther++
+                    }
+                }
             }
             currentIsWhite = !currentIsWhite
         }
-        return H2HResult(wins = wins, draws = draws, losses = losses)
+        val counted = (wins + draws + losses).coerceAtLeast(1)
+        val avgLen = totalLen.toDouble() / counted
+        return H2HResult(
+            wins = wins,
+            draws = draws,
+            losses = losses,
+            avgLength = avgLen,
+            drawStepLimit = drawStepLimit,
+            drawStalemate = drawStalemate,
+            drawRepetition = drawRepetition,
+            drawFifty = drawFifty,
+            drawInsufficient = drawInsufficient,
+            drawOther = drawOther,
+            drawLocalThreefold = drawLocalThreefold
+        )
     }
-
-    data class H2HResult(val wins: Int, val draws: Int, val losses: Int)
+    
+    data class H2HResult(
+        val wins: Int,
+        val draws: Int,
+        val losses: Int,
+        val avgLength: Double,
+        val drawStepLimit: Int,
+        val drawStalemate: Int,
+        val drawRepetition: Int,
+        val drawFifty: Int,
+        val drawInsufficient: Int,
+        val drawOther: Int,
+        val drawLocalThreefold: Int
+    )
 
     // Head-to-head vs previous best is used for best selection; Elo is removed.
     
@@ -1290,13 +1367,22 @@ data class AdvancedSelfPlayConfig(
     val maxConcurrentGames: Int = 4,
     val maxStepsPerGame: Int = 200,
     val evaluationGamesPerCycle: Int = 5,
+    // Head-to-head (current vs best) evaluation controls
+    val h2hGames: Int = 40,
+    val h2hMaxSteps: Int = 140,
+    val h2hEvalEpsilon: Double = 0.05,
+    val enableH2HAdjudication: Boolean = true,
+    val h2hResignMaterialThreshold: Int = 7,
+    val h2hNoProgressPlies: Int = 24,
+    val enableH2HLocalThreefold: Boolean = true,
+    val h2hThreefoldThreshold: Int = 3,
     // Reward shaping basics
     val stepPenalty: Double = -0.001,
     val gameLengthNormalization: Boolean = true,
     
     // Training configuration
     val batchSize: Int = 64,
-    val maxBatchesPerCycle: Int = 20,
+    val maxBatchesPerCycle: Int = 40,
     val initialTrainingRatio: Double = 0.3,
     val minTrainingRatio: Double = 0.1,
     val maxTrainingRatio: Double = 0.8,

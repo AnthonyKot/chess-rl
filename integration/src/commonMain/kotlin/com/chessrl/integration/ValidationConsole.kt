@@ -422,10 +422,10 @@ object TrainingScenarioFactory {
     /**
      * Create basic tactical scenarios for validation
      */
-    fun createTacticalScenarios(): List<TrainingScenario> {
+    fun createTacticalScenarios(): List<ManualTrainingScenario> {
         return listOf(
             // Basic checkmate in one
-            TrainingScenario(
+            ManualTrainingScenario(
                 name = "Checkmate in One",
                 description = "Simple back-rank mate",
                 startingFEN = "6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1",
@@ -434,7 +434,7 @@ object TrainingScenarioFactory {
             ),
             
             // Basic piece capture
-            TrainingScenario(
+            ManualTrainingScenario(
                 name = "Free Piece Capture",
                 description = "Capture undefended piece",
                 startingFEN = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
@@ -443,7 +443,7 @@ object TrainingScenarioFactory {
             ),
             
             // Basic development
-            TrainingScenario(
+            ManualTrainingScenario(
                 name = "Knight Development",
                 description = "Develop knight to good square",
                 startingFEN = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
@@ -456,10 +456,10 @@ object TrainingScenarioFactory {
     /**
      * Create endgame scenarios for validation
      */
-    fun createEndgameScenarios(): List<TrainingScenario> {
+    fun createEndgameScenarios(): List<ManualTrainingScenario> {
         return listOf(
             // King and Queen vs King
-            TrainingScenario(
+            ManualTrainingScenario(
                 name = "Queen Endgame",
                 description = "Basic queen vs king endgame",
                 startingFEN = "8/8/8/8/8/8/4Q3/4K1k1 w - - 0 1",
@@ -468,7 +468,7 @@ object TrainingScenarioFactory {
             ),
             
             // Pawn promotion
-            TrainingScenario(
+            ManualTrainingScenario(
                 name = "Pawn Promotion",
                 description = "Promote pawn to queen",
                 startingFEN = "8/4P3/8/8/8/8/8/4K1k1 w - - 0 1",
@@ -481,10 +481,10 @@ object TrainingScenarioFactory {
     /**
      * Create opening scenarios for validation
      */
-    fun createOpeningScenarios(): List<TrainingScenario> {
+    fun createOpeningScenarios(): List<ManualTrainingScenario> {
         return listOf(
             // Center control
-            TrainingScenario(
+            ManualTrainingScenario(
                 name = "Center Control",
                 description = "Control center with pawns",
                 startingFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
@@ -501,7 +501,7 @@ object TrainingScenarioFactory {
     /**
      * Get all predefined scenarios
      */
-    fun getAllScenarios(): List<TrainingScenario> {
+    fun getAllScenarios(): List<ManualTrainingScenario> {
         return createTacticalScenarios() + createEndgameScenarios() + createOpeningScenarios()
     }
 }

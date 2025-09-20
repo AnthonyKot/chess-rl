@@ -469,8 +469,10 @@ class ChessEnvironment(
             )
         }
         
-        // Execute the move
-        val moveResult = chessBoard.makeLegalMove(actualMove)
+        // Execute the move. The selected move comes from the current legal set,
+        // so we can apply it directly to avoid redundant re-validation that may
+        // diverge from the enumerator in rare edge cases.
+        val moveResult = chessBoard.makeMove(actualMove)
         if (moveResult != MoveResult.SUCCESS) {
             return StepResult(
                 nextState = stateEncoder.encode(chessBoard),
@@ -562,13 +564,59 @@ class ChessEnvironment(
             adjudicatedOutcome = if (materialDiff > 0) GameStatus.WHITE_WINS else GameStatus.BLACK_WINS
             return adjudicatedOutcome
         }
-        
+
+        // Detect simple, typically forced endgames and adjudicate as a win
+        detectSimpleForcedWin(noProgressPlies)?.let { forced ->
+            adjudicatedOutcome = forced
+            return adjudicatedOutcome
+        }
+
         // Check no progress for draw adjudication
         if (noProgressPlies >= rewardConfig.noProgressPlies) {
             adjudicatedOutcome = GameStatus.DRAW_FIFTY_MOVE_RULE // Use fifty-move as proxy for no progress
             return adjudicatedOutcome
         }
         
+        return null
+    }
+
+    /**
+     * Detect simple endgames (KQ vs K, KR vs K, KBB vs K, KBN vs K with some no-progress) and adjudicate as win
+     * Returns WHITE_WINS/BLACK_WINS or null if no adjudication should be applied.
+     */
+    private fun detectSimpleForcedWin(noProgressPlies: Int): GameStatus? {
+        val fen = chessBoard.toFEN()
+        // Count pieces by color
+        var wP = 0; var wN = 0; var wB = 0; var wR = 0; var wQ = 0
+        var bP = 0; var bN = 0; var bB = 0; var bR = 0; var bQ = 0
+        for (ch in fen.takeWhile { it != ' ' }) {
+            when (ch) {
+                'P' -> wP++
+                'N' -> wN++
+                'B' -> wB++
+                'R' -> wR++
+                'Q' -> wQ++
+                'p' -> bP++
+                'n' -> bN++
+                'b' -> bB++
+                'r' -> bR++
+                'q' -> bQ++
+            }
+        }
+        val whiteOnlyKing = (wP + wN + wB + wR + wQ) == 0
+        val blackOnlyKing = (bP + bN + bB + bR + bQ) == 0
+
+        // If one side has only king, and the other has a simple mating set, adjudicate win for that side
+        if (blackOnlyKing) {
+            // White has mating material
+            if (wQ >= 1 || wR >= 1 || wB >= 2) return GameStatus.WHITE_WINS
+            // KBN vs K is theoretically won; require some no-progress plies to avoid too-early adjudication
+            if (wB >= 1 && wN >= 1 && noProgressPlies >= 20) return GameStatus.WHITE_WINS
+        }
+        if (whiteOnlyKing) {
+            if (bQ >= 1 || bR >= 1 || bB >= 2) return GameStatus.BLACK_WINS
+            if (bB >= 1 && bN >= 1 && noProgressPlies >= 20) return GameStatus.BLACK_WINS
+        }
         return null
     }
     
@@ -592,11 +640,12 @@ class ChessEnvironment(
     
     /**
      * Calculate reward based on game outcome and position evaluation
+     * This method handles legitimate chess outcomes only - step limit penalties are applied externally
      */
     private fun calculateReward(gameStatus: GameStatus, move: Move, movingColor: PieceColor): Double {
         var reward: Double
         
-        // Primary outcome-based rewards
+        // Primary outcome-based rewards - only for legitimate chess game endings
         when (gameStatus) {
             GameStatus.WHITE_WINS -> {
                 reward = if (movingColor == PieceColor.WHITE) {
@@ -628,16 +677,19 @@ class ChessEnvironment(
             GameStatus.DRAW_INSUFFICIENT_MATERIAL,
             GameStatus.DRAW_FIFTY_MOVE_RULE,
             GameStatus.DRAW_REPETITION -> {
+                // Only legitimate chess draws get draw reward
                 reward = rewardConfig.drawReward
             }
             else -> {
-                // Ongoing game: positional shaping and step penalty
+                // Ongoing game: positional shaping and step penalty only
+                // NO step limit penalty here - that's handled by the training pipeline
                 reward = if (rewardConfig.enablePositionRewards) {
                     var r = positionEvaluator.evaluatePosition(chessBoard, movingColor, rewardConfig)
                     if (isCapture()) r += 0.02
                     if (gameStateDetector.isInCheck(chessBoard, movingColor.opposite())) r += 0.01
                     r
                 } else 0.0
+                
                 // Apply per-step penalty to discourage very long episodes
                 reward += rewardConfig.stepPenalty
             }
@@ -763,6 +815,44 @@ class ChessEnvironment(
      */
     fun getGameStatus(): GameStatus {
         return gameStateDetector.getGameStatus(chessBoard, gameHistory)
+    }
+
+    /**
+     * Get last early-adjudicated outcome if any. Null when no early adjudication has occurred.
+     */
+    fun getAdjudicatedOutcome(): GameStatus? = adjudicatedOutcome
+
+    /**
+     * Effective status that respects early adjudication when present; falls back to computed status otherwise.
+     */
+    fun getEffectiveGameStatus(): GameStatus = adjudicatedOutcome ?: getGameStatus()
+    
+    /**
+     * Check if the current game state represents a legitimate chess ending
+     * (as opposed to an artificial termination like step limits)
+     */
+    fun isLegitimateChessEnding(): Boolean {
+        val status = getGameStatus()
+        return when (status) {
+            GameStatus.WHITE_WINS,
+            GameStatus.BLACK_WINS,
+            GameStatus.DRAW_STALEMATE,
+            GameStatus.DRAW_INSUFFICIENT_MATERIAL,
+            GameStatus.DRAW_FIFTY_MOVE_RULE,
+            GameStatus.DRAW_REPETITION -> true
+            else -> false
+        }
+    }
+    
+    /**
+     * Get termination reason for the current game state
+     */
+    fun getTerminationReason(): String {
+        val status = getGameStatus()
+        return when {
+            status.isGameOver -> "GAME_ENDED"
+            else -> "ONGOING"
+        }
     }
     
     /**

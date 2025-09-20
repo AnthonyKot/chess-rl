@@ -213,7 +213,7 @@ class ManualValidationTools(
      * Manually inspect and validate specific training scenarios
      */
     fun inspectTrainingScenario(
-        scenario: TrainingScenario
+        scenario: ManualTrainingScenario
     ): ScenarioInspectionResult {
         
         val results = mutableListOf<ScenarioStepResult>()
@@ -325,7 +325,7 @@ class ManualValidationTools(
      * Generate training validation report
      */
     fun generateValidationReport(
-        testScenarios: List<TrainingScenario>,
+        testScenarios: List<ManualTrainingScenario>,
         sampleGames: List<List<Move>>
     ): ValidationReport {
         
@@ -772,7 +772,7 @@ data class TacticalAssessment(
     val tacticalComplexity: Double
 )
 
-data class TrainingScenario(
+data class ManualTrainingScenario(
     val name: String,
     val description: String,
     val startingFEN: String?,

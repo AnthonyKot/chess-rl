@@ -496,7 +496,7 @@ class ChessTrainingValidatorTest {
         val progression = chessValidator.analyzeLearningProgression(windowSize = 20)
         
         // Assert
-        assertEquals(LearningStatus.IMPROVING, progression.status)
+        assertEquals(ChessLearningStatus.IMPROVING, progression.status)
         assertTrue(progression.gameQualityTrend > 0, "Game quality should be improving")
         assertTrue(progression.recommendations.any { it.contains("progressing well") })
     }
@@ -519,7 +519,7 @@ class ChessTrainingValidatorTest {
         val progression = chessValidator.analyzeLearningProgression(windowSize = 20)
         
         // Assert
-        assertEquals(LearningStatus.STAGNANT, progression.status)
+        assertEquals(ChessLearningStatus.STAGNANT, progression.status)
         assertTrue(progression.recommendations.any { it.contains("stagnated") })
     }
     

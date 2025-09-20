@@ -180,6 +180,12 @@ These tests are performance‑sensitive and can be flaky or slow in constrained 
 - [x] Log core metrics and write canonical best artifacts (no Elo)
 - [x] Save/load checkpoints and resume runs (JVM)
 
+## Immediate Bugfix Gate (before long runs)
+- [ ] H2H invalid-move audit: ensure `invalid_moves == 0` over 200+ H2H games.
+  - If nonzero, capture diagnostics (chosen index, decoded move, FEN, validCount) and fix encoder/step matching (e.g., promotion mapping, stale valids) before scaling.
+- [ ] Baseline eval sanity: greedy `--eval-epsilon 0.0`, `--draw-reward 0.0`, verify JSON looks sane (no 100% draws).
+- [x] Non‑NN eval: use `--adjudicate --resign-material 9 --no-progress-plies 40` to avoid step-limit stalemates in sanity checks.
+
 ## Recent Updates
 - Best selection: head-to-head vs previous best each cycle; promote on tie/win. No Elo.
 - Sidecar metadata and pointer file record `performance` (outcome score), not Elo.

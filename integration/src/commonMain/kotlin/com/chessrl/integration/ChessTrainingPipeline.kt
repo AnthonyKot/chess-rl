@@ -30,6 +30,7 @@ class ChessTrainingPipeline(
         var episodeReward = 0.0
         var stepCount = 0
         val episodeExperiences = mutableListOf<Experience<DoubleArray, Int>>()
+        var hitStepLimit = false
         
         // Run episode
         while (!environment.isTerminal(state) && stepCount < config.maxStepsPerEpisode) {
@@ -65,6 +66,36 @@ class ChessTrainingPipeline(
             stepCount++
             
             if (stepResult.done) break
+        }
+        
+        // Check if episode hit step limit without natural termination
+        hitStepLimit = stepCount >= config.maxStepsPerEpisode && !environment.isTerminal(state)
+        
+        // Apply step limit penalty if the game hit the step limit
+        if (hitStepLimit) {
+            val stepLimitPenalty = environment.applyStepLimitPenalty()
+            episodeReward += stepLimitPenalty
+            
+            // Update the last experience to reflect the step limit penalty and mark as done
+            if (episodeExperiences.isNotEmpty()) {
+                val lastExperience = episodeExperiences.last()
+                val penalizedExperience = Experience(
+                    state = lastExperience.state,
+                    action = lastExperience.action,
+                    reward = lastExperience.reward + stepLimitPenalty,
+                    nextState = lastExperience.nextState,
+                    done = true // Mark as terminal due to step limit
+                )
+                
+                // Replace the last experience in both buffers
+                episodeExperiences[episodeExperiences.size - 1] = penalizedExperience
+                if (experienceBuffer.isNotEmpty()) {
+                    experienceBuffer[experienceBuffer.size - 1] = penalizedExperience
+                }
+                
+                // Let the agent learn from the corrected experience
+                agent.learn(penalizedExperience)
+            }
         }
         
         // Batch training if enough experiences

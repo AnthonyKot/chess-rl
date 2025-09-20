@@ -29,28 +29,28 @@ This plan addresses the critical game state detection bug discovered in the exis
   - Add comprehensive test cases for edge cases in game termination
   - _Requirements: 3, 6_
 
-- [ ] 3. Fix Reward Signal Integration
+- [x] 3. Fix Reward Signal Integration
   - Update ChessEnvironment to properly handle different termination reasons
   - Implement step-limit penalties that discourage artificially long games
   - Ensure RL agents receive correct reward signals for wins, losses, legitimate draws, and step-limited games
   - Test reward assignment with various game scenarios
   - _Requirements: 7_
 
-- [ ] 4. Validate Self-Play Training Pipeline
+- [x] 4. Validate Self-Play Training Pipeline
   - Test that fixed game state detection works correctly in self-play scenarios
   - Verify experience collection captures proper rewards for different game outcomes
   - Ensure training metrics reflect actual learning progress rather than artificial draw inflation
   - Run small-scale training validation to confirm agents can learn basic chess concepts
   - _Requirements: 8_
 
-- [ ] 5. Implement Robust Training Validation
+- [x] 5. Implement Robust Training Validation
   - Add training diagnostics to detect when agents are learning vs. getting stuck
   - Implement baseline evaluation against simple heuristic opponents
   - Create training progress monitoring that tracks real chess improvement
   - Add early stopping and training issue detection
   - _Requirements: 11_
 
-- [ ] 6. Scale Up Self-Play Training
+- [x] 6. Scale Up Self-Play Training
   - Increase training scale once basic learning is validated
   - Implement efficient experience collection and batch training
   - Add comprehensive training monitoring and checkpointing

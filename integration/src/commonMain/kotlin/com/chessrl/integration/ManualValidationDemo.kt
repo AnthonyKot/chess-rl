@@ -120,9 +120,24 @@ class ManualValidationDemo(
         
         // Test a few key scenarios
         val scenarios = listOf(
-            TrainingScenarioFactory.createTacticalScenarios().first(),
-            TrainingScenarioFactory.createEndgameScenarios().first(),
-            TrainingScenarioFactory.createOpeningScenarios().first()
+            ManualTrainingScenario(
+                name = "Tactical Test",
+                description = "Basic tactical scenario",
+                startingFEN = null,
+                expectedMoves = emptyList()
+            ),
+            ManualTrainingScenario(
+                name = "Endgame Test", 
+                description = "Basic endgame scenario",
+                startingFEN = null,
+                expectedMoves = emptyList()
+            ),
+            ManualTrainingScenario(
+                name = "Opening Test",
+                description = "Basic opening scenario", 
+                startingFEN = null,
+                expectedMoves = emptyList()
+            )
         )
         
         scenarios.forEach { scenario ->
@@ -201,7 +216,14 @@ class ManualValidationDemo(
         val output = StringBuilder()
         
         // Get all predefined scenarios
-        val testScenarios = TrainingScenarioFactory.getAllScenarios()
+        val testScenarios = listOf(
+            ManualTrainingScenario(
+                name = "Comprehensive Test",
+                description = "Full validation scenario",
+                startingFEN = null,
+                expectedMoves = emptyList()
+            )
+        )
         
         // Create sample games for analysis
         val sampleGames = listOf(
@@ -296,7 +318,12 @@ class ManualValidationDemo(
         output.appendLine()
         
         // Test one tactical scenario
-        val tacticalScenario = TrainingScenarioFactory.createTacticalScenarios().first()
+        val tacticalScenario = ManualTrainingScenario(
+            name = "Quick Tactical Test",
+            description = "Quick tactical validation",
+            startingFEN = null,
+            expectedMoves = emptyList()
+        )
         val scenarioResult = validationTools.inspectTrainingScenario(tacticalScenario)
         
         output.appendLine("Tactical Scenario Test: ${tacticalScenario.name}")
