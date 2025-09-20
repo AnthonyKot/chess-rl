@@ -294,7 +294,7 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Provide clear usage examples and help text
   - _Requirements: 9_
 
-- [ ] 7.1 Create Simplified CLI Interface
+- [x] 7.1 Create Simplified CLI Interface
   - **Prerequisites**: Use WORKFLOW_CONSOLIDATION.md CLI consolidation plan
   - Replace legacy CLIRunner with simple entry points using ConfigParser.parseArgs(args)
   - Implement ChessRLCLI with 3 main commands: train, evaluate, play
@@ -304,14 +304,14 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Provide clear help text with usage examples
   - _Requirements: 9_
 
-- [ ] 7.2 Consolidate Evaluation Commands
+- [x] 7.2 Consolidate Evaluation Commands
   - Merge --eval-baseline, --eval-h2h, --eval-non-nn into single --evaluate command
   - Add options for baseline type (heuristic, minimax), opponent models, game count
   - Remove complex evaluation workflows and experimental evaluation metrics
   - Ensure evaluation produces consistent, comparable results
   - _Requirements: 9_
 
-- [ ] 7.3 Optional CLI Improvements
+- [x] 7.3 Optional CLI Improvements
   - Integrate CheckpointManager consistently (replace simple agent.save() calls)
   - Replace manual concurrency thresholds with ChessRLConfig values to avoid duplication
   - Remove ValidActionRegistry once RL framework masking covers all call sites

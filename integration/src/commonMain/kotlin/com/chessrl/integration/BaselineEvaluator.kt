@@ -1,370 +1,332 @@
 package com.chessrl.integration
 
-import com.chessrl.rl.Experience
+import com.chessrl.integration.config.ChessRLConfig
+import com.chessrl.integration.logging.ChessRLLogger
+import com.chessrl.teacher.MinimaxTeacher
 import kotlin.random.Random
 
 /**
- * Baseline Evaluator for Chess RL Training
+ * Evaluator for testing agents against baseline opponents.
  * 
- * Evaluates trained agents against various baseline opponents to measure
- * absolute performance and improvement over time.
+ * Provides consistent evaluation against heuristic and minimax opponents
+ * with proper statistical reporting.
  */
-class BaselineEvaluator(
-    private val config: BaselineEvaluationConfig = BaselineEvaluationConfig()
-) {
+class BaselineEvaluator(private val config: ChessRLConfig) {
     
-    private val random = Random(config.randomSeed)
-    
-    /**
-     * Initialize the baseline evaluator
-     */
-    fun initialize() {
-        println("🎯 Initializing Baseline Evaluator")
-        println("Configuration: $config")
-    }
+    private val logger = ChessRLLogger.forComponent("BaselineEvaluator")
+    private val actionEncoder = ChessActionEncoder()
     
     /**
-     * Evaluate agent against random opponent
+     * Evaluate agent against heuristic baseline.
      */
-    fun evaluateAgainstRandomOpponent(
-        agent: ChessAgent,
-        environment: ChessEnvironment
-    ): OpponentEvaluationResult {
+    fun evaluateAgainstHeuristic(agent: ChessAgent, games: Int): EvaluationResults {
+        logger.info("Evaluating agent against heuristic baseline over $games games")
         
-        println("🎲 Evaluating against random opponent...")
+        val environment = createEvaluationEnvironment()
+        var wins = 0
+        var draws = 0
+        var losses = 0
+        var totalLength = 0
         
-        val results = mutableListOf<GameResult>()
-        val startTime = System.currentTimeMillis()
-        
-        repeat(config.gamesPerOpponent) { gameIndex ->
-            val gameResult = playGameAgainstRandomOpponent(agent, environment, gameIndex)
-            results.add(gameResult)
+        repeat(games) { gameIndex ->
+            val agentIsWhite = gameIndex % 2 == 0 // Alternate colors
+            val result = playGameAgainstHeuristic(environment, agent, agentIsWhite)
+            
+            when (result.outcome) {
+                GameOutcome.WHITE_WINS -> if (agentIsWhite) wins++ else losses++
+                GameOutcome.BLACK_WINS -> if (!agentIsWhite) wins++ else losses++
+                else -> draws++
+            }
+            
+            totalLength += result.gameLength
         }
         
-        val winRate = results.count { it.outcome == BaselineOutcome.WIN }.toDouble() / results.size
-        val drawRate = results.count { it.outcome == BaselineOutcome.DRAW }.toDouble() / results.size
-        val lossRate = results.count { it.outcome == BaselineOutcome.LOSS }.toDouble() / results.size
-        val averageGameLength = results.map { it.moveCount }.average()
-        val averageReward = results.map { it.reward }.average()
+        val winRate = wins.toDouble() / games
+        val drawRate = draws.toDouble() / games
+        val lossRate = losses.toDouble() / games
+        val avgLength = totalLength.toDouble() / games
         
-        return OpponentEvaluationResult(
-            opponentType = "Random",
-            gamesPlayed = results.size,
+        logger.info("Heuristic evaluation complete: ${String.format("%.1f%%", winRate * 100)} win rate over $games games")
+        
+        return EvaluationResults(
+            totalGames = games,
+            wins = wins,
+            draws = draws,
+            losses = losses,
             winRate = winRate,
             drawRate = drawRate,
             lossRate = lossRate,
-            averageGameLength = averageGameLength,
-            averageReward = averageReward,
-            gameResults = results,
-            evaluationTime = System.currentTimeMillis() - startTime
+            averageGameLength = avgLength
         )
     }
     
     /**
-     * Evaluate agent against heuristic opponent
+     * Evaluate agent against minimax baseline.
      */
-    fun evaluateAgainstHeuristicOpponent(
-        agent: ChessAgent,
-        environment: ChessEnvironment
-    ): OpponentEvaluationResult {
+    fun evaluateAgainstMinimax(agent: ChessAgent, games: Int, depth: Int = 2): EvaluationResults {
+        logger.info("Evaluating agent against minimax depth-$depth over $games games")
         
-        println("🧠 Evaluating against heuristic opponent...")
+        val environment = createEvaluationEnvironment()
+        val random = config.seed?.let { Random(it) } ?: Random.Default
+        val teacher = MinimaxTeacher(depth = depth, random = random)
         
-        val results = mutableListOf<GameResult>()
-        val startTime = System.currentTimeMillis()
+        var wins = 0
+        var draws = 0
+        var losses = 0
+        var totalLength = 0
         
-        repeat(config.gamesPerOpponent) { gameIndex ->
-            val gameResult = playGameAgainstHeuristicOpponent(agent, environment, gameIndex)
-            results.add(gameResult)
+        repeat(games) { gameIndex ->
+            val agentIsWhite = gameIndex % 2 == 0 // Alternate colors
+            val result = playGameAgainstMinimax(environment, agent, teacher, agentIsWhite)
+            
+            when (result.outcome) {
+                GameOutcome.WHITE_WINS -> if (agentIsWhite) wins++ else losses++
+                GameOutcome.BLACK_WINS -> if (!agentIsWhite) wins++ else losses++
+                else -> draws++
+            }
+            
+            totalLength += result.gameLength
         }
         
-        val winRate = results.count { it.outcome == BaselineOutcome.WIN }.toDouble() / results.size
-        val drawRate = results.count { it.outcome == BaselineOutcome.DRAW }.toDouble() / results.size
-        val lossRate = results.count { it.outcome == BaselineOutcome.LOSS }.toDouble() / results.size
-        val averageGameLength = results.map { it.moveCount }.average()
-        val averageReward = results.map { it.reward }.average()
+        val winRate = wins.toDouble() / games
+        val drawRate = draws.toDouble() / games
+        val lossRate = losses.toDouble() / games
+        val avgLength = totalLength.toDouble() / games
         
-        return OpponentEvaluationResult(
-            opponentType = "Heuristic",
-            gamesPlayed = results.size,
+        logger.info("Minimax evaluation complete: ${String.format("%.1f%%", winRate * 100)} win rate over $games games")
+        
+        return EvaluationResults(
+            totalGames = games,
+            wins = wins,
+            draws = draws,
+            losses = losses,
             winRate = winRate,
             drawRate = drawRate,
             lossRate = lossRate,
-            averageGameLength = averageGameLength,
-            averageReward = averageReward,
-            gameResults = results,
-            evaluationTime = System.currentTimeMillis() - startTime
+            averageGameLength = avgLength
         )
     }
     
     /**
-     * Evaluate agent against material-focused opponent
+     * Compare two models head-to-head.
      */
-    fun evaluateAgainstMaterialOpponent(
-        agent: ChessAgent,
-        environment: ChessEnvironment
-    ): OpponentEvaluationResult {
+    fun compareModels(agentA: ChessAgent, agentB: ChessAgent, games: Int): ComparisonResults {
+        logger.info("Comparing two models over $games games")
         
-        println("♛ Evaluating against material-focused opponent...")
+        val environment = createEvaluationEnvironment()
+        var aWins = 0
+        var draws = 0
+        var bWins = 0
+        var totalLength = 0
         
-        val results = mutableListOf<GameResult>()
-        val startTime = System.currentTimeMillis()
-        
-        repeat(config.gamesPerOpponent) { gameIndex ->
-            val gameResult = playGameAgainstMaterialOpponent(agent, environment, gameIndex)
-            results.add(gameResult)
+        repeat(games) { gameIndex ->
+            val aIsWhite = gameIndex % 2 == 0 // Alternate colors
+            val result = playGameBetweenAgents(environment, agentA, agentB, aIsWhite)
+            
+            when (result.outcome) {
+                GameOutcome.WHITE_WINS -> if (aIsWhite) aWins++ else bWins++
+                GameOutcome.BLACK_WINS -> if (!aIsWhite) aWins++ else bWins++
+                else -> draws++
+            }
+            
+            totalLength += result.gameLength
         }
         
-        val winRate = results.count { it.outcome == BaselineOutcome.WIN }.toDouble() / results.size
-        val drawRate = results.count { it.outcome == BaselineOutcome.DRAW }.toDouble() / results.size
-        val lossRate = results.count { it.outcome == BaselineOutcome.LOSS }.toDouble() / results.size
-        val averageGameLength = results.map { it.moveCount }.average()
-        val averageReward = results.map { it.reward }.average()
+        val aWinRate = aWins.toDouble() / games
+        val drawRate = draws.toDouble() / games
+        val bWinRate = bWins.toDouble() / games
+        val avgLength = totalLength.toDouble() / games
         
-        return OpponentEvaluationResult(
-            opponentType = "Material",
-            gamesPlayed = results.size,
-            winRate = winRate,
+        logger.info("Model comparison complete: A=${String.format("%.1f%%", aWinRate * 100)}, B=${String.format("%.1f%%", bWinRate * 100)}")
+        
+        return ComparisonResults(
+            totalGames = games,
+            modelAWins = aWins,
+            draws = draws,
+            modelBWins = bWins,
+            modelAWinRate = aWinRate,
             drawRate = drawRate,
-            lossRate = lossRate,
-            averageGameLength = averageGameLength,
-            averageReward = averageReward,
-            gameResults = results,
-            evaluationTime = System.currentTimeMillis() - startTime
+            modelBWinRate = bWinRate,
+            averageGameLength = avgLength
         )
     }
     
-    // Private game playing methods
+    /**
+     * Create evaluation environment with consistent settings.
+     */
+    private fun createEvaluationEnvironment(): ChessEnvironment {
+        return ChessEnvironment(
+            rewardConfig = ChessRewardConfig(
+                winReward = config.winReward,
+                lossReward = config.lossReward,
+                drawReward = config.drawReward,
+                stepPenalty = 0.0, // No step penalty for evaluation
+                stepLimitPenalty = config.stepLimitPenalty,
+                enablePositionRewards = false, // Keep evaluation simple
+                gameLengthNormalization = false,
+                maxGameLength = config.maxStepsPerGame,
+                enableEarlyAdjudication = false, // Let games play out naturally
+                resignMaterialThreshold = 15, // Conservative resignation
+                noProgressPlies = 100 // Allow longer games
+            )
+        )
+    }
     
-    private fun playGameAgainstRandomOpponent(
-        agent: ChessAgent,
+    /**
+     * Play a single game against heuristic opponent.
+     */
+    private fun playGameAgainstHeuristic(
         environment: ChessEnvironment,
-        gameIndex: Int
+        agent: ChessAgent,
+        agentIsWhite: Boolean
     ): GameResult {
-        
-        val gameStartTime = System.currentTimeMillis()
         var state = environment.reset()
-        var totalReward = 0.0
-        var moveCount = 0
-        val maxMoves = config.maxMovesPerGame
+        var steps = 0
         
-        // Randomly assign colors (agent plays both white and black)
-        val agentPlaysWhite = gameIndex % 2 == 0
-        
-        while (!environment.isTerminal(state) && moveCount < maxMoves) {
+        while (!environment.isTerminal(state) && steps < config.maxStepsPerGame) {
             val validActions = environment.getValidActions(state)
             if (validActions.isEmpty()) break
             
-            val action = if ((moveCount % 2 == 0) == agentPlaysWhite) {
-                // Agent's turn
+            val isWhiteToMove = environment.getCurrentBoard().getActiveColor().name.contains("WHITE")
+            val agentTurn = (isWhiteToMove && agentIsWhite) || (!isWhiteToMove && !agentIsWhite)
+            
+            val action = if (agentTurn) {
                 agent.selectAction(state, validActions)
             } else {
-                // Random opponent's turn
-                validActions[random.nextInt(validActions.size)]
+                // Use heuristic opponent
+                val heuristicAction = BaselineHeuristicOpponent.selectAction(environment, validActions)
+                if (heuristicAction >= 0) heuristicAction else validActions.first()
             }
             
-            val stepResult = environment.step(action)
-            state = stepResult.nextState
-            
-            if ((moveCount % 2 == 0) == agentPlaysWhite) {
-                totalReward += stepResult.reward
-            }
-            
-            moveCount++
+            val step = environment.step(action)
+            state = step.nextState
+            steps++
         }
         
-        // Determine game outcome from agent's perspective
-        val outcome = determineGameOutcome(state, environment, agentPlaysWhite, totalReward)
+        val outcome = when {
+            environment.getGameStatus().name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
+            environment.getGameStatus().name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+            else -> GameOutcome.DRAW
+        }
         
-        return GameResult(
-            gameId = "random_$gameIndex",
-            outcome = outcome,
-            moveCount = moveCount,
-            reward = totalReward,
-            gameLength = System.currentTimeMillis() - gameStartTime,
-            agentPlayedWhite = agentPlaysWhite
-        )
+        return GameResult(outcome, steps)
     }
     
-    private fun playGameAgainstHeuristicOpponent(
-        agent: ChessAgent,
+    /**
+     * Play a single game against minimax opponent.
+     */
+    private fun playGameAgainstMinimax(
         environment: ChessEnvironment,
-        gameIndex: Int
+        agent: ChessAgent,
+        teacher: MinimaxTeacher,
+        agentIsWhite: Boolean
     ): GameResult {
-        
-        val gameStartTime = System.currentTimeMillis()
         var state = environment.reset()
-        var totalReward = 0.0
-        var moveCount = 0
-        val maxMoves = config.maxMovesPerGame
+        var steps = 0
         
-        // Randomly assign colors
-        val agentPlaysWhite = gameIndex % 2 == 0
-        
-        while (!environment.isTerminal(state) && moveCount < maxMoves) {
+        while (!environment.isTerminal(state) && steps < config.maxStepsPerGame) {
             val validActions = environment.getValidActions(state)
             if (validActions.isEmpty()) break
             
-            val action = if ((moveCount % 2 == 0) == agentPlaysWhite) {
-                // Agent's turn
+            val isWhiteToMove = environment.getCurrentBoard().getActiveColor().name.contains("WHITE")
+            val agentTurn = (isWhiteToMove && agentIsWhite) || (!isWhiteToMove && !agentIsWhite)
+            
+            val action = if (agentTurn) {
                 agent.selectAction(state, validActions)
             } else {
-                // Heuristic opponent's turn
-                BaselineHeuristicOpponent.selectAction(environment, validActions)
+                // Use minimax opponent
+                val move = teacher.act(environment.getCurrentBoard()).bestMove
+                val actionIndex = actionEncoder.encodeMove(move)
+                if (actionIndex in validActions) actionIndex else validActions.first()
             }
             
-            val stepResult = environment.step(action)
-            state = stepResult.nextState
-            
-            if ((moveCount % 2 == 0) == agentPlaysWhite) {
-                totalReward += stepResult.reward
-            }
-            
-            moveCount++
+            val step = environment.step(action)
+            state = step.nextState
+            steps++
         }
         
-        val outcome = determineGameOutcome(state, environment, agentPlaysWhite, totalReward)
+        val outcome = when {
+            environment.getGameStatus().name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
+            environment.getGameStatus().name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+            else -> GameOutcome.DRAW
+        }
         
-        return GameResult(
-            gameId = "heuristic_$gameIndex",
-            outcome = outcome,
-            moveCount = moveCount,
-            reward = totalReward,
-            gameLength = System.currentTimeMillis() - gameStartTime,
-            agentPlayedWhite = agentPlaysWhite
-        )
+        return GameResult(outcome, steps)
     }
     
-    private fun playGameAgainstMaterialOpponent(
-        agent: ChessAgent,
+    /**
+     * Play a single game between two agents.
+     */
+    private fun playGameBetweenAgents(
         environment: ChessEnvironment,
-        gameIndex: Int
+        agentA: ChessAgent,
+        agentB: ChessAgent,
+        aIsWhite: Boolean
     ): GameResult {
-        
-        val gameStartTime = System.currentTimeMillis()
         var state = environment.reset()
-        var totalReward = 0.0
-        var moveCount = 0
-        val maxMoves = config.maxMovesPerGame
+        var steps = 0
         
-        // Randomly assign colors
-        val agentPlaysWhite = gameIndex % 2 == 0
-        
-        while (!environment.isTerminal(state) && moveCount < maxMoves) {
+        while (!environment.isTerminal(state) && steps < config.maxStepsPerGame) {
             val validActions = environment.getValidActions(state)
             if (validActions.isEmpty()) break
             
-            val action = if ((moveCount % 2 == 0) == agentPlaysWhite) {
-                // Agent's turn
-                agent.selectAction(state, validActions)
+            val isWhiteToMove = environment.getCurrentBoard().getActiveColor().name.contains("WHITE")
+            val aTurn = (isWhiteToMove && aIsWhite) || (!isWhiteToMove && !aIsWhite)
+            
+            val action = if (aTurn) {
+                agentA.selectAction(state, validActions)
             } else {
-                // Material-focused opponent (simplified heuristic focusing on captures)
-                selectMaterialFocusedAction(environment, validActions)
+                agentB.selectAction(state, validActions)
             }
             
-            val stepResult = environment.step(action)
-            state = stepResult.nextState
-            
-            if ((moveCount % 2 == 0) == agentPlaysWhite) {
-                totalReward += stepResult.reward
-            }
-            
-            moveCount++
+            val step = environment.step(action)
+            state = step.nextState
+            steps++
         }
         
-        val outcome = determineGameOutcome(state, environment, agentPlaysWhite, totalReward)
-        
-        return GameResult(
-            gameId = "material_$gameIndex",
-            outcome = outcome,
-            moveCount = moveCount,
-            reward = totalReward,
-            gameLength = System.currentTimeMillis() - gameStartTime,
-            agentPlayedWhite = agentPlaysWhite
-        )
-    }
-    
-    private fun selectMaterialFocusedAction(
-        environment: ChessEnvironment,
-        validActions: List<Int>
-    ): Int {
-        // Simple material-focused strategy: prefer captures, then random
-        // This is a simplified version - in practice, would analyze each move
-        
-        if (validActions.isEmpty()) return -1
-        
-        // For now, use the heuristic opponent as material-focused
-        // In a full implementation, this would specifically focus on material gain
-        return BaselineHeuristicOpponent.selectAction(environment, validActions)
-    }
-    
-    private fun determineGameOutcome(
-        state: DoubleArray,
-        environment: ChessEnvironment,
-        agentPlaysWhite: Boolean,
-        totalReward: Double
-    ): BaselineOutcome {
-        
-        if (!environment.isTerminal(state)) {
-            // Game didn't finish naturally (hit move limit)
-            return when {
-                totalReward > 0.1 -> BaselineOutcome.WIN
-                totalReward < -0.1 -> BaselineOutcome.LOSS
-                else -> BaselineOutcome.DRAW
-            }
+        val outcome = when {
+            environment.getGameStatus().name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
+            environment.getGameStatus().name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+            else -> GameOutcome.DRAW
         }
         
-        // Use reward to determine outcome
-        return when {
-            totalReward > 0.5 -> BaselineOutcome.WIN
-            totalReward < -0.5 -> BaselineOutcome.LOSS
-            else -> BaselineOutcome.DRAW
-        }
+        return GameResult(outcome, steps)
     }
 }
 
 /**
- * Configuration for baseline evaluation
+ * Results from evaluating an agent against a baseline.
  */
-data class BaselineEvaluationConfig(
-    val gamesPerOpponent: Int = 20,
-    val maxMovesPerGame: Int = 200,
-    val randomSeed: Int = 42,
-    val timeoutPerGame: Long = 30000L // 30 seconds per game
-)
-
-/**
- * Result of evaluation against a specific opponent type
- */
-data class OpponentEvaluationResult(
-    val opponentType: String,
-    val gamesPlayed: Int,
+data class EvaluationResults(
+    val totalGames: Int,
+    val wins: Int,
+    val draws: Int,
+    val losses: Int,
     val winRate: Double,
     val drawRate: Double,
     val lossRate: Double,
-    val averageGameLength: Double,
-    val averageReward: Double,
-    val gameResults: List<GameResult>,
-    val evaluationTime: Long
+    val averageGameLength: Double
 )
 
 /**
- * Individual game result
+ * Results from comparing two models.
  */
-data class GameResult(
-    val gameId: String,
-    val outcome: BaselineOutcome,
-    val moveCount: Int,
-    val reward: Double,
-    val gameLength: Long,
-    val agentPlayedWhite: Boolean
+data class ComparisonResults(
+    val totalGames: Int,
+    val modelAWins: Int,
+    val draws: Int,
+    val modelBWins: Int,
+    val modelAWinRate: Double,
+    val drawRate: Double,
+    val modelBWinRate: Double,
+    val averageGameLength: Double
 )
 
 /**
- * Game outcome from agent's perspective
+ * Result from a single game.
  */
-enum class BaselineOutcome {
-    WIN,
-    DRAW,
-    LOSS
-}
+private data class GameResult(
+    val outcome: GameOutcome,
+    val gameLength: Int
+)
+
