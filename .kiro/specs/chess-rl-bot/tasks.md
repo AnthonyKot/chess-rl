@@ -216,7 +216,7 @@ This implementation plan provides a systematic approach to refactoring the chess
     - integration/src/commonMain/kotlin/com/chessrl/integration/DashboardDataClasses.kt
       (These support a larger monitoring stack; the consolidated pipeline uses MetricsCollector.)
 
-- [ ] 5. Implement Simplified and Reliable Architecture
+- [x] 5. Implement Simplified and Reliable Architecture
   - Investigate and implement the simplest reliable approach for training parallelism
   - Implement proper error handling with Result types and exception management
   - Add structured logging with consistent format and appropriate levels
@@ -254,28 +254,28 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Ensure graceful degradation when components fail
   - _Requirements: 4, 6_
 
-- [ ] 6. Essential Test Suite Implementation
+- [x] 6. Essential Test Suite Implementation
   - Remove flaky, performance-sensitive, and environment-dependent tests
   - Create fast, reliable unit tests for core chess logic, neural network, and RL algorithms
   - Implement integration tests for training pipeline and evaluation
   - Add regression tests for deterministic behavior with fixed seeds
   - _Requirements: 5_
 
-- [ ] 6.1 Core Unit Tests
+- [x] 6.1 Core Unit Tests
   - Create ChessBoardTest for legal move validation, checkmate detection, special moves
   - Implement NeuralNetworkTest for XOR training, serialization, gradient updates
   - Add DQNTest for Q-value updates, experience replay, action selection
   - Ensure all tests run quickly (<1s each) and reliably in CI
   - _Requirements: 5_
 
-- [ ] 6.2 Integration Tests
+- [x] 6.2 Integration Tests
   - Create TrainingIntegrationTest for end-to-end training cycle completion
   - Implement EvaluationIntegrationTest for baseline comparison functionality
   - Add ConfigurationTest for parsing and validation of all profiles
   - Test concurrent self-play with error handling and recovery
   - _Requirements: 5_
 
-- [ ] 6.3 Regression Tests
+- [x] 6.3 Regression Tests
   - Create RegressionTest for deterministic results with fixed seeds
   - Add ChessRegressionTest for complex positions from PGN database
   - Implement performance regression tests for training speed
