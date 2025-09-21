@@ -33,7 +33,7 @@ Note: These metrics reflect the state before integration consolidation. They are
 ### Cyclomatic Complexity (Key Classes)
 | Class | File | Complexity Indicators | Estimated Complexity |
 |-------|------|----------------------|---------------------|
-| CLIRunner | integration/src/jvmMain/kotlin/com/chessrl/integration/CLIRunner.kt | 200 decision points | Very High (>50) |
+| Legacy CLIRunner | integration/src/jvmMain/kotlin/com/chessrl/integration/CLIRunner.kt (removed) | 200 decision points | Very High (>50) |
 | ChessTrainingPipeline | integration/src/commonMain/kotlin/com/chessrl/integration/ChessTrainingPipeline.kt | 22 decision points | Moderate (15-25) |
 
 ### Module Complexity Analysis

@@ -11,35 +11,95 @@ package com.chessrl.integration.config
  */
 data class ChessRLConfig(
     // Neural Network Configuration (3 parameters)
-    /** Network architecture - impacts model capacity and training speed */
+    /** 
+     * Network architecture - impacts model capacity and training speed.
+     * Larger networks learn more complex patterns but train slower.
+     * Recommended: [256,128] for fast training, [512,256,128] for balanced, [768,512,256] for maximum capacity.
+     */
     val hiddenLayers: List<Int> = listOf(512, 256, 128),
-    /** Learning rate for neural network training - critical for convergence */
-    val learningRate: Double = 0.001,
-    /** Batch size for training - affects memory usage and gradient stability */
+    
+    /** 
+     * Learning rate for neural network training - critical for convergence.
+     * Higher values learn faster but may be unstable. Lower values are more stable but slower.
+     * Recommended: 0.0005 for balanced, 0.0003 for stable, 0.001 for aggressive.
+     */
+    val learningRate: Double = 0.0005,
+    
+    /** 
+     * Batch size for training - affects memory usage and gradient stability.
+     * Larger batches provide more stable gradients but use more memory.
+     * Recommended: 32-128 depending on available memory.
+     */
     val batchSize: Int = 64,
     
-    // RL Training Configuration (3 parameters)
-    /** Exploration rate for epsilon-greedy action selection */
-    val explorationRate: Double = 0.1,
-    /** Frequency of target network updates in DQN algorithm */
-    val targetUpdateFrequency: Int = 100,
-    /** Enable Double DQN target evaluation */
-    val doubleDqn: Boolean = false,
-    /** Discount factor for future rewards */
+    // RL Training Configuration (6 parameters)
+    /** 
+     * Exploration rate for epsilon-greedy action selection.
+     * Higher values explore more but may play suboptimally. Lower values exploit learned knowledge.
+     * Recommended: 0.05 for balanced, 0.02 for exploitation, 0.1 for exploration.
+     */
+    val explorationRate: Double = 0.05,
+    
+    /** 
+     * Frequency of target network updates in DQN algorithm.
+     * Lower values update targets more frequently (less stable). Higher values are more stable but slower.
+     * Recommended: 200 for balanced, 100 for fast learning, 500 for stability.
+     */
+    val targetUpdateFrequency: Int = 200,
+    
+    /** 
+     * Enable Double DQN target evaluation to reduce overestimation bias.
+     * Generally improves training stability, especially with larger networks.
+     */
+    val doubleDqn: Boolean = true,
+    
+    /** 
+     * Discount factor for future rewards - how much to value future vs immediate rewards.
+     * Higher values consider long-term strategy more. Lower values focus on immediate gains.
+     * Recommended: 0.99 for chess (long-term strategy important).
+     */
     val gamma: Double = 0.99,
-    /** Maximum size of experience replay buffer */
+    
+    /** 
+     * Maximum size of experience replay buffer.
+     * Larger buffers provide more diverse training data but use more memory.
+     * Recommended: 50K for balanced, 100K+ for large-scale training.
+     */
     val maxExperienceBuffer: Int = 50000,
-    /** Replay buffer type: UNIFORM or PRIORITIZED */
+    
+    /** 
+     * Replay buffer type: UNIFORM (random sampling) or PRIORITIZED (importance sampling).
+     * PRIORITIZED can improve learning efficiency but adds computational overhead.
+     */
     val replayType: String = "UNIFORM",
     
     // Self-Play Configuration (4 parameters)
-    /** Number of self-play games per training cycle */
-    val gamesPerCycle: Int = 20,
-    /** Maximum number of concurrent self-play games */
+    /** 
+     * Number of self-play games per training cycle.
+     * More games provide more training data but take longer per cycle.
+     * Recommended: 30 for development, 50+ for production training.
+     */
+    val gamesPerCycle: Int = 30,
+    
+    /** 
+     * Maximum number of concurrent self-play games.
+     * Higher values speed up training but use more CPU/memory. Limited by available cores.
+     * Recommended: 2-4 for development, 4-8 for production (based on CPU cores).
+     */
     val maxConcurrentGames: Int = 4,
-    /** Maximum steps per game before forced termination */
-    val maxStepsPerGame: Int = 80,
-    /** Maximum number of training cycles */
+    
+    /** 
+     * Maximum steps per game before forced termination.
+     * Prevents infinite games but may cut off legitimate long games.
+     * Recommended: 100-150 moves (50-75 moves per side) for better learning.
+     */
+    val maxStepsPerGame: Int = 120,
+    
+    /** 
+     * Maximum number of training cycles.
+     * More cycles allow more learning but take longer overall.
+     * Recommended: 10-50 for development, 100-500 for production.
+     */
     val maxCycles: Int = 100,
     
     // Reward Structure (4 parameters)
@@ -47,10 +107,10 @@ data class ChessRLConfig(
     val winReward: Double = 1.0,
     /** Reward for losing a game */
     val lossReward: Double = -1.0,
-    /** Reward for drawing a game (negative to discourage draws) */
-    val drawReward: Double = -0.2,
+    /** Reward for drawing a game (neutral to allow natural play) */
+    val drawReward: Double = 0.0,
     /** Penalty when game reaches step limit (encourages decisive play) */
-    val stepLimitPenalty: Double = -1.0,
+    val stepLimitPenalty: Double = -0.5,
     
     // System Configuration (4 parameters)
     /** Random seed for reproducible training (null for random) */
@@ -68,6 +128,9 @@ data class ChessRLConfig(
     val checkpointCompressionEnabled: Boolean = true,
     val checkpointAutoCleanupEnabled: Boolean = true,
 
+    // Training controls
+    val maxBatchesPerCycle: Int = 100,
+    
     // Logging controls (lightweight)
     val logInterval: Int = 1,
     val summaryOnly: Boolean = false,
@@ -106,6 +169,9 @@ data class ChessRLConfig(
         }
         if (gamma <= 0.0 || gamma >= 1.0) {
             errors.add("Gamma must be in (0,1), got: $gamma")
+        }
+        if (maxBatchesPerCycle <= 0) {
+            errors.add("Max batches per cycle must be positive, got: $maxBatchesPerCycle")
         }
         if (logInterval <= 0) {
             errors.add("Log interval must be positive, got: $logInterval")

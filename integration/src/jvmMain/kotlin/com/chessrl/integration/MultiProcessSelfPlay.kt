@@ -16,7 +16,7 @@ import kotlin.io.path.deleteRecursively
  */
 class MultiProcessSelfPlay(
     private val config: ChessRLConfig,
-    private val javaExecutable: String = System.getProperty("java.home") + "/bin/java"
+    private val defaultJavaExecutable: String = System.getProperty("java.home") + "/bin/java"
 ) {
     
     // Simple JSON handling without kotlinx.serialization for now
@@ -65,8 +65,9 @@ class MultiProcessSelfPlay(
 
         fun startOne(id: Int): ProcessInfo? {
             val outputFile = tempDir.resolve("game_$id.json")
+            val java = findJavaExecutable() ?: return null
             val pb = ProcessBuilder(
-                javaExecutable,
+                java,
                 "-cp", classpath,
                 "com.chessrl.integration.SelfPlayWorker",
                 "--model", modelPath,
@@ -115,6 +116,35 @@ class MultiProcessSelfPlay(
 
         logger.debug("Started and completed ${processes.size} worker processes in batched mode (concurrency=$concurrency)")
         return processes
+    }
+
+    // -------------------- Availability & Java resolution --------------------
+
+    private var cachedJavaExecutable: String? = null
+
+    private fun findJavaExecutable(): String? {
+        val cached = cachedJavaExecutable
+        if (cached != null) return cached
+        val candidates = mutableListOf<String>()
+        candidates += defaultJavaExecutable
+        System.getenv("JAVA_HOME")?.let { candidates += (it.trimEnd('/', '\\') + "/bin/java") }
+        candidates += "java"
+        for (cand in candidates) {
+            if (probeJava(cand)) {
+                cachedJavaExecutable = cand
+                logger.debug("Multi-process: using Java executable: $cand")
+                return cand
+            }
+        }
+        logger.warn("Multi-process not available: no working Java found. Tried: ${candidates.joinToString(", ")}")
+        return null
+    }
+
+    private fun probeJava(exe: String): Boolean {
+        return try {
+            val p = ProcessBuilder(exe, "-version").redirectErrorStream(true).start()
+            if (!p.waitFor(5, TimeUnit.SECONDS)) { p.destroyForcibly(); false } else p.exitValue() == 0
+        } catch (_: Exception) { false }
     }
     
     private fun collectResults(processes: List<ProcessInfo>, tempDir: Path): List<SelfPlayGameResult> {
@@ -245,17 +275,11 @@ class MultiProcessSelfPlay(
         return out
     }
     
+
     /**
      * Check if multi-process execution is available on this system
      */
-    fun isAvailable(): Boolean {
-        return try {
-            val javaFile = File(javaExecutable)
-            javaFile.exists() && javaFile.canExecute()
-        } catch (e: Exception) {
-            false
-        }
-    }
+    fun isAvailable(): Boolean = findJavaExecutable() != null
     
     /**
      * Get estimated speedup factor compared to sequential execution

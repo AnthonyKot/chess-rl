@@ -47,7 +47,7 @@ class NoiseReductionIntegrationTest {
         val validator = TrainingValidator()
         
         // Create training metrics that will trigger validation issues
-        val badMetrics = TrainingMetrics(
+        val badMetrics = com.chessrl.integration.TrainingMetrics(
             batchCount = 10,
             averageLoss = Double.NaN, // This should trigger a validation issue
             averageGradientNorm = 15.0, // This should trigger exploding gradients
@@ -121,8 +121,8 @@ class NoiseReductionIntegrationTest {
     
     // Helper methods
     
-    private fun createTrainingMetrics(): TrainingMetrics {
-        return TrainingMetrics(
+    private fun createTrainingMetrics(): com.chessrl.integration.TrainingMetrics {
+        return com.chessrl.integration.TrainingMetrics(
             batchCount = 10,
             averageLoss = 1.0,
             averageGradientNorm = 2.0,

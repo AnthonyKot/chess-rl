@@ -400,7 +400,28 @@ class ChessPositionEvaluator {
 }
 
 /**
- * Chess environment implementation for RL training
+ * Chess environment wrapper for reinforcement learning.
+ * 
+ * Converts chess game state to neural network input format and handles
+ * action decoding from network outputs to legal chess moves. Provides
+ * the standard RL environment interface for training agents.
+ * 
+ * State Encoding:
+ * - 839-dimensional state vector representing chess position
+ * - 8x8x12 board representation plus additional features
+ * - Includes castling rights, en passant, and move counts
+ * 
+ * Action Space:
+ * - 4096 possible actions (64x64 from-to square combinations)
+ * - Action masking ensures only legal moves are selected
+ * - Automatic fallback to random legal move if invalid action
+ * 
+ * Reward Structure:
+ * - Terminal rewards based on game outcomes (win/loss/draw)
+ * - Optional step penalties to encourage efficient play
+ * - Configurable reward shaping for position evaluation
+ * 
+ * @param rewardConfig Configuration for reward structure and game rules
  */
 class ChessEnvironment(
     private val rewardConfig: ChessRewardConfig = ChessRewardConfig()
@@ -426,6 +447,14 @@ class ChessEnvironment(
     private var checkCount = 0
     private var previousMaterialValue = 0
     
+    /**
+     * Resets the chess environment to the starting position.
+     * 
+     * Initializes a new chess game, clears game history, and resets
+     * all tracking variables for metrics and adjudication.
+     * 
+     * @return 839-dimensional encoded starting position
+     */
     override fun reset(): DoubleArray {
         chessBoard = ChessBoard()
         gameHistory.clear()
@@ -446,6 +475,17 @@ class ChessEnvironment(
         return stateEncoder.encode(chessBoard)
     }
     
+    /**
+     * Executes a chess move and returns the resulting state.
+     * 
+     * Decodes the action index to a chess move, validates legality,
+     * executes the move, and computes rewards based on game outcome.
+     * Applies action masking to ensure only legal moves are executed.
+     * 
+     * @param action Action index in range [0, 4096)
+     * @return StepResult containing next state, reward, done flag, and metadata
+     * @throws IllegalArgumentException if action index is out of range
+     */
     override fun step(action: Int): StepResult<DoubleArray> {
         require(action in 0 until ChessActionEncoder.ACTION_SPACE_SIZE) {
             "Action index $action out of range [0, ${ChessActionEncoder.ACTION_SPACE_SIZE})"

@@ -1,5 +1,6 @@
 package com.chessrl.integration
 
+import com.chessrl.integration.config.ChessRLConfig
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
@@ -22,11 +23,13 @@ class StepCountTrackingTest {
             experiences = emptyList(),
             chessMetrics = ChessMetrics(
                 gameLength = 42,
+                totalMaterialValue = 39,
+                piecesInCenter = 2,
+                developedPieces = 4,
+                kingSafetyScore = 0.8,
+                moveCount = 42,
                 captureCount = 5,
-                checkCount = 2,
-                castlingCount = 2,
-                promotionCount = 0,
-                enPassantCount = 0
+                checkCount = 2
             ),
             finalPosition = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
         )
@@ -137,11 +140,13 @@ class StepCountTrackingTest {
             experiences = emptyList(),
             chessMetrics = ChessMetrics(
                 gameLength = gameLength,
+                totalMaterialValue = 39,
+                piecesInCenter = 2,
+                developedPieces = 3,
+                kingSafetyScore = 0.7,
+                moveCount = gameLength,
                 captureCount = 3,
-                checkCount = 1,
-                castlingCount = 1,
-                promotionCount = 0,
-                enPassantCount = 0
+                checkCount = 1
             ),
             finalPosition = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
         )

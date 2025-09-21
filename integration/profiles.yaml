@@ -11,26 +11,27 @@ profiles:
   # Optimized for rapid development iteration and testing
   fast-debug:
     # Self-Play Configuration (reduced for speed)
-    gamesPerCycle: 5
+    gamesPerCycle: 10
     maxCycles: 10
     maxConcurrentGames: 2
-    maxStepsPerGame: 40
+    maxStepsPerGame: 60
     
     # Neural Network (smaller for faster training)
     hiddenLayers: [256, 128]
     learningRate: 0.001
     batchSize: 32
     
-    # RL Training (standard settings)
-    explorationRate: 0.1
-    targetUpdateFrequency: 100
+    # RL Training (optimized for learning)
+    explorationRate: 0.08
+    targetUpdateFrequency: 150
+    doubleDqn: true
     maxExperienceBuffer: 10000
     
-    # Rewards (standard structure)
+    # Rewards (optimized for learning)
     winReward: 1.0
     lossReward: -1.0
-    drawReward: -0.2
-    stepLimitPenalty: -1.0
+    drawReward: 0.0
+    stepLimitPenalty: -0.5
     
     # System (frequent checkpoints for debugging)
     checkpointInterval: 2
@@ -44,23 +45,24 @@ profiles:
     gamesPerCycle: 50
     maxCycles: 200
     maxConcurrentGames: 8
-    maxStepsPerGame: 120
+    maxStepsPerGame: 150
     
     # Neural Network (larger for better capacity)
     hiddenLayers: [768, 512, 256]
-    learningRate: 0.0005  # Lower for stability with larger network
+    learningRate: 0.0003  # Lower for stability with larger network
     batchSize: 64
     
-    # RL Training (optimized for larger network)
-    explorationRate: 0.15
-    targetUpdateFrequency: 100
-    maxExperienceBuffer: 50000
+    # RL Training (optimized for stable learning)
+    explorationRate: 0.03
+    targetUpdateFrequency: 300
+    doubleDqn: true
+    maxExperienceBuffer: 100000
     
-    # Rewards (anti-draw incentive for competitive play)
+    # Rewards (balanced for competitive play)
     winReward: 1.0
     lossReward: -1.0
-    drawReward: -0.2
-    stepLimitPenalty: -1.0
+    drawReward: 0.0
+    stepLimitPenalty: -0.3
     
     # System (standard checkpointing)
     checkpointInterval: 5
@@ -74,23 +76,24 @@ profiles:
     gamesPerCycle: 20
     maxCycles: 1
     maxConcurrentGames: 1  # Single-threaded for consistency
-    maxStepsPerGame: 80
+    maxStepsPerGame: 120
     
     # Neural Network (standard settings)
     hiddenLayers: [512, 256, 128]
-    learningRate: 0.001
+    learningRate: 0.0005
     batchSize: 64
     
-    # RL Training (standard settings)
-    explorationRate: 0.1
-    targetUpdateFrequency: 100
+    # RL Training (no exploration for evaluation)
+    explorationRate: 0.0
+    targetUpdateFrequency: 200
+    doubleDqn: true
     maxExperienceBuffer: 50000
     
-    # Rewards (standard structure)
+    # Rewards (balanced structure)
     winReward: 1.0
     lossReward: -1.0
-    drawReward: -0.2
-    stepLimitPenalty: -1.0
+    drawReward: 0.0
+    stepLimitPenalty: -0.5
     
     # System (deterministic evaluation)
     seed: 12345  # Fixed seed for reproducible results
@@ -100,14 +103,21 @@ profiles:
 
 # Profile Usage Examples:
 #
-# Fast development iteration:
+# Fast development iteration (optimized for learning):
 #   --profile fast-debug
 #
-# Production training:
+# Production training (stable, competitive agents):
 #   --profile long-train --seed 12345
 #
-# Evaluation runs:
+# Evaluation runs (no exploration, deterministic):
 #   --profile eval-only --evaluation-games 1000
 #
 # Custom configuration:
-#   --profile long-train --games-per-cycle 30 --learning-rate 0.002
+#   --profile long-train --games-per-cycle 30 --learning-rate 0.0002
+#
+# Key Improvements in These Profiles:
+# - Neutral draw reward (0.0) to allow natural play
+# - Lower exploration rates for more exploitation of learned knowledge  
+# - Double DQN enabled for better value estimation
+# - Longer games allowed (60-150 steps) for better learning
+# - More conservative learning rates for stability

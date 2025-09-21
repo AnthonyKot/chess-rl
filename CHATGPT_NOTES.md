@@ -459,7 +459,7 @@ What Works (Real)
 - Neural network core: FeedforwardNetwork with layers/optimizers; adapter RealNeuralNetworkWrapper adds TrainableNeuralNetwork + SynchronizableNetwork.
 - DQN path: Uses batch training via trainBatch when available; target sync implemented through SynchronizableNetwork copy; end‑to‑end smoke test (DQNLearningSmokeTest) demonstrates Q‑value change.
 - Self‑play result model: SelfPlayGameResult + EpisodeTerminationReason used consistently.
-- Environment + encoding: 776‑feature state, 4096 action encoding; invalid action yields negative reward (tested).
+- Environment + encoding: 839‑feature state, 4096 action encoding; invalid action yields negative reward (tested).
 - Seed/determinism: SeedManager + seeded strategies/replay buffers aligned to rl‑framework interfaces.
 - Training pipeline scaffold: ChessTrainingPipeline runs episodes, buffers experiences, and triggers agent.forceUpdate().
 
