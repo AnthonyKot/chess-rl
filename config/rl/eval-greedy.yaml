@@ -1,0 +1,3 @@
+# Evaluation profile: greedy policy (no exploration)
+explorationRate: 0.0
+

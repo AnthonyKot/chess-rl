@@ -167,7 +167,9 @@ object SelfPlayWorker {
             hiddenLayers = config.hiddenLayers,
             learningRate = config.learningRate,
             explorationRate = config.explorationRate,
-            config = agentConfig
+            config = agentConfig,
+            replayType = config.replayType,
+            gamma = config.gamma
         )
         
         // Load model weights if file exists
@@ -193,8 +195,8 @@ object SelfPlayWorker {
     }
     
     private fun saveResult(result: WorkerGameResult, outputFile: String) {
-        // Simple JSON serialization without kotlinx.serialization
-        val jsonString = buildString {
+        // Write summary JSON
+        val summary = buildString {
             appendLine("{")
             appendLine("  \"gameId\": ${result.gameId},")
             appendLine("  \"gameLength\": ${result.gameLength},")
@@ -205,11 +207,28 @@ object SelfPlayWorker {
             appendLine("  \"finalPosition\": \"${result.finalPosition}\",")
             appendLine("  \"success\": ${result.success}")
             if (result.errorMessage != null) {
-                appendLine("  \"errorMessage\": \"${result.errorMessage}\"")
+                appendLine(",\n  \"errorMessage\": \"${result.errorMessage}\"")
             }
             appendLine("}")
         }
-        File(outputFile).writeText(jsonString)
+        File(outputFile).writeText(summary)
+
+        // Write experiences as NDJSON (one JSON object per line)
+        val ndjsonPath = "$outputFile.ndjson"
+        File(ndjsonPath).bufferedWriter().use { out ->
+            for (exp in result.experiences) {
+                val s = exp.state.joinToString(prefix = "[", postfix = "]") { d -> d.toString() }
+                val ns = exp.nextState.joinToString(prefix = "[", postfix = "]") { d -> d.toString() }
+                val line = "{" +
+                        "\"s\":$s," +
+                        "\"a\":${exp.action}," +
+                        "\"r\":${exp.reward}," +
+                        "\"ns\":$ns," +
+                        "\"d\":${exp.done}" +
+                        "}"
+                out.appendLine(line)
+            }
+        }
     }
 }
 

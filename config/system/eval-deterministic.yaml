@@ -1,0 +1,5 @@
+# Evaluation system settings: deterministic seed and stable settings
+seed: 12345
+evaluationGames: 500
+checkpointInterval: 1
+

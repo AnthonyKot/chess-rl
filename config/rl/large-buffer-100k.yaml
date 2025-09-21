@@ -1,0 +1,3 @@
+# Larger replay buffer (requires more memory)
+maxExperienceBuffer: 100000
+

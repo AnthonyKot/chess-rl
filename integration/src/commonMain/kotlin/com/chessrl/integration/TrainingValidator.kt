@@ -1,6 +1,7 @@
 package com.chessrl.integration
 
 import com.chessrl.integration.config.ChessRLConfig
+import com.chessrl.integration.output.ValidationAggregator
 import com.chessrl.rl.*
 import kotlin.math.*
 
@@ -12,9 +13,12 @@ import kotlin.math.*
  * 
  * Provides essential validation for training stability and chess-specific metrics
  * while keeping only the most important validation checks for reliability.
+ * 
+ * Now includes ValidationAggregator integration to reduce repetitive validation spam.
  */
 class TrainingValidator(
-    private val config: ChessRLConfig = ChessRLConfig()
+    private val config: ChessRLConfig = ChessRLConfig(),
+    private val validationAggregator: ValidationAggregator = ValidationAggregator()
 ) {
     
     // Validation history for trend analysis
@@ -69,6 +73,9 @@ class TrainingValidator(
         
         // Record validation
         validationHistory.add(result)
+        
+        // Add to validation aggregator to reduce spam
+        validationAggregator.addValidationResult(result)
         
         // Limit history size
         if (validationHistory.size > 100) {
@@ -417,11 +424,39 @@ class TrainingValidator(
     }
     
     /**
+     * Get aggregated validation messages to reduce spam
+     */
+    fun getAggregatedValidationMessages() = validationAggregator.getAggregatedMessages()
+    
+    /**
+     * Get new validation messages since the specified time
+     */
+    fun getNewValidationMessages(sinceTime: Long) = validationAggregator.getNewMessages(sinceTime)
+    
+    /**
+     * Get changed validation messages since the specified time
+     */
+    fun getChangedValidationMessages(sinceTime: Long) = validationAggregator.getChangedMessages(sinceTime)
+    
+    /**
+     * Clear old validation messages to prevent memory buildup
+     */
+    fun clearOldValidationMessages(olderThanMs: Long = 300000L) {
+        validationAggregator.clearOldMessages(olderThanMs)
+    }
+    
+    /**
+     * Get validation aggregator statistics
+     */
+    fun getValidationAggregatorStats() = validationAggregator.getSummaryStats()
+    
+    /**
      * Clear validation history.
      */
     fun clearHistory() {
         validationHistory.clear()
         gameHistory.clear()
+        validationAggregator.clearHistory()
         smoothedGradientNorm = null
         smoothedPolicyEntropy = null
         smoothedLoss = null

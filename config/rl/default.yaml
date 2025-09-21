@@ -1,0 +1,4 @@
+explorationRate: 0.1
+targetUpdateFrequency: 100
+maxExperienceBuffer: 50000
+

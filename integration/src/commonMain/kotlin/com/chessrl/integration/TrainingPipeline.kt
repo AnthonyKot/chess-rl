@@ -6,6 +6,9 @@ import com.chessrl.integration.backend.LearningSession
 import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.error.*
 import com.chessrl.integration.logging.ChessRLLogger
+import com.chessrl.integration.CheckpointManager
+import com.chessrl.integration.CheckpointConfig
+import com.chessrl.integration.CheckpointMetadata
 import com.chessrl.rl.*
 import kotlin.math.abs
 import kotlin.random.Random
@@ -39,11 +42,17 @@ class TrainingPipeline(
     private val cycleHistory = mutableListOf<TrainingCycleResult>()
     private lateinit var experienceManager: ExperienceManager
     private lateinit var evalRandom: Random
+    private lateinit var checkpointManager: CheckpointManager
+    private var metricsHeaderWritten = false
     
     // Metrics tracking
     private var bestPerformance = Double.NEGATIVE_INFINITY
     private var totalGamesPlayed = 0
     private var totalExperiencesCollected = 0
+    
+    // Spam control flags
+    private var hasShownMultiProcessFallback = false
+    private var hasShownSequentialFallback = false
     
     /**
      * Initialize the training pipeline with agents and environment.
@@ -67,12 +76,17 @@ class TrainingPipeline(
                 }
             }
             
-            // Initialize seed if specified
-            config.seed?.let { seed ->
+            // Initialize seed (deterministic if specified, random otherwise)
+            if (config.seed != null) {
                 SafeExecution.withErrorHandling("seed initialization") {
-                    SeedManager.initializeWithSeed(seed)
-                    logger.info("Deterministic mode initialized with seed: $seed")
+                    SeedManager.initializeWithSeed(config.seed)
+                    logger.info("Deterministic mode initialized with seed: ${config.seed}")
                 } ?: logger.warn("Failed to initialize deterministic mode, continuing with random seed")
+            } else {
+                SafeExecution.withErrorHandling("random seed initialization") {
+                    SeedManager.initializeWithRandomSeed()
+                    logger.info("Random seed mode initialized")
+                } ?: logger.warn("Failed to initialize random seed mode")
             }
             
             // Initialize learning backend/session with error handling
@@ -129,6 +143,17 @@ class TrainingPipeline(
             mainAgentLock = Any()
             opponentAgentLock = Any()
 
+            // Initialize checkpoint manager (compat mode with simple saves retained)
+            checkpointManager = CheckpointManager(
+                CheckpointConfig(
+                    baseDirectory = config.checkpointDirectory,
+                    maxVersions = config.checkpointMaxVersions,
+                    compressionEnabled = config.checkpointCompressionEnabled,
+                    validationEnabled = config.checkpointValidationEnabled,
+                    autoCleanupEnabled = config.checkpointAutoCleanupEnabled
+                )
+            )
+
             // Set up valid action provider for DQN masking
             mainAgent.setNextActionProvider { state ->
                 environment?.getValidActions(state) ?: emptyList()
@@ -144,7 +169,55 @@ class TrainingPipeline(
             false
         }
     }
+
+    /**
+     * Load initial model weights into the current session's agents (for resume).
+     * Should be called after initialize() returns true.
+     */
+    fun loadInitialModel(modelPath: String, loadOpponent: Boolean = true): Boolean {
+        val s = this.session ?: return false
+        return try {
+            s.mainAgent.load(modelPath)
+            if (loadOpponent) runCatching { s.opponentAgent.load(modelPath) }
+            logger.info("Resumed training from model: $modelPath")
+            true
+        } catch (e: Exception) {
+            logger.warn("Failed to load initial model for resume: ${e.message}")
+            false
+        }
+    }
     
+    private fun appendCycleMetrics(path: String, m: CycleMetrics) {
+        try {
+            val header = "cycle,timestamp,games,avg_len,min_len,max_len,win_rate,draw_rate,loss_rate,avg_reward,avg_loss,avg_grad,avg_entropy,buffer_size,buffer_util,total_games,total_experiences\n"
+            if (!metricsHeaderWritten) {
+                appendTextFile(path, header)
+                metricsHeaderWritten = true
+            }
+            val line = listOf(
+                m.cycle,
+                m.timestamp,
+                m.gamesPlayed,
+                String.format("%.2f", m.avgEpisodeLength),
+                m.minEpisodeLength,
+                m.maxEpisodeLength,
+                String.format("%.4f", m.winRate),
+                String.format("%.4f", m.drawRate),
+                String.format("%.4f", m.lossRate),
+                String.format("%.6f", m.averageReward),
+                String.format("%.6f", m.averageLoss),
+                String.format("%.6f", m.averageGradientNorm),
+                String.format("%.6f", m.averagePolicyEntropy),
+                m.experienceBufferSize,
+                String.format("%.4f", m.bufferUtilization),
+                m.totalGamesPlayed,
+                m.totalExperiencesCollected
+            ).joinToString(",") + "\n"
+            appendTextFile(path, line)
+        } catch (_: Throwable) {
+            // best-effort metrics export
+        }
+    }
     /**
      * Run complete training with structured concurrency for self-play games.
      */
@@ -184,7 +257,7 @@ class TrainingPipeline(
                 
                 // Execute training cycle with error handling
                 val cycleResult = SafeExecution.withErrorHandling("training cycle $cycle") {
-                    runTrainingCycle(session, environment)
+                    runTrainingCycle(session)
                 }
                 
                 if (cycleResult == null) {
@@ -195,12 +268,26 @@ class TrainingPipeline(
                 cycleHistory.add(cycleResult)
                 
                 // Collect metrics and validate training
-                metricsCollector.collectCycleMetrics(
+                val collected = metricsCollector.collectCycleMetrics(
                     cycle = cycle,
                     gameResults = cycleResult.gameResults,
                     trainingMetrics = cycleResult.trainingMetrics,
-                    experienceBufferSize = experienceManager.getBufferSize()
+                    experienceManager = experienceManager
                 )
+                
+                // Validate metrics for accuracy
+                val metricsIssues = metricsCollector.validateMetrics(collected)
+                if (metricsIssues.isNotEmpty()) {
+                    logger.warn("Metrics validation issues detected:")
+                    metricsIssues.forEach { issue ->
+                        logger.warn("  - $issue")
+                    }
+                }
+                
+                // Append metrics to file if configured
+                config.metricsFile?.let { path ->
+                    appendCycleMetrics(path, collected)
+                }
                 
                 val validationResult = trainingValidator.validateTrainingCycle(
                     cycle = cycle,
@@ -242,7 +329,7 @@ class TrainingPipeline(
                 }
                 
                 // Progress reporting
-                if (cycle % 5 == 0) {
+                if (!config.summaryOnly && cycle % config.logInterval == 0) {
                     metricsCollector.reportProgress(cycle)
                 }
                 
@@ -292,8 +379,7 @@ class TrainingPipeline(
      * Execute a single training cycle with structured concurrency.
      */
     private fun runTrainingCycle(
-        session: LearningSession,
-        environment: ChessEnvironment
+        session: LearningSession
     ): TrainingCycleResult {
         val cycleStartTime = System.currentTimeMillis()
         
@@ -301,15 +387,15 @@ class TrainingPipeline(
         // (ValidActionRegistry removed - using direct environment calls)
         
         // Phase 1: Concurrent self-play game generation
-        logger.info("🎮 Phase 1: Self-play generation (${config.gamesPerCycle} games)")
+        logger.debug("🎮 Phase 1: Self-play generation (${config.gamesPerCycle} games)")
         val gameResults = runSelfPlayGames(session)
         
         // Phase 2: Experience processing and training
-        logger.info("🧠 Phase 2: Experience processing and training")
+        logger.debug("🧠 Phase 2: Experience processing and training")
         val trainingMetrics = processExperiencesAndTrain(gameResults, session)
         
         // Phase 3: Performance evaluation
-        logger.info("📊 Phase 3: Performance evaluation")
+        logger.debug("📊 Phase 3: Performance evaluation")
         val evaluationMetrics = evaluatePerformance(session.mainAgent)
         
         val cycleEndTime = System.currentTimeMillis()
@@ -390,6 +476,8 @@ class TrainingPipeline(
                         avgGameDuration = if (results.isNotEmpty()) results.map { it.gameDuration }.average().toLong() else 0L,
                         speedupFactor = speedupFactor
                     )
+                    val gamesPerSec = if (duration > 0) results.size.toDouble() / (duration / 1000.0) else 0.0
+                    logger.info("Throughput: ${"%.2f".format(gamesPerSec)} games/sec")
                 
                 // Cleanup temp model
                 try {
@@ -401,11 +489,17 @@ class TrainingPipeline(
                     reportSelfPlayResults(results)
                     results
                 } else {
-                    logger.warn("Multi-process not available, falling back to sequential")
+                    if (!hasShownMultiProcessFallback) {
+                        logger.warn("Multi-process not available, falling back to sequential execution for all cycles")
+                        hasShownMultiProcessFallback = true
+                    }
                     runSequentialSelfPlay(session)
                 }
             } else {
-                logger.warn("Multi-process not available, falling back to sequential")
+                if (!hasShownMultiProcessFallback) {
+                    logger.warn("Multi-process not available, falling back to sequential execution for all cycles")
+                    hasShownMultiProcessFallback = true
+                }
                 runSequentialSelfPlay(session)
             }
             
@@ -414,7 +508,10 @@ class TrainingPipeline(
             val result = errorHandler.handleError(error)
             
             if (result.shouldUseFallback) {
-                logger.info("Falling back to sequential execution")
+                if (!hasShownMultiProcessFallback) {
+                    logger.info("Multi-process execution failed, falling back to sequential execution for remaining cycles")
+                    hasShownMultiProcessFallback = true
+                }
                 runSequentialSelfPlay(session)
             } else {
                 throw e
@@ -423,11 +520,14 @@ class TrainingPipeline(
     }
     
     private fun runSequentialSelfPlay(session: LearningSession): List<SelfPlayGameResult> {
-        logger.info("Using sequential self-play (${config.gamesPerCycle} games)")
+        if (!hasShownSequentialFallback) {
+            logger.info("Using sequential self-play (${config.gamesPerCycle} games per cycle)")
+            hasShownSequentialFallback = true
+        }
         val startTime = System.currentTimeMillis()
         val results = mutableListOf<SelfPlayGameResult>()
         
-        repeat(config.gamesPerCycle) { gameIndex ->
+        repeat(config.gamesPerCycle) { _ ->
             val gameId = totalGamesPlayed + results.size + 1
             
             SafeExecution.withErrorHandling("self-play game $gameId") {
@@ -597,7 +697,9 @@ class TrainingPipeline(
         var batchCount = 0
         
         if (experienceManager.getBufferSize() >= config.batchSize) {
-            val numBatches = (experienceManager.getBufferSize() / config.batchSize).coerceAtMost(10) // Limit batches per cycle
+            val numBatches = (experienceManager.getBufferSize() / config.batchSize)
+                .coerceAtLeast(1)
+                .coerceAtMost(config.maxBatchesPerCycle)
             
             repeat(numBatches) { batchIndex ->
                 SafeExecution.withErrorHandling("batch training $batchIndex") {
@@ -658,12 +760,14 @@ class TrainingPipeline(
         var agentWins = 0
         var draws = 0
         var losses = 0
+        val gameLengths = mutableListOf<Int>()
         
         repeat(evaluationGames) { gameIndex ->
             SafeExecution.withErrorHandling("evaluation game $gameIndex") {
                 val agentPlaysWhite = if (startWhite) (gameIndex % 2 == 0) else (gameIndex % 2 != 0)
-                val outcome = runEvaluationGame(agent, agentPlaysWhite)
-                when (outcome) {
+                val result = runEvaluationGame(agent, agentPlaysWhite)
+                gameLengths.add(result.gameLength)
+                when (result.outcome) {
                     GameOutcome.WHITE_WINS -> if (agentPlaysWhite) agentWins++ else losses++
                     GameOutcome.BLACK_WINS -> if (agentPlaysWhite) losses++ else agentWins++
                     GameOutcome.DRAW -> draws++
@@ -680,12 +784,14 @@ class TrainingPipeline(
         val winRate = agentWins.toDouble() / total
         val drawRate = draws.toDouble() / total
         val lossRate = losses.toDouble() / total
+        val averageGameLength = if (gameLengths.isNotEmpty()) gameLengths.average() else 0.0
         
         val result = EvaluationMetrics(
             gamesPlayed = total,
             winRate = winRate,
             drawRate = drawRate,
-            lossRate = lossRate
+            lossRate = lossRate,
+            averageGameLength = averageGameLength
         )
         
         // Log evaluation results
@@ -694,7 +800,7 @@ class TrainingPipeline(
             winRate = winRate,
             drawRate = drawRate,
             lossRate = lossRate,
-            avgGameLength = 0.0 // Could be enhanced to track this
+            avgGameLength = averageGameLength
         )
         
         return result
@@ -703,7 +809,7 @@ class TrainingPipeline(
     /**
      * Run a single evaluation game against a baseline opponent.
      */
-    private fun runEvaluationGame(agent: ChessAgent, agentPlaysWhite: Boolean): GameOutcome {
+    private fun runEvaluationGame(agent: ChessAgent, agentPlaysWhite: Boolean): EvaluationGameResult {
         val evalEnvironment = createGameEnvironment()
         var state = evalEnvironment.reset()
         var stepCount = 0
@@ -727,7 +833,8 @@ class TrainingPipeline(
             if (stepResult.done) break
         }
         
-        return determineGameOutcome(evalEnvironment, stepCount >= config.maxStepsPerGame)
+        val outcome = determineGameOutcome(evalEnvironment, stepCount >= config.maxStepsPerGame)
+        return EvaluationGameResult(outcome, stepCount)
     }
     
     /**
@@ -771,32 +878,49 @@ class TrainingPipeline(
 
     private fun saveCheckpoint(session: LearningSession, cycle: Int, performance: Double, isBest: Boolean) {
         val checkpointDir = config.checkpointDirectory
-        val filename = if (isBest) {
+        val compatPath = if (isBest) {
             "$checkpointDir/best_model.json"
         } else {
             "$checkpointDir/checkpoint_cycle_${cycle}.json"
         }
-        
-        val success = SafeExecution.withErrorHandling("checkpoint save") {
-            if (isBest) {
-                session.saveBest(filename)
-            } else {
-                session.saveCheckpoint(filename)
-            }
+
+        // 1) Compatibility save using simple filenames
+        val compatSuccess = SafeExecution.withErrorHandling("checkpoint save (compat)") {
+            if (isBest) session.saveBest(compatPath) else session.saveCheckpoint(compatPath)
             true
         } != null
-        
+
+        // 2) Rich checkpoint via CheckpointManager (versioned + metadata)
+        SafeExecution.withErrorHandling("checkpoint save (manager)") {
+            val seedCfg = runCatching { SeedManager.getInstance().getSeedConfiguration() }.getOrNull()
+            val meta = CheckpointMetadata(
+                cycle = cycle,
+                performance = performance,
+                description = if (isBest) "Best checkpoint at cycle $cycle" else "Checkpoint at cycle $cycle",
+                isBest = isBest,
+                seedConfiguration = seedCfg,
+                configSnapshot = config
+            )
+            checkpointManager.createCheckpoint(
+                agent = session.mainAgent,
+                version = cycle,
+                metadata = meta
+            )
+        }
+
         val type = if (isBest) "best" else "regular"
         ChessRLLogger.logCheckpoint(
             type = type,
-            path = if (success) filename else "failed",
+            path = if (compatSuccess) compatPath else "failed",
             cycle = cycle,
             performance = performance,
-            success = success
+            success = compatSuccess
         )
-        
-        if (!success) {
-            val error = TrainingError.CheckpointFailed(filename, RuntimeException("Checkpoint save failed"))
+
+        // Remove duplicate checkpoint logging - CheckpointManager already logs this
+
+        if (!compatSuccess) {
+            val error = TrainingError.CheckpointFailed(compatPath, RuntimeException("Checkpoint save failed"))
             errorHandler.handleError(error)
         }
     }
@@ -964,7 +1088,13 @@ data class EvaluationMetrics(
     val gamesPlayed: Int,
     val winRate: Double,
     val drawRate: Double,
-    val lossRate: Double
+    val lossRate: Double,
+    val averageGameLength: Double
+)
+
+data class EvaluationGameResult(
+    val outcome: GameOutcome,
+    val gameLength: Int
 )
 
 data class FinalTrainingMetrics(

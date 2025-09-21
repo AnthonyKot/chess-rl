@@ -12,7 +12,8 @@ import com.chessrl.integration.logging.ChessRLLogger
 class InteractiveGameInterface(
     private val agent: ChessAgent,
     private val humanColor: PieceColor,
-    private val config: ChessRLConfig
+    private val config: ChessRLConfig,
+    private val playConfig: com.chessrl.integration.output.PlaySessionConfig? = null
 ) {
     
     private val logger = ChessRLLogger.forComponent("InteractiveGame")
@@ -22,6 +23,9 @@ class InteractiveGameInterface(
      * Start an interactive chess game.
      */
     fun playGame() {
+        // Show concise header with session information
+        showGameHeader()
+        
         val environment = ChessEnvironment(
             rewardConfig = ChessRewardConfig(
                 winReward = 1.0,
@@ -80,7 +84,13 @@ class InteractiveGameInterface(
                 
                 val move = step.info["move"]?.toString() ?: "unknown"
                 moveHistory.add(move)
-                println("Agent played: $move")
+                
+                // Clean move display - show engine diagnostics only if verbose
+                if (playConfig?.verboseEngineOutput == true) {
+                    showEngineAnalysis(action, validActions, step)
+                } else {
+                    println("Agent played: $move")
+                }
             }
             
             moveCount++
@@ -245,6 +255,70 @@ class InteractiveGameInterface(
             else -> {
                 println("🤝 Game ended in a draw.")
             }
+        }
+    }
+    
+    /**
+     * Show concise game header with session information.
+     */
+    private fun showGameHeader() {
+        println("═══════════════════════════════════════════════════════════")
+        println("                    CHESS RL INTERACTIVE PLAY")
+        println("═══════════════════════════════════════════════════════════")
+        
+        playConfig?.let { config ->
+            println("Profile: ${config.profileUsed}")
+            println("Max steps: ${config.maxSteps}")
+            if (config.verboseEngineOutput) {
+                println("Engine diagnostics: enabled")
+            }
+        }
+        
+        println("You are playing as: ${humanColor.name.lowercase()}")
+        println("Enter moves in algebraic notation (e.g., e4, Nf3, O-O)")
+        println("Type 'quit' to exit")
+        println("═══════════════════════════════════════════════════════════")
+    }
+    
+    /**
+     * Show detailed engine analysis when verbose mode is enabled.
+     */
+    private fun showEngineAnalysis(action: Int, validActions: List<Int>, step: Any) {
+        // Extract move from step info
+        val stepInfo = try {
+            val infoField = step::class.java.getDeclaredField("info")
+            infoField.isAccessible = true
+            @Suppress("UNCHECKED_CAST")
+            infoField.get(step) as? Map<String, Any>
+        } catch (e: Exception) {
+            null
+        }
+        
+        val move = stepInfo?.get("move")?.toString() ?: "unknown"
+        println("Agent played: $move")
+        
+        // Show additional engine diagnostics
+        println("  Action index: $action")
+        println("  Valid actions: ${validActions.size}")
+        
+        // Try to get reward
+        try {
+            val rewardField = step::class.java.getDeclaredField("reward")
+            rewardField.isAccessible = true
+            val reward = rewardField.get(step)
+            println("  Reward: $reward")
+        } catch (e: Exception) {
+            // Ignore if reward field not available
+        }
+        
+        // Show Q-value if available in step info
+        stepInfo?.get("qValue")?.let { qValue ->
+            println("  Q-value: $qValue")
+        }
+        
+        // Show evaluation if available
+        stepInfo?.get("evaluation")?.let { eval ->
+            println("  Position evaluation: $eval")
         }
     }
 }

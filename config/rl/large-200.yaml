@@ -1,0 +1,3 @@
+# Large network: slower target updates
+targetUpdateFrequency: 200
+gamma: 0.995

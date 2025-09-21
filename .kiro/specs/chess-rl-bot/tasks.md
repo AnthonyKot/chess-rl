@@ -19,7 +19,7 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Count total lines of code across all modules (excluding tests and build files)
   - Count total number of classes and interfaces in each package
   - Count configuration parameters in profiles.yaml and TrainingConfiguration.kt
-  - Measure cyclomatic complexity of key classes (TrainingPipeline, CLIRunner)
+  - Measure cyclomatic complexity of key classes (TrainingPipeline, ChessRLCLI)
   - _Requirements: 10_
 
 - [x] 0.2 Test Reliability Assessment
@@ -51,7 +51,7 @@ This implementation plan provides a systematic approach to refactoring the chess
   - **Deliverable**: Create `CONFIGURATION_AUDIT.md` with complete inventory of all configuration parameters
   - Analyze profiles.yaml and identify all 25+ parameters per profile with usage analysis
   - Review TrainingConfiguration.kt and catalog all 30+ configuration fields with impact assessment
-  - Document CLI flags in CLIRunner.kt and their actual usage patterns in codebase
+  - Document CLI flags in the legacy CLI system and their actual usage patterns in codebase
   - **Output**: Categorization table with 3 columns: KEEP (essential), CONSOLIDATE (useful), REMOVE (dead weight)
   - _Requirements: 1_
 
@@ -150,7 +150,7 @@ This implementation plan provides a systematic approach to refactoring the chess
       - integration/src/commonMain/kotlin/com/chessrl/integration/GameAnalyzer.kt
       - chess-engine/src/commonMain/kotlin/com/chessrl/chess/InteractiveGameBrowser.kt (uses GameAnalyzer)
   - Notes
-    - CLIRunner remains usable (:integration:runCli) and already calls the consolidated TrainingPipeline.
+    - ChessRLCLI is now the main CLI (:integration:runCli) and uses the consolidated TrainingPipeline.
     - Seeded components are actively used by seeded agent creation; don’t delete those unless you refactor RealChessAgentFactory to avoid them.
 
 - [x] 4.1 Delete Experimental Classes
@@ -282,9 +282,9 @@ This implementation plan provides a systematic approach to refactoring the chess
   - Ensure trained agents maintain competitive performance vs baseline
   - _Requirements: 5_
 
-- [ ] 7. Simplified CLI Implementation
+- [x] 7. Simplified CLI Implementation
   - **Prerequisites**: Read WORKFLOW_CONSOLIDATION.md from Step 1.3 for CLI consolidation plan
-  - Replace complex CLIRunner with simple entry points that use consolidated TrainingPipeline
+  - Replace complex legacy CLI with simple entry points that use consolidated TrainingPipeline
   - Parse args via ConfigParser.parseArgs(args) or JvmConfigParser.loadProfile(profile)
   - Instantiate TrainingPipeline(config) and call initialize() + runTraining()
   - Add --profile flag for fast-debug, long-train, eval-only profiles
@@ -296,7 +296,7 @@ This implementation plan provides a systematic approach to refactoring the chess
 
 - [x] 7.1 Create Simplified CLI Interface
   - **Prerequisites**: Use WORKFLOW_CONSOLIDATION.md CLI consolidation plan
-  - Replace legacy CLIRunner with simple entry points using ConfigParser.parseArgs(args)
+  - Replace legacy CLI with simple entry points using ConfigParser.parseArgs(args)
   - Implement ChessRLCLI with 3 main commands: train, evaluate, play
   - Add essential options: --config, --profile, --cycles, --games, --seed, --model
   - Use JvmConfigParser.loadProfile(profile) for --profile flag (fast-debug, long-train, eval-only)

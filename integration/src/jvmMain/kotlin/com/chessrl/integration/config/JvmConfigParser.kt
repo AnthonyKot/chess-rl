@@ -56,7 +56,11 @@ object JvmConfigParser {
                     "batchSize" -> config.copy(batchSize = value.toInt())
                     "explorationRate" -> config.copy(explorationRate = value.toDouble())
                     "targetUpdateFrequency" -> config.copy(targetUpdateFrequency = value.toInt())
+                    "doubleDqn" -> config.copy(doubleDqn = value.equals("true", true))
+                    "gamma" -> config.copy(gamma = value.toDouble())
                     "maxExperienceBuffer" -> config.copy(maxExperienceBuffer = value.toInt())
+                    "replayType" -> config.copy(replayType = value.trim())
+                    "maxBatchesPerCycle" -> config.copy(maxBatchesPerCycle = value.toInt())
                     "gamesPerCycle" -> config.copy(gamesPerCycle = value.toInt())
                     "maxConcurrentGames" -> config.copy(maxConcurrentGames = value.toInt())
                     "maxStepsPerGame" -> config.copy(maxStepsPerGame = value.toInt())
@@ -69,6 +73,14 @@ object JvmConfigParser {
                     "checkpointInterval" -> config.copy(checkpointInterval = value.toInt())
                     "checkpointDirectory" -> config.copy(checkpointDirectory = value.trim('"'))
                     "evaluationGames" -> config.copy(evaluationGames = value.toInt())
+                    // checkpoint manager + logging
+                    "checkpointMaxVersions" -> config.copy(checkpointMaxVersions = value.toInt())
+                    "checkpointValidationEnabled" -> config.copy(checkpointValidationEnabled = value.equals("true", true))
+                    "checkpointCompressionEnabled" -> config.copy(checkpointCompressionEnabled = value.equals("true", true))
+                    "checkpointAutoCleanupEnabled" -> config.copy(checkpointAutoCleanupEnabled = value.equals("true", true))
+                    "logInterval" -> config.copy(logInterval = value.toInt())
+                    "summaryOnly" -> config.copy(summaryOnly = value.equals("true", true))
+                    "metricsFile" -> config.copy(metricsFile = value.trim('"'))
                     
                     // Legacy parameter mappings for backward compatibility
                     "episodes" -> config.copy(maxCycles = value.toInt())

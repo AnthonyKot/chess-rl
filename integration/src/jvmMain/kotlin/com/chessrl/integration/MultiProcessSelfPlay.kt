@@ -50,18 +50,27 @@ class MultiProcessSelfPlay(
     }
     
     private fun startWorkerProcesses(modelPath: String, tempDir: Path): List<ProcessInfo> {
-        val processes = mutableListOf<ProcessInfo>()
+        // Backward compatibility: start all at once (deprecated). Use batched execution instead.
+        return runGamesBatched(modelPath, tempDir)
+    }
+
+    private fun runGamesBatched(modelPath: String, tempDir: Path): List<ProcessInfo> {
         val classpath = System.getProperty("java.class.path")
-        
-        repeat(config.gamesPerCycle) { gameId ->
-            val outputFile = tempDir.resolve("game_$gameId.json")
-            
-            val processBuilder = ProcessBuilder(
+        val totalGames = config.gamesPerCycle
+        val concurrency = minOf(config.maxConcurrentGames, totalGames)
+        val processes = mutableListOf<ProcessInfo>()
+
+        var nextGameId = 0
+        val active = mutableListOf<ProcessInfo>()
+
+        fun startOne(id: Int): ProcessInfo? {
+            val outputFile = tempDir.resolve("game_$id.json")
+            val pb = ProcessBuilder(
                 javaExecutable,
                 "-cp", classpath,
                 "com.chessrl.integration.SelfPlayWorker",
                 "--model", modelPath,
-                "--game-id", gameId.toString(),
+                "--game-id", id.toString(),
                 "--output", outputFile.toString(),
                 "--max-steps", config.maxStepsPerGame.toString(),
                 "--win-reward", config.winReward.toString(),
@@ -69,30 +78,42 @@ class MultiProcessSelfPlay(
                 "--draw-reward", config.drawReward.toString(),
                 "--step-limit-penalty", config.stepLimitPenalty.toString()
             ).apply {
-                // Add seed if configured
-                config.seed?.let { seed ->
-                    command().addAll(listOf("--seed", seed.toString()))
-                }
-                
-                // Redirect error stream for debugging
+                config.seed?.let { seed -> command().addAll(listOf("--seed", seed.toString())) }
                 redirectErrorStream(true)
             }
-            
-            try {
-                val process = processBuilder.start()
-                processes.add(ProcessInfo(gameId, process, outputFile))
-                
-                // Stagger process starts slightly to avoid resource contention
-                if (gameId < config.gamesPerCycle - 1) {
-                    Thread.sleep(50)
-                }
-                
+            return try {
+                val proc = pb.start()
+                ProcessInfo(id, proc, outputFile)
             } catch (e: Exception) {
-                logger.warn("Failed to start worker process for game $gameId: ${e.message}")
+                logger.warn("Failed to start worker process for game $id: ${e.message}")
+                null
             }
         }
-        
-        logger.debug("Started ${processes.size} worker processes")
+
+        // Fill initial slots
+        while (nextGameId < totalGames && active.size < concurrency) {
+            startOne(nextGameId)?.let { active.add(it) }
+            nextGameId++
+        }
+
+        // Refill as processes finish
+        while (processes.size < totalGames) {
+            val iter = active.iterator()
+            while (iter.hasNext()) {
+                val pi = iter.next()
+                if (!pi.process.isAlive) {
+                    processes.add(pi)
+                    iter.remove()
+                }
+            }
+            while (nextGameId < totalGames && active.size < concurrency) {
+                startOne(nextGameId)?.let { active.add(it) }
+                nextGameId++
+            }
+            if (processes.size < totalGames) Thread.sleep(20)
+        }
+
+        logger.debug("Started and completed ${processes.size} worker processes in batched mode (concurrency=$concurrency)")
         return processes
     }
     
@@ -142,39 +163,86 @@ class MultiProcessSelfPlay(
             }
             
             val jsonContent = Files.readString(outputFile)
-            
-            // Simple JSON parsing - look for success field
             if (!jsonContent.contains("\"success\": true")) {
                 logger.warn("Game result indicates failure")
                 return null
             }
-            
-            // For now, create a dummy result since we simplified the worker
-            // In a full implementation, we would properly parse the JSON
+
+            fun extractInt(re: String): Int? = Regex(re).find(jsonContent)?.groupValues?.get(1)?.toIntOrNull()
+            fun extractLong(re: String): Long? = Regex(re).find(jsonContent)?.groupValues?.get(1)?.toLongOrNull()
+            fun extractStr(re: String): String? = Regex(re).find(jsonContent)?.groupValues?.get(1)
+
+            val gid = extractInt("\"gameId\"\\s*:\\s*(\\d+)") ?: 0
+            val glen = extractInt("\"gameLength\"\\s*:\\s*(\\d+)") ?: 0
+            val gout = extractStr("\"gameOutcome\"\\s*:\\s*\"([^\"]+)\"") ?: "DRAW"
+            val treason = extractStr("\"terminationReason\"\\s*:\\s*\"([^\"]+)\"") ?: "GAME_ENDED"
+            val gdur = extractLong("\"gameDuration\"\\s*:\\s*(\\d+)") ?: 0L
+            val finalFen = extractStr("\"finalPosition\"\\s*:\\s*\"([^\"]+)\"") ?: ""
+
+            val experiences = parseNdjsonExperiences(Path.of(outputFile.toString() + ".ndjson"))
+
             SelfPlayGameResult(
-                gameId = 0, // Would parse from JSON
-                gameLength = 50, // Would parse from JSON
-                gameOutcome = GameOutcome.DRAW, // Would parse from JSON
-                terminationReason = EpisodeTerminationReason.GAME_ENDED,
-                gameDuration = 1000L, // Would parse from JSON
-                experiences = emptyList(), // Would parse experiences from JSON
+                gameId = gid,
+                gameLength = glen,
+                gameOutcome = GameOutcome.valueOf(gout),
+                terminationReason = EpisodeTerminationReason.valueOf(treason),
+                gameDuration = gdur,
+                experiences = experiences,
                 chessMetrics = ChessMetrics(
-                    gameLength = 50,
+                    gameLength = glen,
                     totalMaterialValue = 0,
                     piecesInCenter = 0,
                     developedPieces = 0,
                     kingSafetyScore = 0.0,
-                    moveCount = 50,
+                    moveCount = glen,
                     captureCount = 0,
                     checkCount = 0
                 ),
-                finalPosition = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" // Would parse from JSON
+                finalPosition = finalFen
             )
             
         } catch (e: Exception) {
             logger.warn("Failed to parse game result from $outputFile: ${e.message}")
             null
         }
+    }
+
+    private fun parseNdjsonExperiences(path: Path): List<Experience<DoubleArray, Int>> {
+        if (!Files.exists(path)) return emptyList()
+        val exps = mutableListOf<Experience<DoubleArray, Int>>()
+        Files.newBufferedReader(path).use { reader ->
+            var line: String?
+            while (true) {
+                line = reader.readLine() ?: break
+                val l = line!!.trim()
+                if (l.isEmpty()) continue
+                try {
+                    val sStr = Regex("\"s\"\\s*:\\s*(\\[[^]]*\\))").find(l)?.groupValues?.get(1) ?: continue
+                    val nsStr = Regex("\"ns\"\\s*:\\s*(\\[[^]]*\\))").find(l)?.groupValues?.get(1) ?: continue
+                    val a = Regex("\"a\"\\s*:\\s*(\\-?\\d+)").find(l)?.groupValues?.get(1)?.toIntOrNull() ?: continue
+                    val r = Regex("\"r\"\\s*:\\s*([\\-0-9.eE]+)").find(l)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                    val d = Regex("\"d\"\\s*:\\s*(true|false)").find(l)?.groupValues?.get(1)?.toBoolean() ?: false
+                    val s = parseDoubleArray(sStr)
+                    val ns = parseDoubleArray(nsStr)
+                    exps.add(Experience(state = s, action = a, reward = r, nextState = ns, done = d))
+                } catch (_: Exception) {
+                    // skip malformed lines
+                }
+            }
+        }
+        return exps
+    }
+
+    private fun parseDoubleArray(arr: String): DoubleArray {
+        val inner = arr.trim().removePrefix("[").removeSuffix("]").trim()
+        if (inner.isEmpty()) return DoubleArray(0)
+        val parts = inner.split(',')
+        val out = DoubleArray(parts.size)
+        var i = 0
+        for (p in parts) {
+            out[i++] = p.trim().toDoubleOrNull() ?: 0.0
+        }
+        return out
     }
     
     /**

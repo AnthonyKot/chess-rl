@@ -41,7 +41,7 @@ class MetricsCollector(
         cycle: Int,
         gameResults: List<SelfPlayGameResult>,
         trainingMetrics: TrainingMetrics,
-        experienceBufferSize: Int
+        experienceManager: ExperienceManager
     ): CycleMetrics {
         
         val timestamp = System.currentTimeMillis()
@@ -52,8 +52,10 @@ class MetricsCollector(
         val minEpisodeLength = episodeLengths.minOrNull() ?: 0
         val maxEpisodeLength = episodeLengths.maxOrNull() ?: 0
         
-        // Buffer utilization
-        val bufferUtilization = experienceBufferSize.toDouble() / config.maxExperienceBuffer
+        // Buffer utilization - use actual buffer statistics for accuracy
+        val bufferStats = experienceManager.getStatistics()
+        val experienceBufferSize = bufferStats.bufferSize
+        val bufferUtilization = bufferStats.utilization
         
         // Game outcome analysis
         val outcomes = gameResults.groupingBy { it.gameOutcome }.eachCount()
@@ -66,13 +68,31 @@ class MetricsCollector(
         val elapsedTime = timestamp - startTime
         val gamesPerSecond = if (elapsedTime > 0) totalGamesPlayed.toDouble() / (elapsedTime / 1000.0) else 0.0
         
-        // Q-value statistics (simplified)
-        val qValueStats = QValueStats(
-            meanQValue = trainingMetrics.averageReward * 10, // Rough estimate
-            minQValue = trainingMetrics.averageReward * 10 - 5,
-            maxQValue = trainingMetrics.averageReward * 10 + 5,
-            qValueVariance = 1.0
-        )
+        // Q-value statistics - calculate from actual experience rewards
+        val allRewards = gameResults.flatMap { game -> game.experiences.map { it.reward } }
+        val qValueStats = if (allRewards.isNotEmpty()) {
+            val meanReward = allRewards.average()
+            val minReward = allRewards.minOrNull() ?: 0.0
+            val maxReward = allRewards.maxOrNull() ?: 0.0
+            val variance = if (allRewards.size > 1) {
+                val mean = meanReward
+                allRewards.map { (it - mean) * (it - mean) }.average()
+            } else 0.0
+            
+            QValueStats(
+                meanQValue = meanReward,
+                minQValue = minReward,
+                maxQValue = maxReward,
+                qValueVariance = variance
+            )
+        } else {
+            QValueStats(
+                meanQValue = 0.0,
+                minQValue = 0.0,
+                maxQValue = 0.0,
+                qValueVariance = 0.0
+            )
+        }
         
         // Termination analysis
         val terminationAnalysis = analyzeTerminations(gameResults)
@@ -352,6 +372,32 @@ class MetricsCollector(
         println("   Average Win Rate: ${"%.1f".format(summary.averageWinRate * 100)}%")
         println("   Best Win Rate: ${"%.1f".format(summary.bestWinRate * 100)}%")
         println("   Training Efficiency: ${"%.4f".format(summary.trainingEfficiency)} win rate improvement per cycle")
+    }
+    
+    /**
+     * Validate that metrics contain actual data, not placeholder values.
+     */
+    fun validateMetrics(metrics: CycleMetrics): List<String> {
+        val issues = mutableListOf<String>()
+        
+        // Check for suspicious placeholder values
+        if (metrics.avgEpisodeLength == 0.0 && metrics.gamesPlayed > 0) {
+            issues.add("Average episode length is 0.0 despite games being played")
+        }
+        
+        if (metrics.bufferUtilization < 0.0 || metrics.bufferUtilization > 1.0) {
+            issues.add("Buffer utilization is out of valid range [0.0, 1.0]: ${metrics.bufferUtilization}")
+        }
+        
+        if (metrics.winRate + metrics.drawRate + metrics.lossRate > 1.01) {
+            issues.add("Win/draw/loss rates sum to more than 1.0: ${metrics.winRate + metrics.drawRate + metrics.lossRate}")
+        }
+        
+        if (metrics.gamesPerSecond < 0.0) {
+            issues.add("Games per second is negative: ${metrics.gamesPerSecond}")
+        }
+        
+        return issues
     }
     
     /**

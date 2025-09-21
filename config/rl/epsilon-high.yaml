@@ -1,0 +1,3 @@
+# Higher exploration for early training
+explorationRate: 0.2
+

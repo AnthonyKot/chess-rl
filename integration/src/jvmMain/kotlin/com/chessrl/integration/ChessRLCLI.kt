@@ -3,8 +3,10 @@ package com.chessrl.integration
 import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.config.ConfigParser
 import com.chessrl.integration.config.JvmConfigParser
+import com.chessrl.integration.config.DomainConfigLoader
 import com.chessrl.integration.logging.ChessRLLogger
 import com.chessrl.chess.PieceColor
+import com.chessrl.integration.output.EnhancedComparisonResults
 import kotlin.system.exitProcess
 
 /**
@@ -20,6 +22,8 @@ object ChessRLCLI {
     @JvmStatic
     fun main(args: Array<String>) {
         try {
+            // Configure logging level early, if provided
+            applyLoggingLevel(args)
             if (args.isEmpty()) {
                 printHelp()
                 return
@@ -42,6 +46,17 @@ object ChessRLCLI {
             exitProcess(1)
         }
     }
+
+    private fun applyLoggingLevel(args: Array<String>) {
+        val lvl = getStringArg(args, "--log-level")?.lowercase()
+        val level = when (lvl) {
+            "debug" -> ChessRLLogger.LogLevel.DEBUG
+            "warn" -> ChessRLLogger.LogLevel.WARN
+            "error" -> ChessRLLogger.LogLevel.ERROR
+            else -> ChessRLLogger.LogLevel.INFO
+        }
+        ChessRLLogger.configure(level = level)
+    }
     
     /**
      * Handle training command: --train
@@ -58,6 +73,19 @@ object ChessRLCLI {
             logger.error("Failed to initialize training pipeline")
             println("Error: Failed to initialize training pipeline")
             exitProcess(1)
+        }
+        
+        // Optional resume: --load <path> or --resume (auto-load best from checkpointDirectory)
+        val explicitLoad = getStringArg(args, "--load")
+        val resumeRequested = args.contains("--resume")
+        if (explicitLoad != null || resumeRequested) {
+            val modelPath = explicitLoad ?: resolveBestModelPath(config)
+            if (modelPath == null) {
+                println("Warning: Resume requested but no model found to load. Continuing without resume.")
+            } else {
+                val ok = pipeline.loadInitialModel(modelPath)
+                if (ok) println("Resumed training from $modelPath") else println("Warning: Failed to resume from $modelPath")
+            }
         }
         
         logger.info("Training pipeline initialized successfully")
@@ -100,7 +128,13 @@ object ChessRLCLI {
      */
     private fun handleEvaluateBaseline(args: Array<String>) {
         val config = parseEvaluationConfig(args)
-        val modelPath = getRequiredArg(args, "--model", "Model path is required for baseline evaluation")
+        val provided = getStringArg(args, "--model")
+        val modelPath = provided ?: resolveBestModelPath(config)
+            ?: run {
+                println("Error: No --model provided and no best checkpoint found in '${config.checkpointDirectory}'.")
+                println("Hint: Provide --model <path> or ensure checkpoints exist in ${config.checkpointDirectory}")
+                exitProcess(1)
+            }
         val games = getIntArg(args, "--games") ?: config.evaluationGames
         val opponent = getStringArg(args, "--opponent") ?: "heuristic"
         
@@ -150,6 +184,7 @@ object ChessRLCLI {
     private fun handlePlay(args: Array<String>) {
         val config = parsePlayConfig(args)
         val modelPath = getRequiredArg(args, "--model", "Model path is required for play")
+        val verboseEngine = getBooleanArg(args, "--verbose") ?: false
         val humanColor = getStringArg(args, "--as")?.let { 
             when (it.lowercase()) {
                 "white" -> PieceColor.WHITE
@@ -164,12 +199,16 @@ object ChessRLCLI {
         logger.info("Starting interactive play: human as $humanColor vs model $modelPath")
         
         val agent = loadAgent(modelPath, config)
-        val gameInterface = InteractiveGameInterface(agent, humanColor, config)
         
-        println("Starting interactive chess game!")
-        println("You are playing as ${humanColor.name.lowercase()}")
-        println("Enter moves in algebraic notation (e.g., e4, Nf3, O-O)")
-        println("Type 'quit' to exit")
+        // Create play session config
+        val profileName = getStringArg(args, "--profile") ?: getStringArg(args, "--config") ?: "fast-debug"
+        val playConfig = com.chessrl.integration.output.PlaySessionConfig(
+            profileUsed = profileName,
+            maxSteps = config.maxStepsPerGame,
+            verboseEngineOutput = verboseEngine
+        )
+        
+        val gameInterface = InteractiveGameInterface(agent, humanColor, config, playConfig)
         
         gameInterface.playGame()
     }
@@ -178,37 +217,105 @@ object ChessRLCLI {
      * Parse configuration for training command
      */
     private fun parseTrainingConfig(args: Array<String>): ChessRLConfig {
-        val profileName = getStringArg(args, "--profile")
-        
-        return if (profileName != null) {
-            // Load from profile first, then apply CLI overrides
-            val baseConfig = JvmConfigParser.loadProfile(profileName)
-            applyCliOverrides(baseConfig, args)
-        } else {
-            // Parse from CLI args with defaults
-            ConfigParser.parseArgs(args)
+        // Highest priority: root config if provided
+        val configName = getStringArg(args, "--config")
+        if (configName != null) {
+            var cfg = DomainConfigLoader.loadRootConfig(configName)
+            cfg = applyCliOverrides(cfg, args)
+            cfg = applyGenericOverrides(cfg, args)
+            return cfg
         }
+
+        val profileSpec = getStringArg(args, "--profile")
+        if (profileSpec != null) {
+            val baseConfig = try {
+                if (profileSpec.contains(",") || profileSpec.contains(":")) {
+                    DomainConfigLoader.composeFromProfiles(profileSpec)
+                } else {
+                    JvmConfigParser.loadProfile(profileSpec)
+                }
+            } catch (_: Exception) {
+                DomainConfigLoader.composeFromProfiles(profileSpec)
+            }
+            var cfg = applyCliOverrides(baseConfig, args)
+            cfg = applyGenericOverrides(cfg, args)
+            return cfg
+        }
+
+        // No profile/config provided: parse essential flags only, then generic overrides
+        var cfg = ConfigParser.parseArgs(args)
+        cfg = applyGenericOverrides(cfg, args)
+        return cfg
     }
     
     /**
      * Parse configuration for evaluation command
      */
     private fun parseEvaluationConfig(args: Array<String>): ChessRLConfig {
-        val profileName = getStringArg(args, "--profile") ?: "eval-only"
-        val baseConfig = JvmConfigParser.loadProfile(profileName)
-        return applyCliOverrides(baseConfig, args)
+        val configName = getStringArg(args, "--config")
+        if (configName != null) {
+            var cfg = DomainConfigLoader.loadRootConfig(configName)
+            cfg = applyCliOverrides(cfg, args)
+            cfg = applyGenericOverrides(cfg, args)
+            return cfg
+        }
+
+        val profileSpec = getStringArg(args, "--profile")
+        val baseConfig = if (profileSpec != null) {
+            try {
+                if (profileSpec.contains(",") || profileSpec.contains(":")) {
+                    DomainConfigLoader.composeFromProfiles(profileSpec)
+                } else {
+                    JvmConfigParser.loadProfile(profileSpec)
+                }
+            } catch (_: Exception) {
+                DomainConfigLoader.composeFromProfiles(profileSpec)
+            }
+        } else {
+            JvmConfigParser.loadProfile("eval-only")
+        }
+
+        var cfg = applyCliOverrides(baseConfig, args)
+        // Eval epsilon convenience
+        getDoubleArg(args, "--eval-epsilon")?.let { ee -> cfg = cfg.copy(explorationRate = ee) }
+        cfg = applyGenericOverrides(cfg, args)
+        return cfg
     }
     
     /**
      * Parse configuration for play command
      */
     private fun parsePlayConfig(args: Array<String>): ChessRLConfig {
-        val baseConfig = ChessRLConfig(
-            maxStepsPerGame = 200, // Longer games for human play
-            maxConcurrentGames = 1, // Single-threaded for interactive play
-            seed = null // Random for variety
-        )
-        return applyCliOverrides(baseConfig, args)
+        val configName = getStringArg(args, "--config")
+        if (configName != null) {
+            var cfg = DomainConfigLoader.loadRootConfig(configName)
+            cfg = applyCliOverrides(cfg, args)
+            cfg = applyGenericOverrides(cfg, args)
+            return cfg
+        }
+
+        val profileSpec = getStringArg(args, "--profile")
+        val baseConfig = if (profileSpec != null) {
+            try {
+                if (profileSpec.contains(",") || profileSpec.contains(":")) {
+                    DomainConfigLoader.composeFromProfiles(profileSpec)
+                } else {
+                    JvmConfigParser.loadProfile(profileSpec)
+                }
+            } catch (_: Exception) {
+                DomainConfigLoader.composeFromProfiles(profileSpec)
+            }
+        } else {
+            JvmConfigParser.loadProfile("fast-debug").copy(
+                maxStepsPerGame = 200, // Longer games for human play
+                maxConcurrentGames = 1, // Single-threaded for interactive play
+                seed = null // Random for variety
+            )
+        }
+
+        var cfg = applyCliOverrides(baseConfig, args)
+        cfg = applyGenericOverrides(cfg, args)
+        return cfg
     }
     
     /**
@@ -216,7 +323,8 @@ object ChessRLCLI {
      */
     private fun applyCliOverrides(baseConfig: ChessRLConfig, args: Array<String>): ChessRLConfig {
         var config = baseConfig
-        
+
+        // Essential overrides
         getIntArg(args, "--cycles")?.let { config = config.copy(maxCycles = it) }
         getIntArg(args, "--games")?.let { config = config.copy(gamesPerCycle = it) }
         getIntArg(args, "--max-steps")?.let { config = config.copy(maxStepsPerGame = it) }
@@ -224,15 +332,85 @@ object ChessRLCLI {
         getDoubleArg(args, "--learning-rate")?.let { config = config.copy(learningRate = it) }
         getLongArg(args, "--seed")?.let { config = config.copy(seed = it) }
         getStringArg(args, "--checkpoint-dir")?.let { config = config.copy(checkpointDirectory = it) }
-        
+
+        // Expanded set for fine-tuning
+        getStringArg(args, "--hidden-layers")?.let { config = config.copy(hiddenLayers = parseHiddenLayers(it)) }
+        getIntArg(args, "--max-concurrent-games")?.let { config = config.copy(maxConcurrentGames = it) }
+        getDoubleArg(args, "--exploration-rate")?.let { config = config.copy(explorationRate = it) }
+        getIntArg(args, "--target-update-frequency")?.let { config = config.copy(targetUpdateFrequency = it) }
+        getIntArg(args, "--max-experience-buffer")?.let { config = config.copy(maxExperienceBuffer = it) }
+        getIntArg(args, "--checkpoint-interval")?.let { config = config.copy(checkpointInterval = it) }
+        if (args.contains("--double-dqn")) { config = config.copy(doubleDqn = true) }
+        getStringArg(args, "--replay-type")?.let { config = config.copy(replayType = it) }
+        getDoubleArg(args, "--gamma")?.let { config = config.copy(gamma = it) }
+        getIntArg(args, "--max-batches-per-cycle")?.let { config = config.copy(maxBatchesPerCycle = it) }
+        getDoubleArg(args, "--win-reward")?.let { config = config.copy(winReward = it) }
+        getDoubleArg(args, "--loss-reward")?.let { config = config.copy(lossReward = it) }
+        getDoubleArg(args, "--draw-reward")?.let { config = config.copy(drawReward = it) }
+        getDoubleArg(args, "--step-limit-penalty")?.let { config = config.copy(stepLimitPenalty = it) }
+        getIntArg(args, "--evaluation-games")?.let { config = config.copy(evaluationGames = it) }
+
+        // Checkpoint manager controls
+        getIntArg(args, "--checkpoint-max-versions")?.let { config = config.copy(checkpointMaxVersions = it) }
+        getBoolArg(args, "--checkpoint-validation")?.let { config = config.copy(checkpointValidationEnabled = it) }
+        getBoolArg(args, "--checkpoint-compression")?.let { config = config.copy(checkpointCompressionEnabled = it) }
+        getBoolArg(args, "--checkpoint-autocleanup")?.let { config = config.copy(checkpointAutoCleanupEnabled = it) }
+
+        // Logging controls
+        getIntArg(args, "--log-interval")?.let { config = config.copy(logInterval = it) }
+        if (args.contains("--summary-only")) { config = config.copy(summaryOnly = true) }
+        getStringArg(args, "--metrics-file")?.let { config = config.copy(metricsFile = it) }
+
         return config
+    }
+
+    private fun applyGenericOverrides(base: ChessRLConfig, args: Array<String>): ChessRLConfig {
+        val pairs = getAllArgs(args, "--override")
+        if (pairs.isEmpty()) return base
+        val overrides = mutableMapOf<String, String>()
+        pairs.forEach { kv ->
+            val idx = kv.indexOf('=')
+            if (idx > 0) {
+                val key = kv.substring(0, idx).trim()
+                val value = kv.substring(idx + 1).trim()
+                if (key.isNotEmpty()) overrides[key] = value
+            }
+        }
+        return if (overrides.isEmpty()) base else DomainConfigLoader.applyOverrides(base, overrides)
+    }
+
+    private fun getBoolArg(args: Array<String>, flag: String): Boolean? {
+        val raw = getStringArg(args, flag) ?: return null
+        return when (raw.lowercase()) {
+            "true", "1", "yes", "on" -> true
+            "false", "0", "no", "off" -> false
+            else -> null
+        }
     }
     
     /**
      * Load agent from model file
      */
     private fun loadAgent(modelPath: String, config: ChessRLConfig): ChessAgent {
-        val agent = ChessAgentFactory.createDQNAgent(hiddenLayers = config.hiddenLayers)
+        // Initialize SeedManager for consistent agent creation
+        if (config.seed != null) {
+            SeedManager.initializeWithSeed(config.seed)
+        } else {
+            SeedManager.initializeWithRandomSeed()
+        }
+        
+        val agent = ChessAgentFactory.createSeededDQNAgent(
+            hiddenLayers = config.hiddenLayers,
+            learningRate = config.learningRate,
+            explorationRate = config.explorationRate,
+            config = ChessAgentConfig(
+                batchSize = config.batchSize,
+                maxBufferSize = config.maxExperienceBuffer,
+                targetUpdateFrequency = config.targetUpdateFrequency
+            ),
+            replayType = config.replayType,
+            gamma = config.gamma
+        )
         
         try {
             agent.load(modelPath)
@@ -249,39 +427,17 @@ object ChessRLCLI {
     /**
      * Print evaluation results
      */
-    private fun printEvaluationResults(results: EvaluationResults, opponent: String) {
-        println("\nEvaluation Results vs $opponent:")
-        println("Games played: ${results.totalGames}")
-        println("Win rate: ${String.format("%.1f%%", results.winRate * 100)}")
-        println("Draw rate: ${String.format("%.1f%%", results.drawRate * 100)}")
-        println("Loss rate: ${String.format("%.1f%%", results.lossRate * 100)}")
-        println("Average game length: ${String.format("%.1f", results.averageGameLength)}")
-        
-        if (results.winRate >= 0.4) {
-            println("✓ Agent performance is competitive (≥40% win rate)")
-        } else {
-            println("⚠ Agent performance below competitive threshold (<40% win rate)")
-        }
+    private fun printEvaluationResults(results: com.chessrl.integration.output.EnhancedEvaluationResults, opponent: String) {
+        val formatter = com.chessrl.integration.output.EvaluationResultFormatter()
+        println(formatter.formatEvaluationResult(results))
     }
     
     /**
      * Print model comparison results
      */
-    private fun printComparisonResults(results: ComparisonResults, modelAPath: String, modelBPath: String) {
-        println("\nModel Comparison Results:")
-        println("Model A: $modelAPath")
-        println("Model B: $modelBPath")
-        println("Games played: ${results.totalGames}")
-        println("Model A wins: ${results.modelAWins} (${String.format("%.1f%%", results.modelAWinRate * 100)})")
-        println("Draws: ${results.draws} (${String.format("%.1f%%", results.drawRate * 100)})")
-        println("Model B wins: ${results.modelBWins} (${String.format("%.1f%%", results.modelBWinRate * 100)})")
-        println("Average game length: ${String.format("%.1f", results.averageGameLength)}")
-        
-        when {
-            results.modelAWinRate > 0.55 -> println("✓ Model A is significantly better")
-            results.modelBWinRate > 0.55 -> println("✓ Model B is significantly better")
-            else -> println("≈ Models have similar performance")
-        }
+    private fun printComparisonResults(results: EnhancedComparisonResults, modelAPath: String, modelBPath: String) {
+        val formatter = com.chessrl.integration.output.EvaluationResultFormatter()
+        println(formatter.formatComparisonResult(results, modelAPath, modelBPath))
     }
     
     /**
@@ -301,6 +457,10 @@ object ChessRLCLI {
         return getStringArg(args, flag)?.toIntOrNull()
     }
     
+    private fun getBooleanArg(args: Array<String>, flag: String): Boolean? {
+        return if (args.contains(flag)) true else null
+    }
+    
     private fun getDoubleArg(args: Array<String>, flag: String): Double? {
         return getStringArg(args, flag)?.toDoubleOrNull()
     }
@@ -313,6 +473,83 @@ object ChessRLCLI {
         return getStringArg(args, flag) ?: run {
             println("Error: $errorMessage")
             exitProcess(1)
+        }
+    }
+
+    // Try to resolve the best model from CheckpointManager artifacts first, then fallback to compat best_model.json
+    private fun resolveBestModelPath(config: ChessRLConfig): String? {
+        val dir = java.nio.file.Path.of(config.checkpointDirectory)
+        if (!java.nio.file.Files.exists(dir)) return null
+
+        // 1) Prefer manager sidecar meta files *_qnet_meta.json and pick best
+        val metas = try {
+            java.nio.file.Files.list(dir)
+                .filter { p -> p.fileName.toString().endsWith("_qnet_meta.json") }
+                .collect(java.util.stream.Collectors.toList())
+        } catch (_: Throwable) { emptyList<java.nio.file.Path>() }
+
+        if (metas.isNotEmpty()) {
+            data class Candidate(val model: String, val perf: Double, val isBest: Boolean)
+            val candidates = metas.mapNotNull { metaPath ->
+                val text = runCatching { java.nio.file.Files.readString(metaPath) }.getOrNull() ?: return@mapNotNull null
+                val perf = extractDouble(text, "\"performance\"\\s*:\\s*([-0-9.eE]+)") ?: return@mapNotNull null
+                val isBest = extractBool(text, "\"isBest\"\\s*:\\s*(true|false)") ?: false
+                val modelPath = metaPath.toString().replace("_qnet_meta.json", "_qnet.json")
+                Candidate(modelPath, perf, isBest)
+            }
+            if (candidates.isNotEmpty()) {
+                val best = candidates
+                    .sortedWith(compareByDescending<Candidate> { it.isBest }.thenByDescending { it.perf })
+                    .first()
+                if (java.nio.file.Files.exists(java.nio.file.Path.of(best.model))) {
+                    println("Auto-loaded best model from CheckpointManager: ${best.model} (perf=${"%.4f".format(best.perf)})")
+                    return best.model
+                }
+            }
+        }
+
+        // 2) Fallback to compat best_model.json
+        val compat = dir.resolve("best_model.json")
+        if (java.nio.file.Files.exists(compat)) {
+            println("Auto-loaded compat best model: ${compat}")
+            return compat.toString()
+        }
+        return null
+    }
+
+    private fun extractDouble(text: String, regex: String): Double? {
+        return runCatching {
+            val m = Regex(regex).find(text) ?: return null
+            m.groupValues[1].toDouble()
+        }.getOrNull()
+    }
+
+    private fun extractBool(text: String, regex: String): Boolean? {
+        return runCatching {
+            val m = Regex(regex).find(text) ?: return null
+            m.groupValues[1].equals("true", ignoreCase = true)
+        }.getOrNull()
+    }
+
+    private fun getAllArgs(args: Array<String>, flag: String): List<String> {
+        val list = mutableListOf<String>()
+        var i = 0
+        while (i < args.size) {
+            if (args[i] == flag && i + 1 < args.size) {
+                list.add(args[i + 1])
+                i += 2
+            } else i++
+        }
+        return list
+    }
+
+    private fun parseHiddenLayers(value: String): List<Int> {
+        val clean = value.trim()
+        return when {
+            clean.startsWith("[") && clean.endsWith("]") -> clean.removeSurrounding("[", "]").split(',').map { it.trim().toInt() }
+            "," in clean -> clean.split(',').map { it.trim().toInt() }
+            clean.contains(" ") -> clean.split("\\s+".toRegex()).map { it.trim().toInt() }
+            else -> listOf(clean.toInt())
         }
     }
     
@@ -333,21 +570,51 @@ object ChessRLCLI {
         println()
         println("TRAINING:")
         println("  --train [OPTIONS]")
-        println("    --profile <name>         Configuration profile (fast-debug, long-train)")
+        println("    --profile <spec>         Profile(s): legacy name (fast-debug), or composed 'network:big,selfplay:long' or 'big,long'")
+        println("    --config <name|path>     Root config (in ./config or path) that composes profiles + overrides")
+        println("    --override k=v           Override any config key (repeatable; kebab or camelCase)")
         println("    --cycles <n>             Number of training cycles (default: from profile)")
         println("    --games <n>              Games per cycle (default: from profile)")
         println("    --seed <n>               Random seed for reproducibility")
         println("    --checkpoint-dir <dir>   Checkpoint directory")
         println("    --learning-rate <rate>   Learning rate override")
         println("    --batch-size <size>      Batch size override")
+        println("    --hidden-layers <list>   Hidden layers (e.g., 512,256,128)")
+        println("    --max-concurrent-games n Concurrency for self-play")
+        println("    --exploration-rate <x>   Exploration epsilon")
+        println("    --target-update-frequency n  Target net update frequency")
+        println("    --max-experience-buffer n    Replay buffer size")
+        println("    --max-batches-per-cycle n    Upper cap on training batches per cycle")
+        println("    --replay-type <type>     Replay buffer: UNIFORM or PRIORITIZED")
+        println("    --gamma <x>              Discount factor (0,1), default 0.99")
+        println("    --double-dqn             Enable Double DQN target evaluation")
+        println("    --resume                 Resume training by auto-loading best_model.json from checkpoint dir")
+        println("    --load <path>            Resume training from an explicit model file path")
+        println("    --checkpoint-interval n  Save frequency (cycles)")
+        println("    --checkpoint-max-versions n    Retain up to n checkpoints (manager)")
+        println("    --checkpoint-validation <true|false>  Enable checkpoint validation")
+        println("    --checkpoint-compression <true|false> Enable compressed artifacts")
+        println("    --checkpoint-autocleanup <true|false> Enable auto cleanup policy")
+        println("    --log-level <lvl>        debug|info|warn|error")
+        println("    --log-interval n         Print detailed block every n cycles")
+        println("    --summary-only           Only show summaries and final output")
+        println("    --metrics-file <path>    Append per-cycle CSV metrics to path")
+        println("    --win-reward <x>         Reward shaping (win)")
+        println("    --loss-reward <x>        Reward shaping (loss)")
+        println("    --draw-reward <x>        Reward shaping (draw)")
+        println("    --step-limit-penalty <x> Penalty at step limit")
         println()
         println("EVALUATION:")
         println("  --evaluate --baseline [OPTIONS]")
-        println("    --model <path>           Model file to evaluate")
+        println("    --model <path>           Model file to evaluate (optional: auto-loads best checkpoint if omitted)")
         println("    --games <n>              Number of evaluation games (default: 100)")
         println("    --opponent <type>        Opponent type: heuristic, minimax (default: heuristic)")
         println("    --depth <n>              Minimax depth for minimax opponent (default: 2)")
         println("    --seed <n>               Random seed for reproducibility")
+        println("    --eval-epsilon <x>       Evaluation exploration (0.0 = greedy)")
+        println("    --profile <spec>         Optional: legacy or composed profiles for evaluation")
+        println("    --config <name|path>     Optional: root config for evaluation")
+        println("    --override k=v           Optional: overrides for evaluation config")
         println()
         println("  --evaluate --compare [OPTIONS]")
         println("    --modelA <path>          First model file")
@@ -358,12 +625,17 @@ object ChessRLCLI {
         println("PLAY:")
         println("  --play [OPTIONS]")
         println("    --model <path>           Model file to play against")
+        println("    --profile <spec>         Optional profile(s) for play settings")
+        println("    --config <name|path>     Optional root config for play settings")
+        println("    --override k=v           Optional overrides for play settings")
         println("    --as <color>             Human player color: white, black (default: white)")
+        println("    --verbose                Show detailed engine analysis and diagnostics")
         println()
         println("PROFILES:")
-        println("  fast-debug                Quick training for development (5 games, 10 cycles)")
-        println("  long-train                Production training (50 games, 200 cycles)")
-        println("  eval-only                 Evaluation settings (500 games, deterministic)")
+        println("  Legacy: fast-debug, long-train, eval-only")
+        println("  Composed examples (from ./config):")
+        println("    --profile network:big,selfplay:long | --profile big,long")
+        println("    --config long-term-learning  # loads config/long-term-learning.yaml")
         println()
         println("EXAMPLES:")
         println("  # Quick development training")
@@ -371,6 +643,9 @@ object ChessRLCLI {
         println()
         println("  # Production training with custom parameters")
         println("  chess-rl --train --profile long-train --cycles 100 --learning-rate 0.001")
+        println()
+        println("  # Composed profiles from domain configs")
+        println("  chess-rl --train --profile network:big,selfplay:long --override checkpointDirectory=experiments/run1")
         println()
         println("  # Evaluate against heuristic baseline")
         println("  chess-rl --evaluate --baseline --model checkpoints/best-model.json --games 200")

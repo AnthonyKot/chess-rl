@@ -1,0 +1,10 @@
+# Phase 2: Large Network (~4.2M params)
+# Notes: lower LR; require larger batch for stability
+hiddenLayers: [1024, 1024, 256]
+learningRate: 0.0003
+batchSize: 128
+
+# Future (pending RL backend support):
+# l2Regularization: 0.0001
+# gradientClipping: 1.0
+

@@ -23,8 +23,14 @@ data class ChessRLConfig(
     val explorationRate: Double = 0.1,
     /** Frequency of target network updates in DQN algorithm */
     val targetUpdateFrequency: Int = 100,
+    /** Enable Double DQN target evaluation */
+    val doubleDqn: Boolean = false,
+    /** Discount factor for future rewards */
+    val gamma: Double = 0.99,
     /** Maximum size of experience replay buffer */
     val maxExperienceBuffer: Int = 50000,
+    /** Replay buffer type: UNIFORM or PRIORITIZED */
+    val replayType: String = "UNIFORM",
     
     // Self-Play Configuration (4 parameters)
     /** Number of self-play games per training cycle */
@@ -54,7 +60,18 @@ data class ChessRLConfig(
     /** Directory for saving checkpoints */
     val checkpointDirectory: String = "checkpoints",
     /** Number of games for evaluation runs */
-    val evaluationGames: Int = 100
+    val evaluationGames: Int = 100,
+
+    // Checkpoint Manager controls
+    val checkpointMaxVersions: Int = 20,
+    val checkpointValidationEnabled: Boolean = false,
+    val checkpointCompressionEnabled: Boolean = true,
+    val checkpointAutoCleanupEnabled: Boolean = true,
+
+    // Logging controls (lightweight)
+    val logInterval: Int = 1,
+    val summaryOnly: Boolean = false,
+    val metricsFile: String? = null
 ) {
     
     /**
@@ -87,8 +104,18 @@ data class ChessRLConfig(
         if (targetUpdateFrequency <= 0) {
             errors.add("Target update frequency must be positive, got: $targetUpdateFrequency")
         }
+        if (gamma <= 0.0 || gamma >= 1.0) {
+            errors.add("Gamma must be in (0,1), got: $gamma")
+        }
+        if (logInterval <= 0) {
+            errors.add("Log interval must be positive, got: $logInterval")
+        }
         if (maxExperienceBuffer <= 0) {
             errors.add("Max experience buffer must be positive, got: $maxExperienceBuffer")
+        }
+        val replayUpper = replayType.uppercase()
+        if (replayUpper != "UNIFORM" && replayUpper != "PRIORITIZED") {
+            errors.add("Replay type must be UNIFORM or PRIORITIZED, got: $replayType")
         }
         
         // Self-Play validation
@@ -199,10 +226,12 @@ data class ChessRLConfig(
         return buildString {
             appendLine("Chess RL Configuration Summary:")
             appendLine("  Network: ${hiddenLayers.joinToString("x")} layers, lr=$learningRate, batch=$batchSize")
-            appendLine("  RL: exploration=$explorationRate, target_update=$targetUpdateFrequency, buffer=$maxExperienceBuffer")
+            appendLine("  RL: exploration=$explorationRate, target_update=$targetUpdateFrequency, doubleDQN=$doubleDqn, gamma=$gamma, buffer=$maxExperienceBuffer")
+            appendLine("      replay=$replayType")
             appendLine("  Self-play: $gamesPerCycle games/cycle, $maxConcurrentGames concurrent, $maxStepsPerGame max_steps")
             appendLine("  Rewards: win=$winReward, loss=$lossReward, draw=$drawReward, step_limit_penalty=$stepLimitPenalty")
             appendLine("  System: ${seed?.let { "seed=$it" } ?: "random"}, checkpoints every $checkpointInterval cycles")
+            appendLine("  Training: max_batches_per_cycle=$maxBatchesPerCycle, log_interval=$logInterval")
         }
     }
 }

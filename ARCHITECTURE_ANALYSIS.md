@@ -102,7 +102,7 @@ chess-rl-bot/
     │   └── ValidActionRegistry.kt (REMOVE - unnecessary)
     │
     └── CLI: 2 classes → 1 class
-        ├── CLIRunner.kt (KEEP - main CLI)
+        ├── ChessRLCLI.kt (KEEP - main CLI)
         └── Profiles.kt (CONSOLIDATE - into configuration)
 ```
 
@@ -259,7 +259,7 @@ chess-rl-bot/
     ├── TrainingUtils.kt (utilities)
     ├── SharedDataClasses.kt (data structures)
     ├── ChessRLConfig.kt (configuration)
-    └── CLIRunner.kt (command line interface)
+    └── ChessRLCLI.kt (command line interface)
 ```
 
 ### Clean Dependencies:

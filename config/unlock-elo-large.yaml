@@ -1,0 +1,16 @@
+# Unlock Elo (Large) – composable root config
+# Combines large network, slower target updates, and reduced concurrency
+
+profiles:
+  - network:large-1024
+  - rl:large-200
+  - selfplay:concurrent-4
+  - rewards:default
+  - system:default
+
+overrides:
+  # checkpointDirectory: "experiments/unlock-elo-large"
+  # evaluationGames: 200
+  # drawReward: -0.2
+  # stepLimitPenalty: -1.0
+

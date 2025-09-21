@@ -1,0 +1,4 @@
+# Prioritized Experience Replay profile
+# Switches replay buffer from UNIFORM to PRIORITIZED
+replayType: PRIORITIZED
+

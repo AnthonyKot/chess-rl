@@ -1,203 +1,213 @@
 # Chess RL Bot
 
-**Production-ready Kotlin Multiplatform reinforcement learning system for chess**
+Production-ready Kotlin Multiplatform reinforcement learning system for chess. Clean CLI, composable configs, robust training pipeline, and practical evaluation tools.
 
-A complete chess RL training system with advanced self-play, neural networks, and comprehensive evaluation tools. Features concurrent training, sophisticated game state detection, and production-grade monitoring.
+-------------------------------------------------------------------------------
 
-## 🚀 Quick Start
+## Quick Start
 
-### Train a Chess Agent (Recommended)
-```bash
-# Start training with the streamlined pipeline and DQN backend
-./gradlew :integration:runCli -Dargs="--train-advanced --profile fast-debug --cycles 5 --backend dqn"
-```
+- Train (balanced defaults):
+  ./gradlew :integration:run --args="--train --profile fast-debug"
 
-### Evaluate Against Baseline
-```bash
-# Test your trained agent against the heuristic opponent
-./gradlew :integration:runCli -Dargs="--eval-baseline --games 50 --load-best"
-```
+- Evaluate (auto-loads best model if --model omitted):
+  ./gradlew :integration:run --args="--evaluate --baseline --games 200"
 
-### Head-to-Head Comparison
-```bash
-# Compare two checkpoints
-./gradlew :integration:runCli -Dargs="--eval-h2h --games 50 --loadA path/to/model_a.json --loadB path/to/model_b.json"
-```
+- Play (human vs agent):
+  ./gradlew :integration:run --args="--play --model checkpoints/fast-debug/best_model.json --as white"
 
-## 🏗️ Architecture
+- Help:
+  ./gradlew :integration:run --args="--help"
 
-```
-chess-rl-bot/
-├── chess-engine/        # ♟️  Complete chess implementation with all rules
-├── nn-package/          # 🧠 Advanced neural network library  
-├── rl-framework/        # 🤖 DQN and Policy Gradient algorithms
-└── integration/         # 🔗 Production training pipeline
-```
+-------------------------------------------------------------------------------
 
-## ✨ Recent Improvements
+## CLI Overview
 
-### 🏗️ **Simplified and Reliable Architecture** (Latest)
-- **Problem**: Thread safety issues and complex concurrency management causing training instability
-- **Solution**: Multi-process self-play with structured logging and comprehensive error handling
-- **Result**: 3-4x performance improvement with zero thread safety issues and graceful failure recovery
+- --train: start training using TrainingPipeline
+- --evaluate:
+  - --baseline: agent vs heuristic or minimax baseline
+  - --compare: modelA vs modelB head-to-head
+- --play: human vs trained agent
 
-### 🔧 **Fixed Peer Evaluation Bug** 
-- **Problem**: Peer evaluation showed 100% draws due to flawed threefold repetition detection
-- **Solution**: Removed aggressive local repetition detection, now uses proper chess engine rules
-- **Result**: Realistic win/loss ratios in model comparisons
+Common flags:
+- --profile <spec>: legacy (fast-debug, long-train, eval-only), or composed profiles
+- --config <name|path>: load root config from ./config or path
+- --override k=v: override any ChessRLConfig key (repeatable; kebab or camelCase)
 
-### ⚡ **Enabled Concurrent Training**
-- **Problem**: Training defaulted to 1 game at a time (no parallelism)
-- **Solution**: Increased default `parallelGames` from 1 to 4
-- **Result**: ~4x faster self-play phase with better CPU utilization
+Essential overrides:
+- --cycles, --games, --max-steps, --seed, --checkpoint-dir
+- --learning-rate, --batch-size, --hidden-layers, --max-concurrent-games
+- --exploration-rate, --target-update-frequency, --gamma, --max-experience-buffer
+- --replay-type UNIFORM|PRIORITIZED, --double-dqn
+- --checkpoint-interval, checkpoint manager controls (see below)
 
-### 🎯 **Enhanced Game State Detection**
-- **Problem**: Step-limited games incorrectly treated as draws
-- **Solution**: Comprehensive validation of all chess termination conditions
-- **Result**: Accurate reward signals for RL training
+Evaluation-specific:
+- --model <path> (optional; auto-loads best)
+- --opponent heuristic|minimax, --depth <n>
+- --eval-epsilon <x> (0.0 greedy)
 
-## 📊 Key Features
+Logging & output:
+- --log-level debug|info|warn|error (default info)
+- --log-interval <n> (detailed block every n cycles)
+- --summary-only (suppress detailed blocks)
+- --metrics-file <path> (CSV per-cycle metrics)
 
-### **Streamlined Training Pipeline**
-- **Pluggable backends**: DQN backend included, DL4J-ready through the new abstraction layer
-- **Multi-process self-play**: Process isolation eliminates thread safety issues while providing 3-4x speedup
-- **Structured logging**: Comprehensive logging system with configurable levels and component-specific loggers
-- **Error handling**: Automatic recovery mechanisms with graceful degradation and system health monitoring
-- **Lightweight validation**: Core learning/quality checks ready for custom extensions
+-------------------------------------------------------------------------------
 
-### **Production-Ready Features**
-- **Checkpointing**: Automatic snapshots of best/regular models
-- **Metrics**: Essential training telemetry with buffer/episode tracking
-- **Deterministic mode**: Central SeedManager enables reproducible runs
+## Config System (Composable Profiles)
 
-### **Performance Baseline**
-- **JVM execution**: High-throughput training on commodity hardware
-- **Experience replay**: Circular buffer handling 50K+ entries
-- **Batch updates**: Tuned defaults (32-128) with backend control
+Directory layout:
 
-## 🎮 Training Profiles
+config/
+- network/    # hiddenLayers, learningRate, batchSize
+- rl/         # explorationRate, targetUpdateFrequency, gamma, maxExperienceBuffer, replayType, doubleDqn
+- selfplay/   # gamesPerCycle, maxConcurrentGames, maxStepsPerGame, maxCycles
+- rewards/    # winReward, lossReward, drawReward, stepLimitPenalty
+- system/     # seed, checkpointInterval, checkpointDirectory, evaluationGames
+- <root>.yaml # meta configs composing multiple domain profiles + overrides
 
-### **Default Profile: `dqn_unlock_elo_prioritized`**
-Optimized for learning from scratch with anti-draw measures:
-```bash
-./gradlew :integration:runCli -Dargs="--train-advanced --cycles 10 --profile dqn_unlock_elo_prioritized"
-```
+Use profiles:
+- Composed: --profile network:balanced-768,rl:medium-100,selfplay:concurrent-6
+- Unqualified (unique name): --profile balanced-768,long
+- Root config: --config unlock-elo-balanced
 
-### **Bootstrap Profile: `dqn_imitation_bootstrap`**
-Start from supervised learning for faster progress:
-```bash
-# First, collect teacher data
-./gradlew :chess-engine:runTeacherCollector -Dargs="--collect --games 50 --depth 2 --out data/teacher.ndjson"
+Precedence: domain defaults → profiles (left→right) → CLI overrides → --override k=v
 
-# Train imitation model
-./gradlew :chess-engine:runImitationTrainer -Dargs="--train-imitation --data data/teacher.ndjson --out data/imitation_qnet.json"
+Overrides accept kebab-case or camelCase. Example:
+- --override max-concurrent-games=8 --override hiddenLayers="[768,512,256]"
 
-# Fine-tune with RL
-./gradlew :integration:runCli -Dargs="--train-advanced --cycles 10 --profile dqn_imitation_bootstrap"
-```
+-------------------------------------------------------------------------------
 
-## 🧪 Evaluate and Play
+## Provided Profiles
 
-### Evaluate vs Baseline (agent perspective)
-```bash
-# Auto-load best from the profile's checkpoint directory
-./gradlew :integration:runCli -Dargs="--eval-baseline --games 100 --colors alternate --max-steps 120 --eval-epsilon 0.0 --draw-reward 0.0 --load-best --checkpoint-dir checkpoints/unlock_elo_prioritized"
-```
+Network
+- default.yaml: [512,256,128], lr=0.001, batch=64
+- balanced-768.yaml: [768,512,256], lr=0.0005, batch=64
+- large-1024.yaml: [1024,1024,256], lr=0.0003, batch=128
 
-### Head-to-Head (A vs B)
-```bash
-./gradlew :integration:runCli -Dargs="--eval-h2h --games 100 --max-steps 180 --eval-epsilon 0.05 \
-  --loadA checkpoints/unlock_elo_prioritized/best_qnet.json \
-  --loadB checkpoints/unlock_prioritized_warm/best_qnet.json \
-  --local-threefold --threefold-threshold 3 \
-  --adjudicate --resign-material 9 --no-progress-plies 40 \
-  --dump-draws --dump-limit 3"
-```
-Notes:
-- Strict legal-move masking is enforced; invalid moves should be 0 once models load.
-- `--adjudicate` ends games early on large material deficit (default ≥9) or no capture/check for Y plies (default 40). This cuts long “other” draws.
+RL
+- medium-100.yaml: targetUpdateFrequency=100, gamma=0.99
+- large-200.yaml: targetUpdateFrequency=200, gamma=0.995
+- epsilon-high.yaml: explorationRate=0.2
+- epsilon-low.yaml: explorationRate=0.05
+- large-buffer-100k.yaml: maxExperienceBuffer=100000
+- eval-greedy.yaml: explorationRate=0.0
+- prioritized.yaml: replayType=PRIORITIZED
 
-### Play Against the Agent (human)
-```bash
-# Auto-load best and play as White
-./gradlew :integration:runCli -Dargs="--play-human --as white --load-best --checkpoint-dir checkpoints/unlock_elo_prioritized"
-```
+Self-play
+- default.yaml: gamesPerCycle=20, maxConcurrentGames=4, maxStepsPerGame=80, maxCycles=100
+- concurrent-6.yaml: maxConcurrentGames=6
+- concurrent-4.yaml: maxConcurrentGames=4
 
-## 🔧 Configuration Options
+Rewards
+- default.yaml: win=1.0 loss=-1.0 draw=-0.2 stepLimitPenalty=-1.0
 
-### **Concurrency Settings**
-```bash
-# Use N parallel self-play games (scales with CPU cores)
---concurrency 8
-```
+System
+- default.yaml: seed=null, checkpointInterval=5, checkpointDirectory="checkpoints", evaluationGames=100
+- eval-deterministic.yaml: seed=12345, evaluationGames=500
 
-### **Reproducible Training**
-```bash
-# Use deterministic seeding for reproducible results
---seed 12345
-```
+Root configs
+- unlock-elo-balanced.yaml → network:balanced-768, rl:medium-100, selfplay:concurrent-6
+- unlock-elo-large.yaml → network:large-1024, rl:large-200, selfplay:concurrent-4
 
-### **Custom Checkpointing**
-```bash
-# Save to custom directory with specific intervals
---checkpoint-dir my_experiment --checkpoint-interval 5
-```
+-------------------------------------------------------------------------------
 
-## 📈 Performance Characteristics
+## Example Combos
 
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Training Speed** | 5-7 episodes/sec | With 4 parallel games |
-| **Memory Usage** | 100-500MB | Depends on buffer size |
-| **JVM vs Native** | 5-8x faster (JVM) | For sustained training |
-| **Concurrent Games** | 1-8 supported | Scales with CPU cores |
+- Deterministic greedy eval:
+  ./gradlew :integration:run --args="--evaluate --baseline --profile rl:eval-greedy,system:eval-deterministic --games 200"
 
-## 🧪 Testing & Validation
+- Early-stage exploration bump:
+  ./gradlew :integration:run --args="--train --profile rl:epsilon-high"
 
-### **Comprehensive Test Suite**
-- **166+ Tests**: Unit, integration, and performance tests
-- **Game State Validation**: All chess rules and edge cases covered
-- **Training Pipeline**: End-to-end validation of RL components
+- Large replay buffer (memory permitting):
+  ./gradlew :integration:run --args="--train --profile rl:large-buffer-100k"
 
-### **Run Tests**
-```bash
-# Run all tests
-./gradlew test
+- Prioritized replay:
+  ./gradlew :integration:run --args="--train --override replayType=PRIORITIZED"
+  # or create rl/prioritized.yaml with replayType: PRIORITIZED and select via --profile rl:prioritized
 
-# Run specific module tests
-./gradlew :chess-engine:jvmTest
-./gradlew :integration:test
-```
+- Unlock Elo (balanced):
+  ./gradlew :integration:run --args="--train --config unlock-elo-balanced --double-dqn --log-interval 5 --metrics-file metrics/balanced.csv"
 
-## 🎯 What's Working Today
+- Unlock Elo (large):
+  ./gradlew :integration:run --args="--train --config unlock-elo-large --double-dqn --log-interval 5 --metrics-file metrics/large.csv"
 
-### **Core Functionality**
-- ✅ Complete chess engine with all rules (castling, en passant, promotion)
-- ✅ Advanced neural network library with multiple optimizers
-- ✅ DQN algorithm with experience replay and target networks
-- ✅ Concurrent self-play training with 4x speedup
-- ✅ Comprehensive game state detection and validation
+-------------------------------------------------------------------------------
 
-### **Production Features**
-- ✅ Automatic checkpointing and model versioning
-- ✅ Real-time training metrics and monitoring
-- ✅ Deterministic seeding for reproducible experiments
-- ✅ Head-to-head model evaluation with realistic outcomes
+## Checkpoints
 
-### **Performance Optimizations**
-- ✅ JVM-optimized training pipeline (5-8x faster than native)
-- ✅ Efficient memory management for large experience buffers
-- ✅ Batch processing optimized for chess RL workloads
+Compatibility saves (always written):
+- best_model.json
+- checkpoint_cycle_<n>.json
 
-## 🚧 Known Limitations
+CheckpointManager artifacts (rich metadata):
+- checkpoint_v<version>_c<cycle>_<timestamp>.json(.gz)
+- ..._qnet.json (portable model)
+- ..._qnet_meta.json (cycle, performance, isBest, config snapshot, seed info)
 
-- **Experience Replay**: Uses live environment for action masking (not stored per-experience)
-- **Monitoring**: Some metrics are simulated rather than measured from hot paths
-- **Opponent Variety**: Limited to heuristic and self-play opponents
+Controls (config/CLI):
+- checkpointMaxVersions, checkpointValidationEnabled, checkpointCompressionEnabled, checkpointAutoCleanupEnabled
 
-## 🎯 Next Steps
+Evaluation auto-load:
+- If --model omitted, CLI selects best from *_qnet_meta.json; falls back to best_model.json
 
-### **High Priority**
+-------------------------------------------------------------------------------
+
+## Logging & Metrics
+
+- --log-level debug|info|warn|error (default info)
+- --log-interval N (detailed block every N cycles)
+- --summary-only (only summaries + final output)
+- --metrics-file path (appends CSV: cycle,timestamp,games,avg_len,...)
+
+-------------------------------------------------------------------------------
+
+## Training Details (DQN)
+
+- explorationRate, targetUpdateFrequency, gamma are configurable
+- doubleDqn toggle for stabler targets (recommended on larger nets)
+- replayType UNIFORM|PRIORITIZED
+- batchSize, hiddenLayers, learningRate via network/ overrides
+
+Recommended starting points:
+- Balanced: [768,512,256], lr=0.0005, batch=64, targetUpdate=100, gamma=0.99
+- Large: [1024,1024,256], lr=0.0003, batch=128, targetUpdate=200, gamma=0.995
+
+-------------------------------------------------------------------------------
+
+## Project Structure
+
+chess-rl/
+- chess-engine/   (chess rules, move gen, interactive CLI)
+- nn-package/     (neural nets, optimizers)
+- rl-framework/   (DQN, PG, replay buffers)
+- integration/    (TrainingPipeline, CLI, config, profiles)
+
+CLI entrypoint: com.chessrl.integration.ChessRLCLI (Gradle: :integration:run)
+Legacy CLIRunner has been removed in favor of the simplified CLI.
+
+-------------------------------------------------------------------------------
+
+## Reproducibility
+
+- --seed or system/seed profile
+- For evaluation: rl:eval-greedy and system:eval-deterministic profiles
+
+-------------------------------------------------------------------------------
+
+## Development & Tests
+
+- Build: ./gradlew :integration:build
+- Tests: ./gradlew test (or per-module)
+
+-------------------------------------------------------------------------------
+
+## Tips
+
+- Use --config for reusable experiment presets and --override k=v for quick tweaks.
+- Start with balanced profiles, then move to large once stable.
+- Review metrics CSV to track trends; adjust targetUpdateFrequency, gamma, and batchSize accordingly.
+
 1. **Shorter Games**: Reduce `maxStepsPerGame` to 80-100 for faster learning signals
 2. **Position Rewards**: Enable positional reward shaping to reduce reward sparsity
 3. **Curriculum Learning**: Start from mid-game positions for accelerated learning

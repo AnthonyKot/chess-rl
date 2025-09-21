@@ -1,0 +1,5 @@
+seed: null
+checkpointInterval: 5
+checkpointDirectory: "checkpoints"
+evaluationGames: 100
+

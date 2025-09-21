@@ -64,13 +64,19 @@ class DqnLearningBackend : LearningBackend {
             hiddenLayers = config.hiddenLayers,
             learningRate = config.learningRate,
             explorationRate = config.explorationRate,
-            config = agentConfig
+            config = agentConfig,
+            replayType = config.replayType,
+            gamma = config.gamma,
+            enableDoubleDQN = config.doubleDqn
         )
         val opponentAgent = ChessAgentFactory.createSeededDQNAgent(
             hiddenLayers = config.hiddenLayers,
             learningRate = config.learningRate,
             explorationRate = config.explorationRate,
-            config = agentConfig
+            config = agentConfig,
+            replayType = config.replayType,
+            gamma = config.gamma,
+            enableDoubleDQN = config.doubleDqn
         )
         return DqnLearningSession(config, mainAgent, opponentAgent)
     }

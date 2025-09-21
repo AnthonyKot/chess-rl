@@ -1,0 +1,5 @@
+gamesPerCycle: 20
+maxConcurrentGames: 4
+maxStepsPerGame: 80
+maxCycles: 100
+

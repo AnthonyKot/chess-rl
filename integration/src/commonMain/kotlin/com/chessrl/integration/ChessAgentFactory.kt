@@ -18,7 +18,8 @@ object ChessAgentFactory {
         explorationRate: Double = 0.1,
         config: ChessAgentConfig = ChessAgentConfig(),
         enableDoubleDQN: Boolean = false,
-        replayType: String = "UNIFORM"
+        replayType: String = "UNIFORM",
+        gamma: Double = 0.99
     ): ChessAgent {
         return RealChessAgentFactory.createRealDQNAgent(
             inputSize = ChessStateEncoder.TOTAL_FEATURES, // Chess state features
@@ -30,7 +31,8 @@ object ChessAgentFactory {
             maxBufferSize = config.maxBufferSize,
             targetUpdateFrequency = config.targetUpdateFrequency,
             doubleDqn = enableDoubleDQN,
-            replayType = replayType
+            replayType = replayType,
+            gamma = gamma
         ).let { realAgent ->
             ChessAgentAdapter(realAgent, config)
         }
@@ -46,7 +48,9 @@ object ChessAgentFactory {
         explorationRate: Double = 0.1,
         config: ChessAgentConfig = ChessAgentConfig(),
         seedManager: SeedManager = SeedManager.getInstance(),
-        replayType: String = "UNIFORM"
+        replayType: String = "UNIFORM",
+        gamma: Double = 0.99,
+        enableDoubleDQN: Boolean = false
     ): ChessAgent {
         return RealChessAgentFactory.createSeededDQNAgent(
             inputSize = ChessStateEncoder.TOTAL_FEATURES,
@@ -59,7 +63,10 @@ object ChessAgentFactory {
             neuralNetworkRandom = seedManager.getNeuralNetworkRandom(),
             explorationRandom = seedManager.getExplorationRandom(),
             replayBufferRandom = seedManager.getReplayBufferRandom(),
-            replayType = replayType
+            replayType = replayType,
+            targetUpdateFrequency = config.targetUpdateFrequency,
+            gamma = gamma,
+            doubleDqn = enableDoubleDQN
         ).let { realAgent ->
             ChessAgentAdapter(realAgent, config)
         }

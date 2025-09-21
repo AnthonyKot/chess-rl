@@ -1,0 +1,3 @@
+# Memory-aware concurrency for large nets
+maxConcurrentGames: 4
+

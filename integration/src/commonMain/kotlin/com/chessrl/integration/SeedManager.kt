@@ -52,6 +52,9 @@ class SeedManager private constructor() {
     private var isSeeded: Boolean = false
     private var isDeterministicMode: Boolean = false
     
+    // Spam control flag
+    private var hasLoggedSeedMode: Boolean = false
+    
     // Component-specific random generators
     private var neuralNetworkRandom: Random = Random.Default
     private var explorationRandom: Random = Random.Default
@@ -97,12 +100,14 @@ class SeedManager private constructor() {
         // Record seed event
         recordSeedEvent(SeedEventType.SEED_SET, seed, "Master seed set to $seed")
         
-        println("🎲 Seed Manager: Master seed set to $seed (deterministic mode enabled)")
-        println("   Neural Network seed: $nnSeed")
-        println("   Exploration seed: $explorationSeed")
-        println("   Replay Buffer seed: $replaySeed")
-        println("   Data Generation seed: $dataSeed")
-        println("   General seed: $generalSeed")
+        // Only show one line for deterministic mode, and only once
+        if (!hasLoggedSeedMode) {
+            println("🎲 Deterministic mode enabled with seed: $seed")
+            hasLoggedSeedMode = true
+        }
+        
+        // Move detailed component seeds to debug level (would need logger integration)
+        // For now, we'll suppress the detailed output to reduce spam
     }
     
     /**
@@ -114,7 +119,12 @@ class SeedManager private constructor() {
         isDeterministicMode = false
         
         recordSeedEvent(SeedEventType.RANDOM_SEED_SET, randomSeed, "Random seed generated: $randomSeed")
-        println("🎲 Seed Manager: Random seed generated: $randomSeed (non-deterministic mode)")
+        
+        // Only show one line for random mode, and only once
+        if (!hasLoggedSeedMode) {
+            println("🎲 Random seed mode enabled")
+            hasLoggedSeedMode = true
+        }
     }
     
     /**

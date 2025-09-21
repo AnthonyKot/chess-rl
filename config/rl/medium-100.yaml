@@ -1,0 +1,3 @@
+# Medium-size target update frequency (for ~2M param nets)
+targetUpdateFrequency: 100
+gamma: 0.99

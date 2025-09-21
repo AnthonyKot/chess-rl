@@ -166,7 +166,11 @@ object ConfigParser {
             "batchSize" -> config.copy(batchSize = value.toIntOrThrow(key))
             "explorationRate" -> config.copy(explorationRate = value.toDoubleOrThrow(key))
             "targetUpdateFrequency" -> config.copy(targetUpdateFrequency = value.toIntOrThrow(key))
+            "doubleDqn" -> config.copy(doubleDqn = value.equals("true", true))
+            "gamma" -> config.copy(gamma = value.toDoubleOrThrow(key))
             "maxExperienceBuffer" -> config.copy(maxExperienceBuffer = value.toIntOrThrow(key))
+            "replayType" -> config.copy(replayType = value)
+            "maxBatchesPerCycle" -> config.copy(maxBatchesPerCycle = value.toIntOrThrow(key))
             "gamesPerCycle" -> config.copy(gamesPerCycle = value.toIntOrThrow(key))
             "maxConcurrentGames" -> config.copy(maxConcurrentGames = value.toIntOrThrow(key))
             "maxStepsPerGame" -> config.copy(maxStepsPerGame = value.toIntOrThrow(key))
@@ -179,6 +183,14 @@ object ConfigParser {
             "checkpointInterval" -> config.copy(checkpointInterval = value.toIntOrThrow(key))
             "checkpointDirectory" -> config.copy(checkpointDirectory = value.trim('"'))
             "evaluationGames" -> config.copy(evaluationGames = value.toIntOrThrow(key))
+            // checkpoint manager + logging
+            "checkpointMaxVersions" -> config.copy(checkpointMaxVersions = value.toIntOrThrow(key))
+            "checkpointValidationEnabled" -> config.copy(checkpointValidationEnabled = value.equals("true", true))
+            "checkpointCompressionEnabled" -> config.copy(checkpointCompressionEnabled = value.equals("true", true))
+            "checkpointAutoCleanupEnabled" -> config.copy(checkpointAutoCleanupEnabled = value.equals("true", true))
+            "logInterval" -> config.copy(logInterval = value.toIntOrThrow(key))
+            "summaryOnly" -> config.copy(summaryOnly = value.equals("true", true))
+            "metricsFile" -> config.copy(metricsFile = value.trim('"'))
             else -> config
         }
     }

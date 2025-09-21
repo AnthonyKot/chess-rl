@@ -1,0 +1,10 @@
+# Phase 1: Balanced Architecture (~2.1M params)
+# Notes: lower LR for stability, moderate batch size
+hiddenLayers: [768, 512, 256]
+learningRate: 0.0005
+batchSize: 64
+
+# Future (pending RL backend support):
+# l2Regularization: 0.0001
+# gradientClipping: 1.0
+

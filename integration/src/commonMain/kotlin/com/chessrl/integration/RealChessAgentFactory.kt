@@ -22,7 +22,8 @@ object RealChessAgentFactory {
         maxBufferSize: Int = 10000,
         targetUpdateFrequency: Int = 100,
         doubleDqn: Boolean = false,
-        replayType: String = "UNIFORM"
+        replayType: String = "UNIFORM",
+        gamma: Double = 0.99
     ): RealChessAgent {
         // Seeded randoms if available
         val nnRandom = try { SeedManager.getNeuralNetworkRandom() } catch (_: Throwable) { kotlin.random.Random.Default }
@@ -103,7 +104,7 @@ object RealChessAgentFactory {
             qNetwork = RealNeuralNetworkWrapper(qNetwork),
             targetNetwork = RealNeuralNetworkWrapper(targetNetwork),
             experienceReplay = experienceReplay,
-            gamma = 0.99,
+            gamma = gamma,
             targetUpdateFrequency = targetUpdateFrequency,
             batchSize = batchSize,
             doubleDQN = doubleDqn
@@ -197,7 +198,9 @@ object RealChessAgentFactory {
         replayBufferRandom: kotlin.random.Random,
         weightInitType: String = "he",
         targetUpdateFrequency: Int = 100,
-        replayType: String = "UNIFORM"
+        replayType: String = "UNIFORM",
+        gamma: Double = 0.99,
+        doubleDqn: Boolean = false
     ): RealChessAgent {
         
         // Create main Q-network with seeded initialization
@@ -283,9 +286,10 @@ object RealChessAgentFactory {
             qNetwork = RealNeuralNetworkWrapper(qNetwork),
             targetNetwork = RealNeuralNetworkWrapper(targetNetwork),
             experienceReplay = experienceReplay,
-            gamma = 0.99,
+            gamma = gamma,
             targetUpdateFrequency = targetUpdateFrequency,
-            batchSize = batchSize
+            batchSize = batchSize,
+            doubleDQN = doubleDqn
         )
         
         // Create seeded exploration strategy

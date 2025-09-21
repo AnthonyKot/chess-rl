@@ -1,0 +1,11 @@
+profiles:
+  - network:big
+  - selfplay:long
+  - rl:default
+  - rewards:default
+  - system:default
+
+overrides:
+  checkpointDirectory: "experiments/long-term-learning"
+  evaluationGames: 200
+

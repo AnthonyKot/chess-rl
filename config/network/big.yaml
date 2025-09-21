@@ -1,0 +1,4 @@
+hiddenLayers: [768, 512, 256]
+learningRate: 0.0005
+batchSize: 64
+

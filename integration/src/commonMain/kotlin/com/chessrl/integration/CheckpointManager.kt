@@ -88,10 +88,13 @@ class CheckpointManager(
             val checkpointEndTime = System.currentTimeMillis()
             val checkpointDuration = checkpointEndTime - checkpointStartTime
             
-            println("💾 Checkpoint created: version $version (${checkpointDuration}ms)")
-            if (config.validationEnabled) {
-                println("   Validation: ${checkpointInfo.validationStatus}")
+            // Reduce verbosity - only log if it's a best checkpoint or validation fails
+            if (metadata.isBest) {
+                println("💾 Best checkpoint saved: version $version")
+            } else if (config.validationEnabled && checkpointInfo.validationStatus != ValidationStatus.VALID) {
+                println("⚠️ Checkpoint validation warning: ${checkpointInfo.validationStatus}")
             }
+            // Regular checkpoints are logged by ChessRLLogger.logCheckpoint instead
             // Write sidecar metadata JSON for checkpoint
             runCatching {
                 val metaPath = when {

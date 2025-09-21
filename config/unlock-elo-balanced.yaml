@@ -1,0 +1,21 @@
+# Unlock Elo (Balanced) – composable root config
+# Combines balanced network, medium target updates, and memory-aware concurrency
+
+profiles:
+  - network:balanced-768
+  - rl:medium-100
+  - selfplay:concurrent-6
+  - rewards:default
+  - system:default
+
+overrides:
+  # Uncomment to tweak per-run
+  # checkpointDirectory: "experiments/unlock-elo-balanced"
+  # evaluationGames: 200
+  # drawReward: -0.2
+  # stepLimitPenalty: -1.0
+
+# Future (pending RL backend support):
+# l2Regularization: 0.0001
+# gradientClipping: 1.0
+

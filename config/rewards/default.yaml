@@ -1,0 +1,5 @@
+winReward: 1.0
+lossReward: -1.0
+drawReward: -0.2
+stepLimitPenalty: -1.0
+
