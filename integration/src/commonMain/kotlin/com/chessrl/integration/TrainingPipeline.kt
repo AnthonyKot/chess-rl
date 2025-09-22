@@ -254,7 +254,6 @@ class TrainingPipeline(
         }
 
         val session = this.session ?: throw IllegalStateException("Pipeline not initialized")
-        val environment = this.environment ?: throw IllegalStateException("Pipeline not initialized")
         
         logger.info("Starting Training Pipeline")
         logger.info("Total Cycles: ${config.maxCycles}")
@@ -586,9 +585,17 @@ class TrainingPipeline(
         val wins = outcomes[GameOutcome.WHITE_WINS] ?: 0
         val losses = outcomes[GameOutcome.BLACK_WINS] ?: 0
         val draws = outcomes[GameOutcome.DRAW] ?: 0
+        val ongoing = outcomes[GameOutcome.ONGOING] ?: 0
         val avgLength = if (results.isNotEmpty()) results.map { it.gameLength }.average() else 0.0
 
-        logger.info("Self-play completed: $wins wins, $losses losses, $draws draws")
+        val summary = buildString {
+            append("Self-play completed: $wins wins, $losses losses, $draws draws")
+            if (ongoing > 0) append(", $ongoing ongoing")
+        }
+        logger.info(summary)
+        if (ongoing > 0) {
+            logger.warn("$ongoing game(s) ended without a recorded result (ONGOING). Consider increasing --max-steps or enabling early adjudication.")
+        }
         logger.info("Average game length: ${"%.1f".format(avgLength)} moves")
     }
     
@@ -600,9 +607,18 @@ class TrainingPipeline(
         return try {
             // Use reflection to avoid compile-time dependency on JVM-specific class
             val clazz = Class.forName("com.chessrl.integration.MultiProcessSelfPlay")
-            val constructor = clazz.getConstructor(ChessRLConfig::class.java)
-            constructor.newInstance(config)
+            // Prefer 1-arg constructor (enabled by @JvmOverloads)
+            val ctor = try {
+                clazz.getConstructor(ChessRLConfig::class.java)
+            } catch (_: NoSuchMethodException) {
+                // Fallback to 2-arg if needed
+                clazz.getConstructor(ChessRLConfig::class.java, String::class.java)
+            }
+            // Create instance, adding default Java path if 2-arg constructor
+            if (ctor.parameterCount == 1) ctor.newInstance(config)
+            else ctor.newInstance(config, System.getProperty("java.home") + "/bin/java")
         } catch (e: Exception) {
+            logger.debug("Multi-process support unavailable: ${e::class.simpleName}: ${e.message}")
             null // Not available on this platform
         }
     }
@@ -627,13 +643,18 @@ class TrainingPipeline(
             var stepCount = 0
             
             // Game loop
+            var stalledNoEncodableMoves = false
             while (!environment.isTerminal(state) && stepCount < config.maxStepsPerGame) {
                 // Determine current player
                 val currentAgent = if (stepCount % 2 == 0) whiteAgent else blackAgent
                 
                 // Get valid actions
                 val validActions = environment.getValidActions(state)
-                if (validActions.isEmpty()) break
+                if (validActions.isEmpty()) {
+                    // No encodable actions for a non-terminal board position; treat as stalled
+                    stalledNoEncodableMoves = true
+                    break
+                }
                 
                 // Agent selects action (with per-agent lock for thread safety)
                 val lock = if (currentAgent === whiteAgent) whiteLock else blackLock
@@ -677,11 +698,21 @@ class TrainingPipeline(
             val gameDuration = endTime - startTime
             
             // Determine game outcome
-            val gameOutcome = determineGameOutcome(environment, stepCount >= config.maxStepsPerGame)
-            val terminationReason = if (stepCount >= config.maxStepsPerGame) {
+            var gameOutcome = determineGameOutcome(environment, stepCount >= config.maxStepsPerGame)
+            var terminationReason = if (stepCount >= config.maxStepsPerGame) {
                 EpisodeTerminationReason.STEP_LIMIT
             } else {
                 EpisodeTerminationReason.GAME_ENDED
+            }
+            // Normalize unresolved outcomes caused by empty encodable moves
+            if (stalledNoEncodableMoves && gameOutcome == GameOutcome.ONGOING) {
+                gameOutcome = GameOutcome.DRAW
+                terminationReason = EpisodeTerminationReason.MANUAL
+                // Apply a small penalty to discourage stalled states
+                if (experiences.isNotEmpty()) {
+                    val last = experiences.last()
+                    experiences[experiences.lastIndex] = last.copy(reward = last.reward + config.stepLimitPenalty, done = true)
+                }
             }
             
             SelfPlayGameResult(
@@ -752,7 +783,7 @@ class TrainingPipeline(
         val avgLoss = if (batchCount > 0) totalLoss / batchCount else 0.0
         val avgGradientNorm = if (batchCount > 0) totalGradientNorm / batchCount else 0.0
         val avgPolicyEntropy = if (batchCount > 0) totalPolicyEntropy / batchCount else 0.0
-        val avgReward = newExperiences.map { it.reward }.average()
+        val avgReward = if (newExperiences.isNotEmpty()) newExperiences.map { it.reward }.average() else 0.0
         
         // Log training metrics
         ChessRLLogger.logTrainingMetrics(
@@ -807,10 +838,10 @@ class TrainingPipeline(
             }
         }
         
-        val total = (agentWins + draws + losses).coerceAtLeast(1)
-        val winRate = agentWins.toDouble() / total
-        val drawRate = draws.toDouble() / total
-        val lossRate = losses.toDouble() / total
+        val total = (agentWins + draws + losses)
+        val winRate = if (total > 0) agentWins.toDouble() / total else 0.0
+        val drawRate = if (total > 0) draws.toDouble() / total else 0.0
+        val lossRate = if (total > 0) losses.toDouble() / total else 0.0
         val averageGameLength = if (gameLengths.isNotEmpty()) gameLengths.average() else 0.0
         
         val result = EvaluationMetrics(
@@ -829,6 +860,9 @@ class TrainingPipeline(
             lossRate = lossRate,
             avgGameLength = averageGameLength
         )
+        if (total == 0) {
+            logger.warn("No evaluation games completed this cycle. Consider increasing --evaluation-games or checking for evaluation errors.")
+        }
         
         return result
     }

@@ -85,8 +85,7 @@ class CheckpointManager(
             // Perform cleanup if needed
             performCheckpointCleanup()
             
-            val checkpointEndTime = System.currentTimeMillis()
-            val checkpointDuration = checkpointEndTime - checkpointStartTime
+            // val checkpointEndTime = System.currentTimeMillis()
             
             // Reduce verbosity - only log if it's a best checkpoint or validation fails
             if (metadata.isBest) {

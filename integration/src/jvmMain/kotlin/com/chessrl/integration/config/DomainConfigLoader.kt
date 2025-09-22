@@ -37,7 +37,9 @@ object DomainConfigLoader {
                 // Checkpoint manager controls
                 "checkpointMaxVersions", "checkpointValidationEnabled", "checkpointCompressionEnabled", "checkpointAutoCleanupEnabled",
                 // Logging controls (optional via config)
-                "logInterval", "summaryOnly", "metricsFile"
+                "logInterval", "summaryOnly", "metricsFile",
+                // Evaluation environment controls
+                "evalEarlyAdjudication", "evalResignMaterialThreshold", "evalNoProgressPlies"
             )
         );
 
@@ -294,6 +296,9 @@ object DomainConfigLoader {
             "checkpointInterval" -> base.copy(checkpointInterval = from.checkpointInterval)
             "checkpointDirectory" -> base.copy(checkpointDirectory = from.checkpointDirectory)
             "evaluationGames" -> base.copy(evaluationGames = from.evaluationGames)
+            "evalEarlyAdjudication" -> base.copy(evalEarlyAdjudication = from.evalEarlyAdjudication)
+            "evalResignMaterialThreshold" -> base.copy(evalResignMaterialThreshold = from.evalResignMaterialThreshold)
+            "evalNoProgressPlies" -> base.copy(evalNoProgressPlies = from.evalNoProgressPlies)
             // checkpoint and logging
             "checkpointMaxVersions" -> base.copy(checkpointMaxVersions = from.checkpointMaxVersions)
             "checkpointValidationEnabled" -> base.copy(checkpointValidationEnabled = from.checkpointValidationEnabled)
@@ -329,6 +334,9 @@ object DomainConfigLoader {
             "checkpointInterval" -> base.copy(checkpointInterval = raw.toInt())
             "checkpointDirectory" -> base.copy(checkpointDirectory = raw)
             "evaluationGames" -> base.copy(evaluationGames = raw.toInt())
+            "evalEarlyAdjudication" -> base.copy(evalEarlyAdjudication = raw.equals("true", true))
+            "evalResignMaterialThreshold" -> base.copy(evalResignMaterialThreshold = raw.toInt())
+            "evalNoProgressPlies" -> base.copy(evalNoProgressPlies = raw.toInt())
             // checkpoint and logging
             "checkpointMaxVersions" -> base.copy(checkpointMaxVersions = raw.toInt())
             "checkpointValidationEnabled" -> base.copy(checkpointValidationEnabled = raw.equals("true", true))

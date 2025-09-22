@@ -176,7 +176,7 @@ class InteractiveGameInterface(
     /**
      * Show valid moves to help the player.
      */
-    private fun showValidMoves(board: ChessBoard, validActions: List<Int>) {
+    private fun showValidMoves(@Suppress("UNUSED_PARAMETER") board: ChessBoard, validActions: List<Int>) {
         println("Valid moves:")
         val validMoves = validActions.mapNotNull { actionIndex ->
             try {

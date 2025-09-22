@@ -14,7 +14,7 @@ object TrainingPipelineIntegration {
      * Create OutputConfig from ChessRLConfig
      */
     fun createOutputConfig(
-        config: ChessRLConfig,
+        @Suppress("UNUSED_PARAMETER") config: ChessRLConfig,
         logLevel: LogLevel = LogLevel.INFO,
         outputMode: OutputMode = OutputMode.STANDARD,
         logInterval: Int = 1

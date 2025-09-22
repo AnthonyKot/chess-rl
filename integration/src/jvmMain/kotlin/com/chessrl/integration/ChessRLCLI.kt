@@ -129,7 +129,7 @@ object ChessRLCLI {
     private fun handleEvaluateBaseline(args: Array<String>) {
         val config = parseEvaluationConfig(args)
         val provided = getStringArg(args, "--model")
-        val modelPath = provided ?: resolveBestModelPath(config)
+        val modelPath = (if (provided != null) resolveModelPathArg(provided) else resolveBestModelPath(config))
             ?: run {
                 println("Error: No --model provided and no best checkpoint found in '${config.checkpointDirectory}'.")
                 println("Hint: Provide --model <path> or ensure checkpoints exist in ${config.checkpointDirectory}")
@@ -155,7 +155,7 @@ object ChessRLCLI {
             }
         }
         
-        printEvaluationResults(results, opponent)
+        printEvaluationResults(results)
     }
     
     /**
@@ -163,8 +163,16 @@ object ChessRLCLI {
      */
     private fun handleEvaluateCompare(args: Array<String>) {
         val config = parseEvaluationConfig(args)
-        val modelAPath = getRequiredArg(args, "--modelA", "Model A path is required for comparison")
-        val modelBPath = getRequiredArg(args, "--modelB", "Model B path is required for comparison")
+        val modelAArg = getRequiredArg(args, "--modelA", "Model A path is required for comparison")
+        val modelBArg = getRequiredArg(args, "--modelB", "Model B path is required for comparison")
+        val modelAPath = resolveModelPathArg(modelAArg) ?: run {
+            println("Error: Could not resolve model A from '$modelAArg'")
+            exitProcess(1)
+        }
+        val modelBPath = resolveModelPathArg(modelBArg) ?: run {
+            println("Error: Could not resolve model B from '$modelBArg'")
+            exitProcess(1)
+        }
         val games = getIntArg(args, "--games") ?: 100
         
         logger.info("Comparing models: $modelAPath vs $modelBPath over $games games")
@@ -278,6 +286,10 @@ object ChessRLCLI {
         var cfg = applyCliOverrides(baseConfig, args)
         // Eval epsilon convenience
         getDoubleArg(args, "--eval-epsilon")?.let { ee -> cfg = cfg.copy(explorationRate = ee) }
+        // Evaluation environment knobs
+        getBoolArg(args, "--eval-early-adjudication")?.let { v -> cfg = cfg.copy(evalEarlyAdjudication = v) }
+        getIntArg(args, "--eval-resign-threshold")?.let { v -> cfg = cfg.copy(evalResignMaterialThreshold = v) }
+        getIntArg(args, "--eval-no-progress-plies")?.let { v -> cfg = cfg.copy(evalNoProgressPlies = v) }
         cfg = applyGenericOverrides(cfg, args)
         return cfg
     }
@@ -427,7 +439,7 @@ object ChessRLCLI {
     /**
      * Print evaluation results
      */
-    private fun printEvaluationResults(results: com.chessrl.integration.output.EnhancedEvaluationResults, opponent: String) {
+    private fun printEvaluationResults(results: com.chessrl.integration.output.EnhancedEvaluationResults) {
         val formatter = com.chessrl.integration.output.EvaluationResultFormatter()
         println(formatter.formatEvaluationResult(results))
     }
@@ -531,6 +543,90 @@ object ChessRLCLI {
         }.getOrNull()
     }
 
+    // Resolve a model argument that may be a file or directory.
+    // - If a directory: prefer *_qnet_meta.json -> corresponding *_qnet.json with isBest true or highest performance;
+    //   else newest *_qnet.json; else best_model.json.
+    // - If a file: return it as-is.
+    // - If prefixed with "integration/" and not found, retry without the prefix (common invocation mistake).
+    private fun resolveModelPathArg(pathOrDir: String): String? {
+        fun exists(p: String): Boolean = runCatching { java.nio.file.Files.exists(java.nio.file.Path.of(p)) }.getOrNull() == true
+        fun isDir(p: String): Boolean = runCatching { java.nio.file.Files.isDirectory(java.nio.file.Path.of(p)) }.getOrNull() == true
+
+        var candidate = pathOrDir
+        if (!exists(candidate) && candidate.startsWith("integration/")) {
+            candidate = candidate.removePrefix("integration/")
+        }
+
+        if (!exists(candidate)) {
+            // Try relative to repo root (one level up)
+            val up = "../$candidate"
+            if (exists(up)) candidate = up else return null
+        }
+
+        if (!isDir(candidate)) return candidate // file path
+
+        // Directory: scan for best model
+        val dir = java.nio.file.Path.of(candidate)
+        val entries = try {
+            java.nio.file.Files.list(dir).use { it.toList() }
+        } catch (_: Throwable) { emptyList<java.nio.file.Path>() }
+
+        // 0) Prefer compat best_model.json if present (most explicit “best”)
+        run {
+            val compat = dir.resolve("best_model.json")
+            if (java.nio.file.Files.exists(compat)) {
+                logger.info("Resolved model in $candidate -> ${compat.toString()} (best_model.json)")
+                return compat.toString()
+            }
+        }
+
+        // 1) Prefer meta files *_qnet_meta.json
+        val metas = entries.filter { it.fileName.toString().endsWith("_qnet_meta.json") }
+        if (metas.isNotEmpty()) {
+            data class Cand(val json: String, val perf: Double, val isBest: Boolean, val mtime: Long)
+            val cands = metas.mapNotNull { meta ->
+                val text = runCatching { java.nio.file.Files.readString(meta) }.getOrNull() ?: return@mapNotNull null
+                val perf = extractDouble(text, "\\\"performance\\\"\\s*:\\s*([-0-9.eE]+)") ?: 0.0
+                val isBest = extractBool(text, "\\\"isBest\\\"\\s*:\\s*(true|false)") ?: false
+                val json = meta.toString().replace("_qnet_meta.json", "_qnet.json")
+                val mt = runCatching { java.nio.file.Files.getLastModifiedTime(meta).toMillis() }.getOrNull() ?: 0L
+                if (exists(json)) Cand(json, perf, isBest, mt) else null
+            }
+            if (cands.isNotEmpty()) {
+                val best = cands.sortedWith(compareByDescending<Cand> { it.isBest }
+                    .thenByDescending { it.perf }
+                    .thenByDescending { it.mtime }).first()
+                logger.info("Resolved model in $candidate -> ${best.json} (meta: isBest=${best.isBest}, perf=${"%.4f".format(best.perf)})")
+                return best.json
+            }
+        }
+
+        // 2) Fallback to newest *_qnet.json
+        val qnets = entries.filter { it.fileName.toString().endsWith("_qnet.json") }
+        if (qnets.isNotEmpty()) {
+            val best = qnets.maxByOrNull { runCatching { java.nio.file.Files.getLastModifiedTime(it).toMillis() }.getOrNull() ?: 0L }
+            if (best != null) {
+                logger.info("Resolved model in $candidate -> ${best.toString()} (newest *_qnet.json)")
+                return best.toString()
+            }
+        }
+
+        // 3) Fallback to compat best_model.json
+        // (handled above)
+
+        // 4) Last resort: checkpoint_cycle_*.json (uncompressed)
+        val cycles = entries.filter { val n = it.fileName.toString(); n.startsWith("checkpoint_cycle_") && n.endsWith(".json") }
+        if (cycles.isNotEmpty()) {
+            val latest = cycles.maxByOrNull { runCatching { java.nio.file.Files.getLastModifiedTime(it).toMillis() }.getOrNull() ?: 0L }
+            if (latest != null) {
+                logger.info("Resolved model in $candidate -> ${latest.toString()} (latest checkpoint_cycle_*.json)")
+                return latest.toString()
+            }
+        }
+
+        return null
+    }
+
     private fun getAllArgs(args: Array<String>, flag: String): List<String> {
         val list = mutableListOf<String>()
         var i = 0
@@ -606,19 +702,22 @@ object ChessRLCLI {
         println()
         println("EVALUATION:")
         println("  --evaluate --baseline [OPTIONS]")
-        println("    --model <path>           Model file to evaluate (optional: auto-loads best checkpoint if omitted)")
+        println("    --model <path|dir>       Model file or directory (auto-selects best inside dir; falls back to best in checkpoint dir if omitted)")
         println("    --games <n>              Number of evaluation games (default: 100)")
         println("    --opponent <type>        Opponent type: heuristic, minimax (default: heuristic)")
         println("    --depth <n>              Minimax depth for minimax opponent (default: 2)")
         println("    --seed <n>               Random seed for reproducibility")
         println("    --eval-epsilon <x>       Evaluation exploration (0.0 = greedy)")
+        println("    --eval-early-adjudication <true|false>  Enable early adjudication (resign on large material deficit)")
+        println("    --eval-resign-threshold <n>            Material threshold for resignation (default: 15)")
+        println("    --eval-no-progress-plies <n>           No-progress plies before draw (default: 100)")
         println("    --profile <spec>         Optional: legacy or composed profiles for evaluation")
         println("    --config <name|path>     Optional: root config for evaluation")
         println("    --override k=v           Optional: overrides for evaluation config")
         println()
         println("  --evaluate --compare [OPTIONS]")
-        println("    --modelA <path>          First model file")
-        println("    --modelB <path>          Second model file")
+        println("    --modelA <path|dir>      First model file or directory (auto-selects best inside dir)")
+        println("    --modelB <path|dir>      Second model file or directory (auto-selects best inside dir)")
         println("    --games <n>              Number of comparison games (default: 100)")
         println("    --seed <n>               Random seed for reproducibility")
         println()

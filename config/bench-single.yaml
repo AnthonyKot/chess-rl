@@ -1,0 +1,30 @@
+# Benchmark profile: single-threaded training (~10–20 minutes)
+
+profiles:
+  - network:balanced-768
+  - rl:medium-100
+  - rewards:default
+  - system:default
+  - selfplay:default
+
+overrides:
+  # Self-play and cycles
+  maxConcurrentGames: 1
+  gamesPerCycle: 60
+  maxCycles: 12
+  maxStepsPerGame: 120
+
+  # Training throughput
+  maxBatchesPerCycle: 50
+
+  # Evaluation overhead (keep tiny during training)
+  evaluationGames: 1
+
+  # Checkpointing (minimal during benchmark)
+  checkpointInterval: 9999
+  checkpointDirectory: "checkpoints/bench_single"
+
+  # Metrics export (CSV)
+  metricsFile: "bench_single.csv"
+  logInterval: 3
+

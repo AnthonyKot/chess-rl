@@ -43,16 +43,20 @@ object SelfPlayWorker {
             winReward = argsMap["--win-reward"]?.toDouble() ?: 1.0,
             lossReward = argsMap["--loss-reward"]?.toDouble() ?: -1.0,
             drawReward = argsMap["--draw-reward"]?.toDouble() ?: -0.2,
-            stepLimitPenalty = argsMap["--step-limit-penalty"]?.toDouble() ?: -1.0
+            stepLimitPenalty = argsMap["--step-limit-penalty"]?.toDouble() ?: -1.0,
+            hiddenLayers = argsMap["--hidden-layers"]?.let { parseHiddenLayers(it) }
         )
     }
     
     private fun runSelfPlayGame(params: WorkerParams): WorkerGameResult {
         val startTime = System.currentTimeMillis()
         
-        // Initialize seed if provided
-        params.seed?.let { seed ->
-            SeedManager.initializeWithSeed(seed + params.gameId) // Unique seed per game
+        // Initialize SeedManager in the worker process
+        // Use provided seed (offset by gameId) for deterministic runs, otherwise use a random seed
+        if (params.seed != null) {
+            SeedManager.initializeWithSeed(params.seed + params.gameId) // Unique seed per game
+        } else {
+            SeedManager.initializeWithRandomSeed()
         }
         
         // Create simple configuration
@@ -61,7 +65,8 @@ object SelfPlayWorker {
             winReward = params.winReward,
             lossReward = params.lossReward,
             drawReward = params.drawReward,
-            stepLimitPenalty = params.stepLimitPenalty
+            stepLimitPenalty = params.stepLimitPenalty,
+            hiddenLayers = params.hiddenLayers ?: ChessRLConfig().hiddenLayers
         )
         
         // Create agents by loading the model
@@ -87,6 +92,7 @@ object SelfPlayWorker {
         val experiences = mutableListOf<Experience<DoubleArray, Int>>()
         var state = environment.reset()
         var stepCount = 0
+        var stalledNoEncodableMoves = false
         
         while (!environment.isTerminal(state) && stepCount < config.maxStepsPerGame) {
             // Determine current player (white on even steps, black on odd)
@@ -94,7 +100,7 @@ object SelfPlayWorker {
             
             // Get valid actions
             val validActions = environment.getValidActions(state)
-            if (validActions.isEmpty()) break
+            if (validActions.isEmpty()) { stalledNoEncodableMoves = true; break }
             
             // Agent selects action (no synchronization needed - single process)
             val action = currentAgent.selectAction(state, validActions)
@@ -134,11 +140,19 @@ object SelfPlayWorker {
         val gameDuration = endTime - startTime
         
         // Determine game outcome
-        val gameOutcome = determineGameOutcome(environment, stepCount >= config.maxStepsPerGame)
-        val terminationReason = if (stepCount >= config.maxStepsPerGame) {
+        var gameOutcome = determineGameOutcome(environment, stepCount >= config.maxStepsPerGame)
+        var terminationReason = if (stepCount >= config.maxStepsPerGame) {
             EpisodeTerminationReason.STEP_LIMIT
         } else {
             EpisodeTerminationReason.GAME_ENDED
+        }
+        if (stalledNoEncodableMoves && gameOutcome == GameOutcome.ONGOING) {
+            gameOutcome = GameOutcome.DRAW
+            terminationReason = EpisodeTerminationReason.MANUAL
+            if (experiences.isNotEmpty()) {
+                val last = experiences.last()
+                experiences[experiences.lastIndex] = last.copy(reward = last.reward + config.stepLimitPenalty, done = true)
+            }
         }
         
         return WorkerGameResult(
@@ -245,7 +259,8 @@ private data class WorkerParams(
     val winReward: Double = 1.0,
     val lossReward: Double = -1.0,
     val drawReward: Double = -0.2,
-    val stepLimitPenalty: Double = -1.0
+    val stepLimitPenalty: Double = -1.0,
+    val hiddenLayers: List<Int>? = null
 )
 
 /**
@@ -264,3 +279,15 @@ data class WorkerGameResult(
 )
 
 // Removed serialization extensions for now
+
+// Local helper to parse hidden layers from CLI string (e.g., "768,512,256" or "[768,512,256]")
+private fun parseHiddenLayers(value: String): List<Int> {
+    val clean = value.trim()
+    return when {
+        clean.startsWith("[") && clean.endsWith("]") -> clean.removeSurrounding("[", "]").split(',').map { it.trim().toInt() }
+        "," in clean -> clean.split(',').map { it.trim().toInt() }
+        clean.contains(" ") -> clean.split("\\s+".toRegex()).map { it.trim().toInt() }
+        clean.isNotEmpty() -> listOf(clean.toInt())
+        else -> emptyList()
+    }
+}

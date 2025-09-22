@@ -13,7 +13,7 @@ class TrainingPipelineOutputIntegration {
      * Example of how to modify TrainingPipeline constructor to include OutputManager
      */
     fun createTrainingPipelineWithOutput(
-        config: ChessRLConfig,
+        @Suppress("UNUSED_PARAMETER") config: ChessRLConfig,
         outputConfig: OutputConfig = OutputConfig()
     ): OutputManager {
         // Create OutputManager instance

@@ -121,6 +121,14 @@ data class ChessRLConfig(
     val checkpointDirectory: String = "checkpoints",
     /** Number of games for evaluation runs */
     val evaluationGames: Int = 100,
+    
+    // Evaluation environment controls (optional)
+    /** Enable early adjudication during evaluation to reduce drawn-out games */
+    val evalEarlyAdjudication: Boolean = false,
+    /** Material threshold to auto-resign in evaluation when early adjudication is enabled */
+    val evalResignMaterialThreshold: Int = 15,
+    /** No-progress plies threshold for evaluation draw (50-move rule is 100 plies) */
+    val evalNoProgressPlies: Int = 100,
 
     // Checkpoint Manager controls
     val checkpointMaxVersions: Int = 20,
@@ -289,6 +297,7 @@ data class ChessRLConfig(
      * Get a summary of key configuration parameters for logging.
      */
     fun getSummary(): String {
+        val seedLabel = seed?.let { "seed=$it" } ?: "random"
         return buildString {
             appendLine("Chess RL Configuration Summary:")
             appendLine("  Network: ${hiddenLayers.joinToString("x")} layers, lr=$learningRate, batch=$batchSize")
@@ -296,8 +305,9 @@ data class ChessRLConfig(
             appendLine("      replay=$replayType")
             appendLine("  Self-play: $gamesPerCycle games/cycle, $maxConcurrentGames concurrent, $maxStepsPerGame max_steps")
             appendLine("  Rewards: win=$winReward, loss=$lossReward, draw=$drawReward, step_limit_penalty=$stepLimitPenalty")
-            appendLine("  System: ${seed?.let { "seed=$it" } ?: "random"}, checkpoints every $checkpointInterval cycles")
+            appendLine("  System: $seedLabel, checkpoints every $checkpointInterval cycles")
             appendLine("  Training: max_batches_per_cycle=$maxBatchesPerCycle, log_interval=$logInterval")
+            appendLine("  Eval: early_adjudication=$evalEarlyAdjudication, resign_threshold=$evalResignMaterialThreshold, no_progress_plies=$evalNoProgressPlies")
         }
     }
 }

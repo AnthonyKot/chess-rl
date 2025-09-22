@@ -283,7 +283,7 @@ object ConfigParser {
             
             // Parse value
             val valueStart = i
-            var valueEnd = i
+            var valueEnd: Int
             
             if (content[i] == '[') {
                 // Handle array value

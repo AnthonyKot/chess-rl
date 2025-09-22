@@ -14,7 +14,7 @@ import kotlin.io.path.deleteRecursively
  * Multi-process self-play manager that spawns separate processes for concurrent games.
  * This eliminates thread safety concerns while providing true parallelism.
  */
-class MultiProcessSelfPlay(
+class MultiProcessSelfPlay @JvmOverloads constructor(
     private val config: ChessRLConfig,
     private val defaultJavaExecutable: String = System.getProperty("java.home") + "/bin/java"
 ) {
@@ -66,6 +66,12 @@ class MultiProcessSelfPlay(
         fun startOne(id: Int): ProcessInfo? {
             val outputFile = tempDir.resolve("game_$id.json")
             val java = findJavaExecutable() ?: return null
+            // Try to propagate the master seed from the parent process for deterministic behavior
+            val masterSeed: Long? = try {
+                SeedManager.getInstance().getMasterSeed()
+            } catch (_: Exception) {
+                config.seed // May be null
+            }
             val pb = ProcessBuilder(
                 java,
                 "-cp", classpath,
@@ -77,9 +83,10 @@ class MultiProcessSelfPlay(
                 "--win-reward", config.winReward.toString(),
                 "--loss-reward", config.lossReward.toString(),
                 "--draw-reward", config.drawReward.toString(),
-                "--step-limit-penalty", config.stepLimitPenalty.toString()
+                "--step-limit-penalty", config.stepLimitPenalty.toString(),
+                "--hidden-layers", config.hiddenLayers.joinToString(",")
             ).apply {
-                config.seed?.let { seed -> command().addAll(listOf("--seed", seed.toString())) }
+                masterSeed?.let { seed -> command().addAll(listOf("--seed", seed.toString())) }
                 redirectErrorStream(true)
             }
             return try {
@@ -126,6 +133,7 @@ class MultiProcessSelfPlay(
         val cached = cachedJavaExecutable
         if (cached != null) return cached
         val candidates = mutableListOf<String>()
+        System.getenv("CHESSRL_JAVA_EXE")?.let { if (it.isNotBlank()) candidates += it }
         candidates += defaultJavaExecutable
         System.getenv("JAVA_HOME")?.let { candidates += (it.trimEnd('/', '\\') + "/bin/java") }
         candidates += "java"
@@ -147,7 +155,7 @@ class MultiProcessSelfPlay(
         } catch (_: Exception) { false }
     }
     
-    private fun collectResults(processes: List<ProcessInfo>, tempDir: Path): List<SelfPlayGameResult> {
+    private fun collectResults(processes: List<ProcessInfo>, @Suppress("UNUSED_PARAMETER") tempDir: Path): List<SelfPlayGameResult> {
         val results = mutableListOf<SelfPlayGameResult>()
         val timeoutMinutes = 5L // Timeout per game
         
@@ -210,6 +218,13 @@ class MultiProcessSelfPlay(
             val finalFen = extractStr("\"finalPosition\"\\s*:\\s*\"([^\"]+)\"") ?: ""
 
             val experiences = parseNdjsonExperiences(Path.of(outputFile.toString() + ".ndjson"))
+            // Optional diagnostic: check summary count vs parsed count
+            runCatching {
+                val declared = Regex("\"experienceCount\"\\s*:\\s*(\\d+)").find(jsonContent)?.groupValues?.get(1)?.toIntOrNull()
+                if (declared != null && declared != experiences.size) {
+                    logger.debug("Experience count mismatch for ${outputFile.fileName}: summary=$declared, parsed=${experiences.size}")
+                }
+            }
 
             SelfPlayGameResult(
                 gameId = gid,
@@ -244,11 +259,11 @@ class MultiProcessSelfPlay(
             var line: String?
             while (true) {
                 line = reader.readLine() ?: break
-                val l = line!!.trim()
+                val l = (line ?: continue).trim()
                 if (l.isEmpty()) continue
                 try {
-                    val sStr = Regex("\"s\"\\s*:\\s*(\\[[^]]*\\))").find(l)?.groupValues?.get(1) ?: continue
-                    val nsStr = Regex("\"ns\"\\s*:\\s*(\\[[^]]*\\))").find(l)?.groupValues?.get(1) ?: continue
+                    val sStr = Regex("\"s\"\\s*:\\s*(\\[[^\\]]*\\])").find(l)?.groupValues?.get(1) ?: continue
+                    val nsStr = Regex("\"ns\"\\s*:\\s*(\\[[^\\]]*\\])").find(l)?.groupValues?.get(1) ?: continue
                     val a = Regex("\"a\"\\s*:\\s*(\\-?\\d+)").find(l)?.groupValues?.get(1)?.toIntOrNull() ?: continue
                     val r = Regex("\"r\"\\s*:\\s*([\\-0-9.eE]+)").find(l)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
                     val d = Regex("\"d\"\\s*:\\s*(true|false)").find(l)?.groupValues?.get(1)?.toBoolean() ?: false

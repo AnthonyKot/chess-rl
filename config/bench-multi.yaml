@@ -1,0 +1,30 @@
+# Benchmark profile: multi-process training (~10–20 minutes)
+
+profiles:
+  - network:balanced-768
+  - rl:medium-100
+  - rewards:default
+  - system:default
+  - selfplay:concurrent-6
+
+overrides:
+  # Self-play and cycles
+  maxConcurrentGames: 6
+  gamesPerCycle: 200
+  maxCycles: 12
+  maxStepsPerGame: 120
+
+  # Training throughput
+  maxBatchesPerCycle: 50
+
+  # Evaluation overhead (keep tiny during training)
+  evaluationGames: 1
+
+  # Checkpointing (minimal during benchmark)
+  checkpointInterval: 9999
+  checkpointDirectory: "checkpoints/bench_multi"
+
+  # Metrics export (CSV)
+  metricsFile: "bench_multi.csv"
+  logInterval: 3
+

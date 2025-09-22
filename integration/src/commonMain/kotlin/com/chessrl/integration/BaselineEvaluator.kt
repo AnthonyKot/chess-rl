@@ -306,9 +306,9 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
                 enablePositionRewards = false, // Keep evaluation simple
                 gameLengthNormalization = false,
                 maxGameLength = config.maxStepsPerGame,
-                enableEarlyAdjudication = false, // Let games play out naturally
-                resignMaterialThreshold = 15, // Conservative resignation
-                noProgressPlies = 100 // Allow longer games
+                enableEarlyAdjudication = config.evalEarlyAdjudication,
+                resignMaterialThreshold = config.evalResignMaterialThreshold,
+                noProgressPlies = config.evalNoProgressPlies
             )
         )
     }
@@ -476,4 +476,3 @@ private data class GameResult(
     val outcome: GameOutcome,
     val gameLength: Int
 )
-
