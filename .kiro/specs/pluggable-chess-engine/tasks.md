@@ -17,7 +17,7 @@ The implementation maintains the current builtin engine as the permanent default
   - **Output**: Foundation types that both adapters will implement
   - _Requirements: 1, 4_
 
-- [ ] 1.1 Define ChessEngineAdapter Interface
+- [-] 1.1 Define ChessEngineAdapter Interface
   - **Deliverable**: Complete ChessEngineAdapter interface in integration package
   - Create `integration/src/commonMain/kotlin/com/chessrl/integration/adapter/ChessEngineAdapter.kt`
   - Define interface methods: initialState, getLegalMoves, applyMove, isTerminal, getOutcome, toFen, fromFen, perft
