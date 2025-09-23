@@ -18,34 +18,7 @@ kotlin {
             // Qualify with 'project' to avoid receiver clash inside the compilation scope
             val runtimeCp = project.configurations.getByName("jvmRuntimeClasspath") + output.allOutputs
 
-            tasks.register("runDemo", JavaExec::class) {
-                dependsOn("jvmMainClasses")
-                classpath = runtimeCp
-                mainClass.set("com.chessrl.chess.DemoKt")
-                group = "application"
-                description = "Run the chess engine demo"
-            }
-            tasks.register("runVisualizationDemo", JavaExec::class) {
-                dependsOn("jvmMainClasses")
-                classpath = runtimeCp
-                mainClass.set("com.chessrl.chess.GameVisualizationDemoKt")
-                group = "application"
-                description = "Run the game visualization and replay tools demo"
-            }
-            tasks.register("runCli", JavaExec::class) {
-                dependsOn("jvmMainClasses")
-                classpath = runtimeCp
-                mainClass.set("com.chessrl.chess.InteractiveCliKt")
-                group = "application"
-                description = "Run the interactive chess engine CLI"
-                // Forward stdin so readLine() works interactively when running via Gradle
-                standardInput = System.`in`
-                val raw = System.getProperty("args")
-                if (raw != null) {
-                    val cliArgs: List<String> = raw.split(" ").filter { it.isNotBlank() }
-                    args(cliArgs)
-                }
-            }
+            // Demo/CLI tasks removed (demos pruned)
             tasks.register("runTeacherCollector", JavaExec::class) {
                 dependsOn("jvmMainClasses")
                 classpath = runtimeCp

@@ -1,0 +1,42 @@
+# Train vs Minimax (convenience root config)
+#
+# Purpose: Run DQN training against a fixed Minimax opponent (depth=2) with
+# early adjudication to avoid long/stalled games – sized for ~10–20 minute runs.
+
+profiles:
+  - network:balanced-768
+  - rl:medium-100
+  - rewards:default
+  - system:default
+  - selfplay:default
+
+overrides:
+  # Self-play sizing (single-thread by default for predictability). Override for multi:
+  maxConcurrentGames: 1        # try --override maxConcurrentGames=6 for multi-process
+  gamesPerCycle: 60
+  maxCycles: 6
+  maxStepsPerGame: 120
+
+  # Training throughput
+  maxBatchesPerCycle: 50
+
+  # Minimax teacher
+  trainOpponentType: "minimax"
+  trainOpponentDepth: 2
+
+  # Training environment adjudication – reduce draws/long games
+  trainEarlyAdjudication: true
+  trainResignMaterialThreshold: 12
+  trainNoProgressPlies: 80
+
+  # Evaluation overhead during training
+  evaluationGames: 1
+
+  # Checkpointing (minimal during short runs)
+  checkpointInterval: 9999
+  checkpointDirectory: "checkpoints/train_vs_minimax"
+
+  # Metrics export
+  metricsFile: "train_vs_minimax.csv"
+  logInterval: 2
+

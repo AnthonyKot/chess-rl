@@ -34,10 +34,14 @@ object DomainConfigLoader {
             dirName = "system",
             allowedKeys = setOf(
                 "seed", "checkpointInterval", "checkpointDirectory", "evaluationGames",
+                // Training opponent controls
+                "trainOpponentType", "trainOpponentDepth",
                 // Checkpoint manager controls
                 "checkpointMaxVersions", "checkpointValidationEnabled", "checkpointCompressionEnabled", "checkpointAutoCleanupEnabled",
                 // Logging controls (optional via config)
                 "logInterval", "summaryOnly", "metricsFile",
+                // Training environment controls
+                "trainEarlyAdjudication", "trainResignMaterialThreshold", "trainNoProgressPlies",
                 // Evaluation environment controls
                 "evalEarlyAdjudication", "evalResignMaterialThreshold", "evalNoProgressPlies"
             )
@@ -133,7 +137,9 @@ object DomainConfigLoader {
                     val idx = trimmed.indexOf(":")
                     if (idx > 0) {
                         val key = trimmed.substring(0, idx).trim()
-                        val value = trimmed.substring(idx + 1).trim().trim('"')
+                        var value = trimmed.substring(idx + 1).trim()
+                        // Strip inline comments and surrounding quotes
+                        value = value.substringBefore("#").trim().trim('"')
                         overrides[key] = value
                     }
                 }
@@ -296,6 +302,13 @@ object DomainConfigLoader {
             "checkpointInterval" -> base.copy(checkpointInterval = from.checkpointInterval)
             "checkpointDirectory" -> base.copy(checkpointDirectory = from.checkpointDirectory)
             "evaluationGames" -> base.copy(evaluationGames = from.evaluationGames)
+            // training opponent
+            "trainOpponentType" -> base.copy(trainOpponentType = from.trainOpponentType)
+            "trainOpponentDepth" -> base.copy(trainOpponentDepth = from.trainOpponentDepth)
+            // training env controls
+            "trainEarlyAdjudication" -> base.copy(trainEarlyAdjudication = from.trainEarlyAdjudication)
+            "trainResignMaterialThreshold" -> base.copy(trainResignMaterialThreshold = from.trainResignMaterialThreshold)
+            "trainNoProgressPlies" -> base.copy(trainNoProgressPlies = from.trainNoProgressPlies)
             "evalEarlyAdjudication" -> base.copy(evalEarlyAdjudication = from.evalEarlyAdjudication)
             "evalResignMaterialThreshold" -> base.copy(evalResignMaterialThreshold = from.evalResignMaterialThreshold)
             "evalNoProgressPlies" -> base.copy(evalNoProgressPlies = from.evalNoProgressPlies)
@@ -334,6 +347,13 @@ object DomainConfigLoader {
             "checkpointInterval" -> base.copy(checkpointInterval = raw.toInt())
             "checkpointDirectory" -> base.copy(checkpointDirectory = raw)
             "evaluationGames" -> base.copy(evaluationGames = raw.toInt())
+            // training opponent
+            "trainOpponentType" -> base.copy(trainOpponentType = raw)
+            "trainOpponentDepth" -> base.copy(trainOpponentDepth = raw.toInt())
+            // training env controls
+            "trainEarlyAdjudication" -> base.copy(trainEarlyAdjudication = raw.equals("true", true))
+            "trainResignMaterialThreshold" -> base.copy(trainResignMaterialThreshold = raw.toInt())
+            "trainNoProgressPlies" -> base.copy(trainNoProgressPlies = raw.toInt())
             "evalEarlyAdjudication" -> base.copy(evalEarlyAdjudication = raw.equals("true", true))
             "evalResignMaterialThreshold" -> base.copy(evalResignMaterialThreshold = raw.toInt())
             "evalNoProgressPlies" -> base.copy(evalNoProgressPlies = raw.toInt())

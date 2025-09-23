@@ -230,24 +230,19 @@ class TrainingValidator(
             recommendations.add("Consider increasing max steps per game or improving training")
         }
         
-        // Simple move diversity check
-        val allMoves = gameResults.flatMap { game ->
-            // Extract move strings from experiences (simplified)
-            game.experiences.mapIndexed { index, _ -> "move_$index" }
-        }
-        
-        if (allMoves.isNotEmpty()) {
-            val uniqueMoves = allMoves.toSet()
-            val diversityRatio = uniqueMoves.size.toDouble() / allMoves.size
-            
-            if (diversityRatio < 0.3 && allMoves.size > 100) {
+        // Action diversity check (unique action indices across all experiences)
+        val allActions: List<Int> = gameResults.flatMap { g -> g.experiences.map { it.action } }
+        if (allActions.isNotEmpty()) {
+            val unique = allActions.toSet().size
+            val diversityRatio = unique.toDouble() / allActions.size
+            if (diversityRatio < 0.1 && allActions.size > 500) {
                 issues.add(ValidationIssue(
                     type = IssueType.LOW_MOVE_DIVERSITY,
                     severity = IssueSeverity.HIGH,
-                    message = "Low move diversity: ${diversityRatio * 100}%",
+                    message = "Low action diversity: ${"%.2f".format(diversityRatio * 100)}%",
                     value = diversityRatio
                 ))
-                recommendations.add("Increase exploration rate")
+                recommendations.add("Increase exploration rate or adjust epsilon decay")
             }
         }
     }

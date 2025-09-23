@@ -8,7 +8,7 @@ The implementation maintains the current builtin engine as the permanent default
 
 ## Implementation Tasks
 
-- [ ] 1. Core Interface and Data Types Implementation
+- [-] 1. Core Interface and Data Types Implementation
   - **Deliverable**: Core adapter interface and data types with comprehensive documentation
   - Implement ChessEngineAdapter interface with immutable state management
   - Create ChessState, ChessMove, and TerminalInfo data classes

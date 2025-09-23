@@ -6,26 +6,21 @@ After analyzing the current codebase post-refactoring, several opportunities rem
 
 ## High-Priority Cleanup Opportunities
 
-### 1. Over-Engineered Output System
+### 1. Over-Engineered Output System (partially resolved)
 
 **Location**: `integration/src/commonMain/kotlin/com/chessrl/integration/output/`
 
 **Issue**: The output system contains 10 files with complex data models, formatters, and managers that seem over-engineered for the core training purpose.
 
-**Files to Consider for Simplification**:
+**Files present (after cleanup):**
 - `OutputDataModels.kt` - 100+ lines of complex data structures
 - `FormatManager.kt` - Extensive formatting logic
-- `OutputManager.kt` - Complex output coordination
 - `EvaluationResultFormatter.kt` - Specialized formatting
 - `StatisticalUtils.kt` - Statistical calculations
 - `ValidationAggregator.kt` - Complex validation aggregation
 - `MetricsTracker.kt` - Detailed metrics tracking
 
-**Recommendation**: 
-- **Consolidate** into 2-3 files: `SimpleLogger.kt`, `MetricsCollector.kt`, `OutputFormatter.kt`
-- **Remove** complex statistical utilities and validation aggregation
-- **Simplify** to essential logging and basic metrics collection
-- **Estimated Reduction**: 1,500+ lines → 400-500 lines
+Status: `OutputManager.kt` and its tests have been removed. Formatting and trend utilities remain. Further consolidation is optional.
 
 ### 2. Redundant Configuration Parameters
 
@@ -58,7 +53,7 @@ val gamma: Double = 0.99,                     // Remove: use fixed value for che
 - **Consolidate**: 8 related parameters into 4 groups
 - **Keep**: 18 parameters that directly impact training effectiveness
 
-### 3. Unused/Minimal Entry Point
+### 3. Unused/Minimal Entry Point (resolved)
 
 **Location**: `src/nativeMain/kotlin/Main.kt`
 
@@ -75,10 +70,7 @@ fun main() {
 }
 ```
 
-**Recommendation**: 
-- **Remove** the entire `src/` directory if not needed
-- **Consolidate** entry points to use only `integration/ChessRLCLI.kt`
-- **Estimated Reduction**: 23 lines and simplified build structure
+Status: Root `src/` application scaffold removed. Root project now acts as an aggregator; use `integration/ChessRLCLI.kt` for entrypoints.
 
 ### 4. Seeded Components Complexity
 
@@ -188,15 +180,13 @@ object EnvironmentDefaults {
 - **Update** README files to reflect current state
 - **Remove** experimental documentation
 
-### 11. Configuration File Cleanup
+### 11. Configuration File Cleanup (partially resolved)
 
 **Redundant Configuration**:
 - `integration/profiles.yaml.backup` - Remove backup file
 - Multiple config directories with overlapping purposes
 
-**Recommendation**:
-- **Remove** backup files
-- **Consolidate** configuration directories
+Status: Historical CSVs/logs and tracked models removed. Backup profiles file pruned from repo if present.
 
 ### 12. Build Script Optimization
 

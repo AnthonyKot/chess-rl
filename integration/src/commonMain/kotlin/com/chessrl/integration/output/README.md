@@ -24,50 +24,30 @@ This directory contains the core infrastructure for the Enhanced Training Output
 - **Final summary formatting**: Training completion with totals and averages
 - **Detailed block formatting**: Comprehensive cycle information for verbose mode
 
-### 3. Output Manager (`OutputManager.kt`)
-- **Central coordinator**: Manages all training output and progress reporting
-- **Configurable verbosity**: Supports different output modes and log levels
-- **Best performance tracking**: Tracks and reports performance improvements
-- **Error handling**: Graceful degradation with fallback formatting
-- **Structured reporting methods**:
-  - `reportConfigSummary()`: Shows profile, overrides, and key parameters once at startup
-  - `reportCycleProgress()`: One-line cycle summaries with consistent formatting
-  - `reportFinalSummary()`: Training completion with totals and averages
-  - `reportCheckpointEvent()`: Checkpoint events with performance information
-  - `reportValidationResults()`: Aggregated validation messages
+### 3. Formatting Tools
+- Use `FormatManager` directly to build one-line cycle summaries, durations, percentages, and final summaries.
 
-### 4. Integration Utilities (`TrainingPipelineIntegration.kt`)
-- **Data conversion functions**: Convert existing data structures to new output format
-- **Configuration helpers**: Create output configuration from ChessRLConfig
-- **Extension functions**: Convenient conversion methods
-- **Integration examples**: Shows how to integrate with existing TrainingPipeline
-
-### 5. Integration Guide (`TrainingPipelineOutputIntegration.kt`)
-- **Step-by-step integration instructions**: How to modify TrainingPipeline
-- **Code examples**: Demonstrates integration points
-- **Migration guidance**: Backward compatibility considerations
+### 4. Integration Notes
+- The formatting utilities are designed to be called directly from your pipeline where you currently log cycle summaries, checkpoints, and final results.
 
 ## Key Features Implemented
 
-### ✅ Structured Output (Requirement 1)
+### ✅ Structured Output
 - Config summary displayed once at startup with profile and key parameters
 - One-line cycle summaries with consistent format: "Cycle X/Y | games=Z | win/draw/loss=A/B/C | avgLen=D.E | reward=F.GH | batches=I | loss=J.KL | grad=M.NO | buf=P.Qk/Rs | T.Us"
 - Final summary with totals, duration, and best performance achieved
 - Consistent decimal formatting (0.25 not 0,25) with 1-2 decimal places
 - Professional formatting with proper spacing and alignment
 
-### ✅ Professional Output Formatting (Requirement 5)
+### ✅ Professional Output Formatting
 - Ideal one-liner format for each cycle as specified
 - Detailed blocks for verbose mode with comprehensive metrics
 - Consistent number formatting with US locale
 - Clear information hierarchy and professional styling
 - Checkpoint information with performance deltas
 
-### ✅ Configurable Output Modes (Requirement 4)
-- Support for different log levels (DEBUG, INFO, WARN, ERROR)
-- Multiple output modes (STANDARD, SUMMARY_ONLY, VERBOSE)
-- Configurable log intervals for detailed blocks
-- Foundation for CLI flag integration
+### ✅ Usage
+- Compose strings using `FormatManager` and print/log them via your existing logger.
 
 ### ✅ Error Handling and Graceful Degradation
 - Robust error handling with fallback formatting
@@ -82,34 +62,19 @@ This directory contains the core infrastructure for the Enhanced Training Output
 
 ## Testing
 
-Comprehensive test suite (`OutputManagerTest.kt`) covers:
-- OutputManager creation and configuration
-- Data model validation and creation
-- Number formatting with locale handling
-- Duration and percentage formatting
-- Buffer statistics formatting
-- Cycle summary formatting with all components
-- Configuration summary formatting
-- Best performance tracking
-
-All tests pass and verify the core functionality works correctly.
+Tests cover the formatting utilities (`FormatManager`, trend formatting, statistical utils) to ensure consistent output.
 
 ## Integration Status
 
-The core infrastructure is complete and ready for integration with TrainingPipeline. The integration utilities provide:
-
-1. **Data conversion functions** to transform existing TrainingCycleResult and TrainingResults to new format
-2. **Configuration helpers** to create OutputConfig from existing ChessRLConfig
-3. **Step-by-step integration guide** showing exactly how to modify TrainingPipeline
-4. **Backward compatibility** considerations to ensure existing workflows continue working
+Call `FormatManager` from your pipeline to format cycle summaries, durations, percentages, and final summaries. No additional glue code is required.
 
 ## Next Steps
 
 To complete the integration:
 
-1. **Modify TrainingPipeline constructor** to accept OutputConfig and create OutputManager
-2. **Replace existing logging calls** with OutputManager methods as shown in integration guide
-3. **Add CLI flags** for output configuration (--log-level, --log-interval, etc.)
-4. **Test integration** with real training scenarios
+1. Use `FormatManager` to format cycle summaries and final summaries.
+2. Print or log those strings with your existing logging system.
+3. Optionally add CLI flags to control verbosity at your logger.
+4. Test integration with real training scenarios.
 
 The foundation is solid and all core requirements for structured output, professional formatting, and configurable modes are implemented and tested.

@@ -55,7 +55,11 @@ class MultiProcessSelfPlay @JvmOverloads constructor(
     }
 
     private fun runGamesBatched(modelPath: String, tempDir: Path): List<ProcessInfo> {
-        val classpath = System.getProperty("java.class.path")
+        val classpath = resolveEffectiveClasspath()
+        runCatching {
+            val entryCount = classpath.split(System.getProperty("path.separator") ?: ":").size
+            logger.debug("Multi-process: resolved worker classpath entries: $entryCount")
+        }
         val totalGames = config.gamesPerCycle
         val concurrency = minOf(config.maxConcurrentGames, totalGames)
         val processes = mutableListOf<ProcessInfo>()
@@ -87,6 +91,16 @@ class MultiProcessSelfPlay @JvmOverloads constructor(
                 "--hidden-layers", config.hiddenLayers.joinToString(",")
             ).apply {
                 masterSeed?.let { seed -> command().addAll(listOf("--seed", seed.toString())) }
+                config.trainOpponentType?.let { opt -> command().addAll(listOf("--opponent", opt)) }
+                if ((config.trainOpponentType?.equals("minimax", true) == true)) {
+                    command().addAll(listOf("--opponent-depth", config.trainOpponentDepth.toString()))
+                }
+                // Training environment flags for parity with parent process
+                command().addAll(listOf(
+                    "--train-early-adjudication", config.trainEarlyAdjudication.toString(),
+                    "--train-resign-threshold", config.trainResignMaterialThreshold.toString(),
+                    "--train-no-progress-plies", config.trainNoProgressPlies.toString()
+                ))
                 redirectErrorStream(true)
             }
             return try {
@@ -123,6 +137,53 @@ class MultiProcessSelfPlay @JvmOverloads constructor(
 
         logger.debug("Started and completed ${processes.size} worker processes in batched mode (concurrency=$concurrency)")
         return processes
+    }
+
+    /**
+     * Resolve a robust classpath for worker processes.
+     *
+     * In Gradle, JavaExec may use a "pathing JAR" (a small jar whose MANIFEST.MF
+     * contains a long Class-Path). When the parent is launched with a single
+     * JAR on -cp, System.getProperty("java.class.path") will only include that
+     * pathing JAR. Passing that JAR again via -cp to child processes does NOT
+     * honor its manifest Class-Path, leading to ClassNotFound errors.
+     *
+     * This method detects that scenario and expands the pathing JAR's manifest
+     * Class-Path entries into an explicit OS-separated classpath string.
+     */
+    private fun resolveEffectiveClasspath(): String {
+        val sep = System.getProperty("path.separator")
+        val raw = System.getProperty("java.class.path") ?: return ""
+
+        // If classpath already contains multiple entries, use it as-is.
+        if (raw.contains(sep)) return raw
+
+        // If it's a single JAR, attempt to expand its manifest Class-Path
+        val f = File(raw)
+        if (f.isFile && raw.endsWith(".jar", ignoreCase = true)) {
+            val expanded: String? = try {
+                java.util.jar.JarFile(f).use { jar ->
+                    val mf = jar.manifest ?: return@use null
+                    val cp = mf.mainAttributes.getValue("Class-Path") ?: return@use null
+                    val baseDir = f.parentFile?.toPath() ?: Path.of(".")
+                    val entries = cp.trim().split(" ").filter { it.isNotBlank() }
+                    if (entries.isNotEmpty()) {
+                        val resolved = entries.map { e ->
+                            val p = Path.of(e)
+                            val abs = if (p.isAbsolute) p else baseDir.resolve(e).normalize()
+                            abs.toFile().path
+                        }
+                        // Include the pathing jar itself and expanded entries
+                        return@use (listOf(f.path) + resolved).joinToString(sep)
+                    }
+                    null
+                }
+            } catch (_: Exception) { null }
+
+            if (expanded != null) return expanded
+        }
+
+        return raw
     }
 
     // -------------------- Availability & Java resolution --------------------
@@ -259,7 +320,7 @@ class MultiProcessSelfPlay @JvmOverloads constructor(
             var line: String?
             while (true) {
                 line = reader.readLine() ?: break
-                val l = (line ?: continue).trim()
+                val l = line.trim()
                 if (l.isEmpty()) continue
                 try {
                     val sStr = Regex("\"s\"\\s*:\\s*(\\[[^\\]]*\\])").find(l)?.groupValues?.get(1) ?: continue

@@ -76,7 +76,8 @@ The system uses a centralized configuration approach with essential parameters o
 
 **RL Training Configuration:**
 - `explorationRate`: Exploration vs exploitation balance (default: 0.1)
-- `targetUpdateFrequency`: How often to update target network (default: 100)
+- `targetUpdateFrequency`: How often to update target network (default: 200)
+- `doubleDqn`: Enable Double DQN target evaluation (default: true)
 - `maxExperienceBuffer`: Experience replay buffer size (default: 50000)
 - `gamma`: Discount factor for future rewards (default: 0.99)
 
@@ -251,4 +252,3 @@ This project follows clean architecture principles:
 ---
 
 **Ready to train your chess agent?** Start with the quick start commands above! 🚀
-

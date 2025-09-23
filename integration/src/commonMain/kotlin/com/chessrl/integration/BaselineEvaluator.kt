@@ -344,9 +344,11 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
             steps++
         }
         
+        val status = environment.getEffectiveGameStatus()
         val outcome = when {
-            environment.getGameStatus().name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
-            environment.getGameStatus().name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+            status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
+            status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+            status.name.contains("DRAW") -> GameOutcome.DRAW
             else -> GameOutcome.DRAW
         }
         
@@ -377,8 +379,15 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
             } else {
                 // Use minimax opponent
                 val move = teacher.act(environment.getCurrentBoard()).bestMove
-                val actionIndex = actionEncoder.encodeMove(move)
-                if (actionIndex in validActions) actionIndex else validActions.first()
+                val encoded = actionEncoder.encodeMove(move)
+                if (encoded in validActions) encoded else {
+                    // Robust fallback: try to match by from->to among valid actions
+                    val fallback = validActions.firstOrNull { ai ->
+                        val m2 = actionEncoder.decodeAction(ai)
+                        m2.from == move.from && m2.to == move.to
+                    }
+                    fallback ?: validActions.first()
+                }
             }
             
             val step = environment.step(action)
@@ -386,9 +395,11 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
             steps++
         }
         
+        val status = environment.getEffectiveGameStatus()
         val outcome = when {
-            environment.getGameStatus().name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
-            environment.getGameStatus().name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+            status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
+            status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+            status.name.contains("DRAW") -> GameOutcome.DRAW
             else -> GameOutcome.DRAW
         }
         
@@ -425,9 +436,11 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
             steps++
         }
         
+        val status = environment.getEffectiveGameStatus()
         val outcome = when {
-            environment.getGameStatus().name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
-            environment.getGameStatus().name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+            status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
+            status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+            status.name.contains("DRAW") -> GameOutcome.DRAW
             else -> GameOutcome.DRAW
         }
         

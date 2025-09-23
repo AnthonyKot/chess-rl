@@ -88,6 +88,15 @@ logs/
 *.model
 *.weights
 
+# Integration module generated artifacts
+integration/bench_*.csv
+integration/*.log
+bench_*.log
+test_results.log
+training_test.log
+integration/best_model.json
+integration/checkpoints/
+
 # Temporary files
 temp/
 tmp/

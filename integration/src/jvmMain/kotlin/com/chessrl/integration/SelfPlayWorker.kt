@@ -6,6 +6,7 @@ import com.chessrl.rl.Experience
 // Remove kotlinx.serialization for now - use simple JSON manually
 import java.io.File
 import kotlin.system.exitProcess
+import com.chessrl.teacher.MinimaxTeacher
 
 /**
  * Self-play worker that runs as a separate process.
@@ -44,7 +45,15 @@ object SelfPlayWorker {
             lossReward = argsMap["--loss-reward"]?.toDouble() ?: -1.0,
             drawReward = argsMap["--draw-reward"]?.toDouble() ?: -0.2,
             stepLimitPenalty = argsMap["--step-limit-penalty"]?.toDouble() ?: -1.0,
-            hiddenLayers = argsMap["--hidden-layers"]?.let { parseHiddenLayers(it) }
+            hiddenLayers = argsMap["--hidden-layers"]?.let { parseHiddenLayers(it) },
+            opponent = argsMap["--opponent"],
+            opponentDepth = argsMap["--opponent-depth"]?.toInt() ?: 2,
+            trainEarlyAdjudication = argsMap["--train-early-adjudication"]?.equals("true", true)
+                ?: EnvironmentDefaults.ENABLE_EARLY_ADJUDICATION,
+            trainResignMaterialThreshold = argsMap["--train-resign-threshold"]?.toInt()
+                ?: EnvironmentDefaults.RESIGN_MATERIAL_THRESHOLD,
+            trainNoProgressPlies = argsMap["--train-no-progress-plies"]?.toInt()
+                ?: EnvironmentDefaults.NO_PROGRESS_PLIES
         )
     }
     
@@ -82,9 +91,9 @@ object SelfPlayWorker {
                 stepLimitPenalty = config.stepLimitPenalty,
                 enablePositionRewards = false,
                 gameLengthNormalization = false,
-                enableEarlyAdjudication = EnvironmentDefaults.ENABLE_EARLY_ADJUDICATION,
-                resignMaterialThreshold = EnvironmentDefaults.RESIGN_MATERIAL_THRESHOLD,
-                noProgressPlies = EnvironmentDefaults.NO_PROGRESS_PLIES
+                enableEarlyAdjudication = params.trainEarlyAdjudication,
+                resignMaterialThreshold = params.trainResignMaterialThreshold,
+                noProgressPlies = params.trainNoProgressPlies
             )
         )
         
@@ -93,6 +102,12 @@ object SelfPlayWorker {
         var state = environment.reset()
         var stepCount = 0
         var stalledNoEncodableMoves = false
+        val opponentType = params.opponent?.lowercase()
+        val minimaxTeacher = if (opponentType == "minimax") {
+            val rnd = runCatching { SeedManager.getInstance().createSeededRandom("minimaxWorker") }.getOrNull()
+            MinimaxTeacher(depth = params.opponentDepth, random = rnd ?: kotlin.random.Random.Default)
+        } else null
+        val actionEncoder = ChessActionEncoder()
         
         while (!environment.isTerminal(state) && stepCount < config.maxStepsPerGame) {
             // Determine current player (white on even steps, black on odd)
@@ -103,7 +118,28 @@ object SelfPlayWorker {
             if (validActions.isEmpty()) { stalledNoEncodableMoves = true; break }
             
             // Agent selects action (no synchronization needed - single process)
-            val action = currentAgent.selectAction(state, validActions)
+            val action = if (currentAgent === opponentAgent && (opponentType == "minimax" || opponentType == "heuristic")) {
+                when (opponentType) {
+                    "minimax" -> {
+                        val move = minimaxTeacher!!.act(environment.getCurrentBoard()).bestMove
+                        val idx = actionEncoder.encodeMove(move)
+                        if (idx in validActions) idx else {
+                            val fallback = validActions.firstOrNull { ai ->
+                                val m2 = actionEncoder.decodeAction(ai)
+                                m2.from == move.from && m2.to == move.to
+                            }
+                            fallback ?: validActions.first()
+                        }
+                    }
+                    "heuristic" -> {
+                        val idx = BaselineHeuristicOpponent.selectAction(environment, validActions)
+                        if (idx >= 0) idx else validActions.first()
+                    }
+                    else -> validActions.first()
+                }
+            } else {
+                currentAgent.selectAction(state, validActions)
+            }
             
             // Take step in environment
             val stepResult = environment.step(action)
@@ -198,7 +234,8 @@ object SelfPlayWorker {
         return if (hitStepLimit) {
             GameOutcome.DRAW // Treat step limit as draw
         } else {
-            val gameStatus = environment.getGameStatus()
+            // Use effective status to include early adjudication outcomes
+            val gameStatus = environment.getEffectiveGameStatus()
             when {
                 gameStatus.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
                 gameStatus.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
@@ -260,7 +297,12 @@ private data class WorkerParams(
     val lossReward: Double = -1.0,
     val drawReward: Double = -0.2,
     val stepLimitPenalty: Double = -1.0,
-    val hiddenLayers: List<Int>? = null
+    val hiddenLayers: List<Int>? = null,
+    val opponent: String? = null,
+    val opponentDepth: Int = 2,
+    val trainEarlyAdjudication: Boolean = EnvironmentDefaults.ENABLE_EARLY_ADJUDICATION,
+    val trainResignMaterialThreshold: Int = EnvironmentDefaults.RESIGN_MATERIAL_THRESHOLD,
+    val trainNoProgressPlies: Int = EnvironmentDefaults.NO_PROGRESS_PLIES
 )
 
 /**

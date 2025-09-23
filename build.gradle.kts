@@ -1,6 +1,5 @@
 plugins {
     kotlin("jvm") version "1.9.20"
-    application
 }
 
 group = "com.chessrl"
@@ -17,9 +16,7 @@ sourceSets {
     val test by getting
 }
 
-application {
-    mainClass.set("MainKt")
-}
+// Root project acts as aggregator; no runnable application entrypoint
 
 tasks.withType<Test> {
     useJUnitPlatform()

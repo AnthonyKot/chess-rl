@@ -1,4 +1,4 @@
 explorationRate: 0.1
-targetUpdateFrequency: 100
+targetUpdateFrequency: 200
+doubleDqn: true
 maxExperienceBuffer: 50000
-

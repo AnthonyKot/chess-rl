@@ -380,6 +380,46 @@ SafeExecution.withErrorHandling("self-play game") {
 }
 ```
 
+## Appendix: Legacy Insights and Best Practices
+
+The following notes summarize validated practices from earlier iterations that remain useful for tuning and troubleshooting.
+
+- Episode termination and tracking
+  - Use explicit termination reasons: `GAME_ENDED`, `STEP_LIMIT`, `MANUAL`.
+  - Treat step-limit endings as draws with a step-limit penalty (e.g., `-0.5 .. -1.0`).
+  - Normalize stalled states (no encodable moves while board is non-terminal) to `MANUAL` plus a small penalty; this prevents “ONGOING” leakage and keeps the learning signal flowing.
+  - Log a termination breakdown per cycle to spot issues (too many `STEP_LIMIT` ⇒ increase `maxStepsPerGame` or enable adjudication).
+
+- Adjudication to reduce long/stalled games
+  - Training knobs: `trainEarlyAdjudication`, `trainResignMaterialThreshold` (≈12), `trainNoProgressPlies` (≈80–100).
+  - Evaluation knobs mirror training (`evalEarlyAdjudication`, etc.). For fair eval, set `--eval-epsilon 0.0` and consider adjudication.
+
+- Performance and platform guidance
+  - Historically, JVM JIT outperformed native on long/complex runs, while native excelled at very short tasks. Current stack uses JVM; leverage JIT for long training.
+  - Batch sizes: 32–128 recommended; 64 is a good default.
+  - Experience buffer: size for ~1.5–2.0× (`batchSize × maxBatchesPerCycle`) experiences per cycle.
+
+- Self‑play concurrency and throughput
+  - Multi‑process shows gains when per‑game overhead is amortized: increase `gamesPerCycle` and match `maxConcurrentGames` to physical cores.
+  - For benchmark runs, keep `evaluationGames=1`, export CSV metrics, and compare games/sec and cycle times.
+
+- Teacher‑guided training
+  - Fixed opponent: set `trainOpponentType=minimax|heuristic` and (for minimax) `trainOpponentDepth` (default 2).
+  - Useful for bootstrapping early learning; later broaden opponents or alternate colors to avoid overfitting.
+
+- Stability and sampling
+  - Uniform replay is robust; prioritized replay can help but adds overhead.
+  - Monitor gradient norm and entropy to detect exploding gradients or policy collapse.
+
+- Practical defaults
+  - `hiddenLayers=[512,256,128]` (single‑thread) or `[768,512,256]` (multi‑process / strong CPU)
+  - `batchSize=64`, `explorationRate=0.05–0.1`, `gamma=0.99`, `targetUpdateFrequency=100–200`
+  - `maxStepsPerGame=120`, `gamesPerCycle=60–200`, `maxBatchesPerCycle=50`
+  - Enable training adjudication with `resign_threshold≈12` and `no_progress_plies≈80–100` during early runs
+
+These insights come from episode-tracking/debugging improvements, performance investigations, and validation passes on the self‑play training pipeline.
+
+
 ### Checkpoint Management
 Automatic model checkpointing with metadata:
 

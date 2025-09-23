@@ -126,9 +126,9 @@ class TrainingPipeline(
                     stepLimitPenalty = config.stepLimitPenalty,
                     enablePositionRewards = false, // Keep simple for reliability
                     gameLengthNormalization = false,
-                    enableEarlyAdjudication = EnvironmentDefaults.ENABLE_EARLY_ADJUDICATION,
-                    resignMaterialThreshold = EnvironmentDefaults.RESIGN_MATERIAL_THRESHOLD,
-                    noProgressPlies = EnvironmentDefaults.NO_PROGRESS_PLIES
+                    enableEarlyAdjudication = config.trainEarlyAdjudication,
+                    resignMaterialThreshold = config.trainResignMaterialThreshold,
+                    noProgressPlies = config.trainNoProgressPlies
                 )
             )
             
@@ -596,6 +596,14 @@ class TrainingPipeline(
         if (ongoing > 0) {
             logger.warn("$ongoing game(s) ended without a recorded result (ONGOING). Consider increasing --max-steps or enabling early adjudication.")
         }
+        // Termination breakdown
+        if (results.isNotEmpty()) {
+            val termCounts = results.groupingBy { it.terminationReason }.eachCount()
+            val ended = termCounts[EpisodeTerminationReason.GAME_ENDED] ?: 0
+            val stepLimit = termCounts[EpisodeTerminationReason.STEP_LIMIT] ?: 0
+            val manual = termCounts[EpisodeTerminationReason.MANUAL] ?: 0
+            logger.info("Terminations: game_ended=$ended, step_limit=$stepLimit, manual=$manual")
+        }
         logger.info("Average game length: ${"%.1f".format(avgLength)} moves")
     }
     
@@ -637,6 +645,12 @@ class TrainingPipeline(
         return try {
             val startTime = System.currentTimeMillis()
             val experiences = mutableListOf<Experience<DoubleArray, Int>>()
+            val opponentType = config.trainOpponentType?.lowercase()
+            val actionEncoder = ChessActionEncoder()
+            val minimaxTeacher = if (opponentType == "minimax") {
+                val rnd = runCatching { SeedManager.getInstance().createSeededRandom("minimaxTeacher") }.getOrNull()
+                com.chessrl.teacher.MinimaxTeacher(depth = config.trainOpponentDepth, random = rnd ?: kotlin.random.Random.Default)
+            } else null
             
             // Reset environment
             var state = environment.reset()
@@ -658,7 +672,22 @@ class TrainingPipeline(
                 
                 // Agent selects action (with per-agent lock for thread safety)
                 val lock = if (currentAgent === whiteAgent) whiteLock else blackLock
-                val action = synchronized(lock) { currentAgent.selectAction(state, validActions) }
+                val action = if (currentAgent === blackAgent && (opponentType == "minimax" || opponentType == "heuristic")) {
+                    when (opponentType) {
+                        "minimax" -> {
+                            val move = minimaxTeacher!!.act(environment.getCurrentBoard()).bestMove
+                            val idx = actionEncoder.encodeMove(move)
+                            if (idx in validActions) idx else validActions.first()
+                        }
+                        "heuristic" -> {
+                            val idx = BaselineHeuristicOpponent.selectAction(environment, validActions)
+                            if (idx >= 0) idx else validActions.first()
+                        }
+                        else -> validActions.first()
+                    }
+                } else {
+                    synchronized(lock) { currentAgent.selectAction(state, validActions) }
+                }
                 
                 // Take step in environment
                 val stepResult = environment.step(action)
@@ -911,9 +940,9 @@ class TrainingPipeline(
                 stepLimitPenalty = config.stepLimitPenalty,
                 enablePositionRewards = false,
                 gameLengthNormalization = false,
-                enableEarlyAdjudication = EnvironmentDefaults.ENABLE_EARLY_ADJUDICATION,
-                resignMaterialThreshold = EnvironmentDefaults.RESIGN_MATERIAL_THRESHOLD,
-                noProgressPlies = EnvironmentDefaults.NO_PROGRESS_PLIES
+                enableEarlyAdjudication = config.trainEarlyAdjudication,
+                resignMaterialThreshold = config.trainResignMaterialThreshold,
+                noProgressPlies = config.trainNoProgressPlies
             )
         )
     }
@@ -922,7 +951,8 @@ class TrainingPipeline(
         return if (hitStepLimit) {
             GameOutcome.DRAW // Treat step limit as draw
         } else {
-            val gameStatus = environment.getGameStatus()
+            // Respect early adjudication when present; fall back to computed status otherwise
+            val gameStatus = environment.getEffectiveGameStatus()
             when {
                 gameStatus.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
                 gameStatus.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS

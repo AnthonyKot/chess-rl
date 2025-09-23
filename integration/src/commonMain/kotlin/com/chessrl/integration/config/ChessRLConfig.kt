@@ -122,6 +122,20 @@ data class ChessRLConfig(
     /** Number of games for evaluation runs */
     val evaluationGames: Int = 100,
     
+    // Training opponent controls (optional)
+    /** Opponent policy during training: null/self, "minimax", or "heuristic" */
+    val trainOpponentType: String? = null,
+    /** Depth for minimax opponent during training */
+    val trainOpponentDepth: Int = 2,
+    
+    // Training environment controls (optional)
+    /** Enable early adjudication during training to reduce long/stalled games */
+    val trainEarlyAdjudication: Boolean = false,
+    /** Material threshold to auto-resign in training when early adjudication is enabled */
+    val trainResignMaterialThreshold: Int = 15,
+    /** No-progress plies threshold for training draw (50-move rule is 100 plies) */
+    val trainNoProgressPlies: Int = 100,
+    
     // Evaluation environment controls (optional)
     /** Enable early adjudication during evaluation to reduce drawn-out games */
     val evalEarlyAdjudication: Boolean = false,
@@ -307,6 +321,8 @@ data class ChessRLConfig(
             appendLine("  Rewards: win=$winReward, loss=$lossReward, draw=$drawReward, step_limit_penalty=$stepLimitPenalty")
             appendLine("  System: $seedLabel, checkpoints every $checkpointInterval cycles")
             appendLine("  Training: max_batches_per_cycle=$maxBatchesPerCycle, log_interval=$logInterval")
+            appendLine("  TrainOpponent: ${trainOpponentType ?: "self"}${if (trainOpponentType?.equals("minimax", true) == true) "(d=$trainOpponentDepth)" else ""}")
+            appendLine("  TrainEnv: early_adjudication=$trainEarlyAdjudication, resign_threshold=$trainResignMaterialThreshold, no_progress_plies=$trainNoProgressPlies")
             appendLine("  Eval: early_adjudication=$evalEarlyAdjudication, resign_threshold=$evalResignMaterialThreshold, no_progress_plies=$evalNoProgressPlies")
         }
     }

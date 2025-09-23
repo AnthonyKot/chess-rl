@@ -361,6 +361,13 @@ object ChessRLCLI {
         getDoubleArg(args, "--draw-reward")?.let { config = config.copy(drawReward = it) }
         getDoubleArg(args, "--step-limit-penalty")?.let { config = config.copy(stepLimitPenalty = it) }
         getIntArg(args, "--evaluation-games")?.let { config = config.copy(evaluationGames = it) }
+        // Training environment controls
+        getBoolArg(args, "--train-early-adjudication")?.let { config = config.copy(trainEarlyAdjudication = it) }
+        getIntArg(args, "--train-resign-threshold")?.let { config = config.copy(trainResignMaterialThreshold = it) }
+        getIntArg(args, "--train-no-progress-plies")?.let { config = config.copy(trainNoProgressPlies = it) }
+        // Training opponent controls
+        getStringArg(args, "--train-opponent")?.let { config = config.copy(trainOpponentType = it) }
+        getIntArg(args, "--train-opponent-depth")?.let { config = config.copy(trainOpponentDepth = it) }
 
         // Checkpoint manager controls
         getIntArg(args, "--checkpoint-max-versions")?.let { config = config.copy(checkpointMaxVersions = it) }
@@ -684,6 +691,11 @@ object ChessRLCLI {
         println("    --replay-type <type>     Replay buffer: UNIFORM or PRIORITIZED")
         println("    --gamma <x>              Discount factor (0,1), default 0.99")
         println("    --double-dqn             Enable Double DQN target evaluation")
+        println("    --train-early-adjudication <true|false>  Enable early adjudication in training")
+        println("    --train-resign-threshold <n>            Material threshold (training)")
+        println("    --train-no-progress-plies <n>           No-progress plies (training)")
+        println("    --train-opponent <type>  Training opponent: self|minimax|heuristic")
+        println("    --train-opponent-depth n Minimax depth during training (default: 2)")
         println("    --resume                 Resume training by auto-loading best_model.json from checkpoint dir")
         println("    --load <path>            Resume training from an explicit model file path")
         println("    --checkpoint-interval n  Save frequency (cycles)")
