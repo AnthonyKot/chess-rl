@@ -229,6 +229,18 @@ Training orchestration and evaluation tools:
 - **BaselineEvaluator**: Evaluation against heuristic and minimax opponents
 - **Configuration System**: Centralized configuration management
 
+## Dependencies
+
+### External Libraries
+
+**chesslib (bhlangonijr/chesslib) v1.3.3**
+- **Purpose**: Alternative chess engine implementation for validation and testing
+- **License**: Apache-2.0 (compatible with this project)
+- **Repository**: https://github.com/bhlangonijr/chesslib
+- **Usage**: Optional engine backend selectable via `--engine chesslib` flag
+
+The chesslib dependency provides an alternative chess rule implementation that can be used alongside the built-in engine for cross-validation and testing purposes. Both engines implement the same ChessEngineAdapter interface, ensuring identical behavior from the RL training perspective.
+
 ## Contributing
 
 This project follows clean architecture principles:

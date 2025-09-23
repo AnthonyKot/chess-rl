@@ -8,7 +8,7 @@ The implementation maintains the current builtin engine as the permanent default
 
 ## Implementation Tasks
 
-- [-] 1. Core Interface and Data Types Implementation
+- [x] 1. Core Interface and Data Types Implementation
   - **Deliverable**: Core adapter interface and data types with comprehensive documentation
   - Implement ChessEngineAdapter interface with immutable state management
   - Create ChessState, ChessMove, and TerminalInfo data classes
@@ -17,7 +17,7 @@ The implementation maintains the current builtin engine as the permanent default
   - **Output**: Foundation types that both adapters will implement
   - _Requirements: 1, 4_
 
-- [-] 1.1 Define ChessEngineAdapter Interface
+- [x] 1.1 Define ChessEngineAdapter Interface
   - **Deliverable**: Complete ChessEngineAdapter interface in integration package
   - Create `integration/src/commonMain/kotlin/com/chessrl/integration/adapter/ChessEngineAdapter.kt`
   - Define interface methods: initialState, getLegalMoves, applyMove, isTerminal, getOutcome, toFen, fromFen, perft
@@ -25,7 +25,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Include comprehensive KDoc documentation with usage examples
   - _Requirements: 1_
 
-- [ ] 1.2 Implement Core Data Types
+- [x] 1.2 Implement Core Data Types
   - **Deliverable**: Immutable data classes for chess state and move representation
   - Create `integration/src/commonMain/kotlin/com/chessrl/integration/adapter/ChessAdapterTypes.kt`
   - Implement ChessState data class with FEN-based immutable state
@@ -34,7 +34,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Include conversion utilities and validation methods
   - _Requirements: 1, 4_
 
-- [ ] 1.3 Implement Action Space Mapping
+- [x] 1.3 Implement Action Space Mapping
   - **Deliverable**: Action encoding/decoding system for 4096 from-to action space
   - Create `integration/src/commonMain/kotlin/com/chessrl/integration/adapter/ActionSpaceMapping.kt`
   - Implement encodeMove and decodeAction methods for 64x64 action space
@@ -43,7 +43,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Add comprehensive unit tests for action space mapping
   - _Requirements: 4_
 
-- [ ] 2. BuiltinAdapter Implementation
+- [x] 2. BuiltinAdapter Implementation
   - **Prerequisites**: Complete Task 1 (core interfaces and types)
   - Implement adapter that wraps existing chess engine without modification
   - Ensure 100% parity with current ChessEnvironment behavior
@@ -51,7 +51,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Validate that all existing tests pass with BuiltinAdapter
   - _Requirements: 2_
 
-- [ ] 2.1 Create BuiltinAdapter Class
+- [x] 2.1 Create BuiltinAdapter Class
   - **Prerequisites**: ChessEngineAdapter interface and data types from Task 1
   - Create `integration/src/commonMain/kotlin/com/chessrl/integration/adapter/BuiltinAdapter.kt`
   - Implement all ChessEngineAdapter methods delegating to existing ChessBoard
@@ -60,7 +60,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Handle castling rights, en passant, and move counters correctly
   - _Requirements: 2_
 
-- [ ] 2.2 Implement State Conversion Methods
+- [x] 2.2 Implement State Conversion Methods
   - **Deliverable**: Robust conversion between ChessBoard and ChessState
   - Create createBoardFromState method using FEN reconstruction
   - Implement convertToChessMove and convertToEngineMove methods
@@ -68,7 +68,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Ensure thread safety through immutable state management
   - _Requirements: 2_
 
-- [ ] 2.3 Add BuiltinAdapter Validation Tests
+- [x] 2.3 Add BuiltinAdapter Validation Tests
   - **Deliverable**: Comprehensive test suite validating BuiltinAdapter parity
   - Create `integration/src/commonTest/kotlin/com/chessrl/integration/adapter/BuiltinAdapterTest.kt`
   - Test starting position has exactly 20 legal moves
@@ -77,7 +77,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Verify castling, en passant, and promotion handling
   - _Requirements: 2, 8_
 
-- [ ] 3. ChesslibAdapter Implementation
+- [x] 3. ChesslibAdapter Implementation
   - **Prerequisites**: Complete Task 2 (BuiltinAdapter working and tested)
   - Add chesslib dependency to integration module build configuration
   - Implement ChesslibAdapter using bhlangonijr/chesslib library
@@ -85,7 +85,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Add comprehensive error handling and validation
   - _Requirements: 3, 7_
 
-- [ ] 3.1 Add Chesslib Dependency
+- [x] 3.1 Add Chesslib Dependency
   - **Deliverable**: Gradle configuration with chesslib dependency
   - Add `implementation("com.github.bhlangonijr:chesslib:1.3.3")` to integration/build.gradle.kts
   - Verify Apache-2.0 license compatibility and document in README
@@ -93,7 +93,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Add dependency documentation with version requirements
   - _Requirements: 7_
 
-- [ ] 3.2 Implement ChesslibAdapter Class
+- [x] 3.2 Implement ChesslibAdapter Class
   - **Prerequisites**: Chesslib dependency added and BuiltinAdapter completed
   - Create `integration/src/commonMain/kotlin/com/chessrl/integration/adapter/ChesslibAdapter.kt`
   - Implement all ChessEngineAdapter methods using chesslib Board and MoveGenerator
@@ -102,7 +102,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Add conversion methods between chesslib types and adapter types
   - _Requirements: 3_
 
-- [ ] 3.3 Implement Chesslib Type Conversions
+- [x] 3.3 Implement Chesslib Type Conversions
   - **Deliverable**: Robust conversion between chesslib types and adapter types
   - Create convertToChessMove method handling chesslib Move to ChessMove conversion
   - Implement convertToChesslibMove with proper Square and Piece mapping
@@ -110,7 +110,7 @@ The implementation maintains the current builtin engine as the permanent default
   - Handle Side.WHITE/BLACK to PieceColor.WHITE/BLACK conversion
   - _Requirements: 3_
 
-- [ ] 3.4 Add ChesslibAdapter Validation Tests
+- [x] 3.4 Add ChesslibAdapter Validation Tests
   - **Deliverable**: Test suite validating ChesslibAdapter correctness
   - Create `integration/src/commonTest/kotlin/com/chessrl/integration/adapter/ChesslibAdapterTest.kt`
   - Test same basic positions as BuiltinAdapter (starting position, e2e4, etc.)

@@ -3,7 +3,11 @@ plugins {
     application
 }
 
-repositories { mavenCentral() }
+repositories { 
+    mavenCentral()
+    // JitPack repository for GitHub-hosted libraries
+    maven { url = uri("https://jitpack.io") }
+}
 
 kotlin {
     jvmToolchain(21)
@@ -24,6 +28,9 @@ dependencies {
     implementation(project(":nn-package"))
     implementation(project(":chess-engine"))
     implementation(project(":rl-framework"))
+    
+    // Chess library for alternative engine implementation
+    implementation("com.github.bhlangonijr:chesslib:1.3.3")
 
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.8.2")
