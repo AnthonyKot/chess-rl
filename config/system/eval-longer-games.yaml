@@ -1,0 +1,17 @@
+# Evaluation configuration with longer games and early adjudication
+# This prevents artificial draws from step limits while allowing natural game conclusions
+
+# Longer step limit for evaluation (allow up to 150 moves per side)
+maxStepsPerGame: 300
+
+# Enable early adjudication to end games naturally
+evalEarlyAdjudication: true
+evalResignMaterialThreshold: 9  # Resign when down by 9 points (queen)
+evalNoProgressPlies: 50         # Draw after 25 moves without progress
+
+# More evaluation games for better statistics
+evaluationGames: 200
+
+# Deterministic evaluation
+seed: 12345
+maxConcurrentGames: 1

@@ -1,0 +1,7 @@
+# Reward configuration that strongly encourages decisive play
+# Penalizes draws more heavily to encourage agents to seek wins
+
+winReward: 1.0
+lossReward: -1.0
+drawReward: -0.5          # Stronger penalty for draws
+stepLimitPenalty: -1.0    # Heavy penalty for hitting step limit

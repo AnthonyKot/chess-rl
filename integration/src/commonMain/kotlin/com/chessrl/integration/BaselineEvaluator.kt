@@ -7,6 +7,7 @@ import com.chessrl.integration.output.EnhancedComparisonResults
 import com.chessrl.integration.output.ColorAlternationStats
 import com.chessrl.integration.output.StatisticalUtils
 import com.chessrl.teacher.MinimaxTeacher
+import com.chessrl.chess.*
 import kotlin.random.Random
 
 /**
@@ -345,11 +346,26 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         }
         
         val status = environment.getEffectiveGameStatus()
-        val outcome = when {
-            status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
-            status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
-            status.name.contains("DRAW") -> GameOutcome.DRAW
-            else -> GameOutcome.DRAW
+        val outcome = if (steps >= config.maxStepsPerGame) {
+            // Game hit step limit - adjudicate based on material or call it a draw
+            val board = environment.getCurrentBoard()
+            val whiteMaterial = calculateMaterial(board, PieceColor.WHITE)
+            val blackMaterial = calculateMaterial(board, PieceColor.BLACK)
+            val materialDiff = whiteMaterial - blackMaterial
+            
+            when {
+                materialDiff >= 5 -> GameOutcome.WHITE_WINS  // White has significant advantage
+                materialDiff <= -5 -> GameOutcome.BLACK_WINS // Black has significant advantage
+                else -> GameOutcome.DRAW // Material roughly equal, call it a draw
+            }
+        } else {
+            // Game ended naturally
+            when {
+                status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
+                status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+                status.name.contains("DRAW") -> GameOutcome.DRAW
+                else -> GameOutcome.DRAW
+            }
         }
         
         return GameResult(outcome, steps)
@@ -396,11 +412,26 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         }
         
         val status = environment.getEffectiveGameStatus()
-        val outcome = when {
-            status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
-            status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
-            status.name.contains("DRAW") -> GameOutcome.DRAW
-            else -> GameOutcome.DRAW
+        val outcome = if (steps >= config.maxStepsPerGame) {
+            // Game hit step limit - adjudicate based on material or call it a draw
+            val board = environment.getCurrentBoard()
+            val whiteMaterial = calculateMaterial(board, PieceColor.WHITE)
+            val blackMaterial = calculateMaterial(board, PieceColor.BLACK)
+            val materialDiff = whiteMaterial - blackMaterial
+            
+            when {
+                materialDiff >= 5 -> GameOutcome.WHITE_WINS  // White has significant advantage
+                materialDiff <= -5 -> GameOutcome.BLACK_WINS // Black has significant advantage
+                else -> GameOutcome.DRAW // Material roughly equal, call it a draw
+            }
+        } else {
+            // Game ended naturally
+            when {
+                status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
+                status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+                status.name.contains("DRAW") -> GameOutcome.DRAW
+                else -> GameOutcome.DRAW
+            }
         }
         
         return GameResult(outcome, steps)
@@ -437,15 +468,62 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         }
         
         val status = environment.getEffectiveGameStatus()
-        val outcome = when {
-            status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
-            status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
-            status.name.contains("DRAW") -> GameOutcome.DRAW
-            else -> GameOutcome.DRAW
+        val outcome = if (steps >= config.maxStepsPerGame) {
+            // Game hit step limit - adjudicate based on material or call it a draw
+            val board = environment.getCurrentBoard()
+            val whiteMaterial = calculateMaterial(board, PieceColor.WHITE)
+            val blackMaterial = calculateMaterial(board, PieceColor.BLACK)
+            val materialDiff = whiteMaterial - blackMaterial
+            
+            when {
+                materialDiff >= 5 -> GameOutcome.WHITE_WINS  // White has significant advantage
+                materialDiff <= -5 -> GameOutcome.BLACK_WINS // Black has significant advantage
+                else -> GameOutcome.DRAW // Material roughly equal, call it a draw
+            }
+        } else {
+            // Game ended naturally
+            when {
+                status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
+                status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
+                status.name.contains("DRAW") -> GameOutcome.DRAW
+                else -> GameOutcome.DRAW
+            }
         }
         
         return GameResult(outcome, steps)
     }
+    /**
+     * Calculate material value for a color
+     */
+    private fun calculateMaterial(board: ChessBoard, color: PieceColor): Int {
+        val pieceValues = mapOf(
+            PieceType.PAWN to 1,
+            PieceType.KNIGHT to 3,
+            PieceType.BISHOP to 3,
+            PieceType.ROOK to 5,
+            PieceType.QUEEN to 9,
+            PieceType.KING to 0
+        )
+        
+        var material = 0
+        for (rank in 0..7) {
+            for (file in 0..7) {
+                val piece = board.getPieceAt(Position(rank, file))
+                if (piece?.color == color) {
+                    material += pieceValues[piece.type] ?: 0
+                }
+            }
+        }
+        return material
+    }
+
+    /**
+     * Result from a single game.
+     */
+    private data class GameResult(
+        val outcome: GameOutcome,
+        val gameLength: Int
+    )
 }
 
 /**
@@ -478,14 +556,4 @@ data class ComparisonResults(
     val drawRate: Double,
     val modelBWinRate: Double,
     val averageGameLength: Double
-)
-
-
-
-/**
- * Result from a single game.
- */
-private data class GameResult(
-    val outcome: GameOutcome,
-    val gameLength: Int
 )

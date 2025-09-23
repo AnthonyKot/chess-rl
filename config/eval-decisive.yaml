@@ -1,0 +1,22 @@
+# Evaluation profile optimized for decisive games and natural conclusions
+# Prevents artificial draws from step limits and encourages decisive play
+
+profiles:
+  - network:default
+  - rl:eval-greedy
+  - rewards:decisive-play
+  - system:eval-longer-games
+
+overrides:
+  # Ensure deterministic evaluation
+  seed: 12345
+  maxConcurrentGames: 1
+  
+  # Longer games with early adjudication
+  maxStepsPerGame: 300
+  evalEarlyAdjudication: true
+  evalResignMaterialThreshold: 9
+  evalNoProgressPlies: 50
+  
+  # More games for better statistics
+  evaluationGames: 200
