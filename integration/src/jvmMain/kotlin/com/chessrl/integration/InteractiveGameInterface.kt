@@ -1,6 +1,7 @@
 package com.chessrl.integration
 
 import com.chessrl.chess.*
+import com.chessrl.integration.adapter.ChessEngineFactory
 import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.logging.ChessRLLogger
 
@@ -39,7 +40,8 @@ class InteractiveGameInterface(
                 enableEarlyAdjudication = false,
                 resignMaterialThreshold = 15,
                 noProgressPlies = 100
-            )
+            ),
+            adapter = ChessEngineFactory.create(config.engine)
         )
         
         var state = environment.reset()

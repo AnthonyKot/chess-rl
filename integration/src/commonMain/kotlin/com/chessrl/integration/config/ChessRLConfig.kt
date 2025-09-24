@@ -1,5 +1,7 @@
 package com.chessrl.integration.config
 
+import com.chessrl.integration.adapter.EngineBackend
+
 /**
  * Central configuration class for Chess RL training system.
  * 
@@ -112,6 +114,10 @@ data class ChessRLConfig(
     /** Penalty when game reaches step limit (encourages decisive play) */
     val stepLimitPenalty: Double = -0.5,
     
+    // Engine selection
+    /** Chess engine backend to use for environments */
+    val engine: EngineBackend = EngineBackend.CHESSLIB,
+
     // System Configuration (4 parameters)
     /** Random seed for reproducible training (null for random) */
     val seed: Long? = null,
@@ -314,6 +320,7 @@ data class ChessRLConfig(
         val seedLabel = seed?.let { "seed=$it" } ?: "random"
         return buildString {
             appendLine("Chess RL Configuration Summary:")
+            appendLine("  Engine: ${engine.name.lowercase()}")
             appendLine("  Network: ${hiddenLayers.joinToString("x")} layers, lr=$learningRate, batch=$batchSize")
             appendLine("  RL: exploration=$explorationRate, target_update=$targetUpdateFrequency, doubleDQN=$doubleDqn, gamma=$gamma, buffer=$maxExperienceBuffer")
             appendLine("      replay=$replayType")

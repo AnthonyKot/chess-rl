@@ -1,5 +1,7 @@
 package com.chessrl.integration
 
+import com.chessrl.integration.adapter.ChessEngineFactory
+import com.chessrl.integration.adapter.EngineBackend
 import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.config.ConfigParser
 import com.chessrl.rl.Experience
@@ -53,7 +55,8 @@ object SelfPlayWorker {
             trainResignMaterialThreshold = argsMap["--train-resign-threshold"]?.toInt()
                 ?: EnvironmentDefaults.RESIGN_MATERIAL_THRESHOLD,
             trainNoProgressPlies = argsMap["--train-no-progress-plies"]?.toInt()
-                ?: EnvironmentDefaults.NO_PROGRESS_PLIES
+                ?: EnvironmentDefaults.NO_PROGRESS_PLIES,
+            engine = argsMap["--engine"]?.let { EngineBackend.fromString(it) } ?: EngineBackend.BUILTIN
         )
     }
     
@@ -75,7 +78,8 @@ object SelfPlayWorker {
             lossReward = params.lossReward,
             drawReward = params.drawReward,
             stepLimitPenalty = params.stepLimitPenalty,
-            hiddenLayers = params.hiddenLayers ?: ChessRLConfig().hiddenLayers
+            hiddenLayers = params.hiddenLayers ?: ChessRLConfig().hiddenLayers,
+            engine = params.engine
         )
         
         // Create agents by loading the model
@@ -94,7 +98,8 @@ object SelfPlayWorker {
                 enableEarlyAdjudication = params.trainEarlyAdjudication,
                 resignMaterialThreshold = params.trainResignMaterialThreshold,
                 noProgressPlies = params.trainNoProgressPlies
-            )
+            ),
+            adapter = ChessEngineFactory.create(params.engine)
         )
         
         // Run the game
@@ -302,7 +307,8 @@ private data class WorkerParams(
     val opponentDepth: Int = 2,
     val trainEarlyAdjudication: Boolean = EnvironmentDefaults.ENABLE_EARLY_ADJUDICATION,
     val trainResignMaterialThreshold: Int = EnvironmentDefaults.RESIGN_MATERIAL_THRESHOLD,
-    val trainNoProgressPlies: Int = EnvironmentDefaults.NO_PROGRESS_PLIES
+    val trainNoProgressPlies: Int = EnvironmentDefaults.NO_PROGRESS_PLIES,
+    val engine: EngineBackend = EngineBackend.BUILTIN
 )
 
 /**

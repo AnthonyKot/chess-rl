@@ -2,6 +2,11 @@ package com.chessrl.integration.output
 
 import kotlin.math.*
 
+private fun formatWithPlaces(value: Double, decimalPlaces: Int): String {
+    val formatter = FormatManager(decimalPlaces)
+    return formatter.formatNumber(value, decimalPlaces)
+}
+
 /**
  * Statistical utilities for evaluation result analysis
  */
@@ -112,7 +117,8 @@ object StatisticalUtils {
         interval: ClosedFloatingPointRange<Double>,
         decimalPlaces: Int = 3
     ): String {
-        val format = "%.${decimalPlaces}f"
-        return "[${format.format(interval.start)}, ${format.format(interval.endInclusive)}]"
+        val lower = formatWithPlaces(interval.start, decimalPlaces)
+        val upper = formatWithPlaces(interval.endInclusive, decimalPlaces)
+        return "[$lower, $upper]"
     }
 }

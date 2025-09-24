@@ -57,10 +57,9 @@ class ChesslibAdapterTest {
     @Test
     fun testE2E4MoveProducesCorrectFEN() {
         val initialState = adapter.initialState()
-        val e2e4Move = ChessMove.fromAlgebraic("e2e4")
-        assertNotNull(e2e4Move, "e2e4 should be a valid move")
-        
-        val newState = adapter.applyMove(initialState, e2e4Move!!)
+        val e2e4Move = ChessMove.fromAlgebraic("e2e4") ?: fail("e2e4 should be a valid move")
+
+        val newState = adapter.applyMove(initialState, e2e4Move)
         
         val expectedFen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
         assertEquals(expectedFen, newState.fen, "e2e4 should produce the expected FEN")
@@ -70,11 +69,10 @@ class ChesslibAdapterTest {
     @Test
     fun testInvalidMoveThrowsException() {
         val initialState = adapter.initialState()
-        val invalidMove = ChessMove.fromAlgebraic("e2e5") // Invalid pawn move
-        assertNotNull(invalidMove)
-        
+        val invalidMove = ChessMove.fromAlgebraic("e2e5") ?: fail("e2e5 should parse as a move")
+
         assertFailsWith<IllegalArgumentException> {
-            adapter.applyMove(initialState, invalidMove!!)
+            adapter.applyMove(initialState, invalidMove)
         }
     }
     
@@ -82,10 +80,10 @@ class ChesslibAdapterTest {
     fun testCheckmateDetection() {
         // Fool's mate position: 1.f3 e5 2.g4 Qh4#
         val checkmateState = adapter.fromFen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
-        assertNotNull(checkmateState, "Should be able to parse checkmate FEN")
-        
-        assertTrue(adapter.isTerminal(checkmateState!!), "Position should be terminal")
-        
+            ?: fail("Should be able to parse checkmate FEN")
+
+        assertTrue(adapter.isTerminal(checkmateState), "Position should be terminal")
+
         val outcome = adapter.getOutcome(checkmateState)
         assertTrue(outcome.isTerminal, "Outcome should be terminal")
         assertEquals(GameOutcome.BLACK_WINS, outcome.outcome, "Black should win")
@@ -96,10 +94,10 @@ class ChesslibAdapterTest {
     fun testStalemateDetection() {
         // Actual stalemate position: Black king trapped with no legal moves
         val stalemateState = adapter.fromFen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1")
-        assertNotNull(stalemateState, "Should be able to parse stalemate FEN")
-        
-        assertTrue(adapter.isTerminal(stalemateState!!), "Position should be terminal")
-        
+            ?: fail("Should be able to parse stalemate FEN")
+
+        assertTrue(adapter.isTerminal(stalemateState), "Position should be terminal")
+
         val outcome = adapter.getOutcome(stalemateState)
         assertTrue(outcome.isTerminal, "Outcome should be terminal")
         assertEquals(GameOutcome.DRAW, outcome.outcome, "Should be a draw")
@@ -110,9 +108,9 @@ class ChesslibAdapterTest {
     fun testCastlingHandling() {
         // Position where white can castle kingside and queenside
         val castlingState = adapter.fromFen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1")
-        assertNotNull(castlingState, "Should be able to parse castling FEN")
-        
-        val legalMoves = adapter.getLegalMoves(castlingState!!)
+            ?: fail("Should be able to parse castling FEN")
+
+        val legalMoves = adapter.getLegalMoves(castlingState)
         val moveStrings = legalMoves.map { it.algebraic }.toSet()
         
         assertTrue(moveStrings.contains("e1g1"), "Should allow kingside castling")
@@ -123,9 +121,9 @@ class ChesslibAdapterTest {
     fun testEnPassantHandling() {
         // Position with en passant opportunity
         val enPassantState = adapter.fromFen("rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3")
-        assertNotNull(enPassantState, "Should be able to parse en passant FEN")
-        
-        val legalMoves = adapter.getLegalMoves(enPassantState!!)
+            ?: fail("Should be able to parse en passant FEN")
+
+        val legalMoves = adapter.getLegalMoves(enPassantState)
         val moveStrings = legalMoves.map { it.algebraic }.toSet()
         
         assertTrue(moveStrings.contains("e5f6"), "Should allow en passant capture")
@@ -135,9 +133,9 @@ class ChesslibAdapterTest {
     fun testPromotionHandling() {
         // Position where white pawn can promote
         val promotionState = adapter.fromFen("8/P7/8/8/8/8/8/4K2k w - - 0 1")
-        assertNotNull(promotionState, "Should be able to parse promotion FEN")
-        
-        val legalMoves = adapter.getLegalMoves(promotionState!!)
+            ?: fail("Should be able to parse promotion FEN")
+
+        val legalMoves = adapter.getLegalMoves(promotionState)
         val moveStrings = legalMoves.map { it.algebraic }.toSet()
         
         assertTrue(moveStrings.contains("a7a8q"), "Should allow queen promotion")
@@ -150,10 +148,10 @@ class ChesslibAdapterTest {
     fun testFiftyMoveRuleDetection() {
         // Position with 50-move rule (100 half-moves)
         val fiftyMoveState = adapter.fromFen("4k3/8/8/8/8/8/8/4K3 w - - 100 50")
-        assertNotNull(fiftyMoveState, "Should be able to parse fifty-move FEN")
-        
+            ?: fail("Should be able to parse fifty-move FEN")
+
         // Test that the position is parsed correctly
-        assertTrue(fiftyMoveState!!.fen.contains("100"), "FEN should contain halfmove counter")
+        assertTrue(fiftyMoveState.fen.contains("100"), "FEN should contain halfmove counter")
         
         // Check if chesslib detects fifty-move rule
         val outcome = adapter.getOutcome(fiftyMoveState)
@@ -163,7 +161,7 @@ class ChesslibAdapterTest {
         if (adapter.isTerminal(fiftyMoveState)) {
             assertEquals(GameOutcome.DRAW, outcome.outcome, "Should be a draw if terminal")
         }
-        
+
         // Test that we can still get legal moves from this position
         val legalMoves = adapter.getLegalMoves(fiftyMoveState)
         assertTrue(legalMoves.isNotEmpty(), "Should have legal moves even with high halfmove counter")
@@ -173,10 +171,10 @@ class ChesslibAdapterTest {
     fun testInsufficientMaterialDetection() {
         // King vs King - insufficient material
         val insufficientMaterialState = adapter.fromFen("8/8/8/8/8/8/8/4K2k w - - 0 1")
-        assertNotNull(insufficientMaterialState, "Should be able to parse insufficient material FEN")
-        
-        assertTrue(adapter.isTerminal(insufficientMaterialState!!), "Position should be terminal due to insufficient material")
-        
+            ?: fail("Should be able to parse insufficient material FEN")
+
+        assertTrue(adapter.isTerminal(insufficientMaterialState), "Position should be terminal due to insufficient material")
+
         val outcome = adapter.getOutcome(insufficientMaterialState)
         assertTrue(outcome.isTerminal, "Outcome should be terminal")
         assertEquals(GameOutcome.DRAW, outcome.outcome, "Should be a draw")
@@ -194,20 +192,18 @@ class ChesslibAdapterTest {
         // Apply moves twice to create repetition
         for (i in 0 until 2) {
             for (moveStr in moves) {
-                val move = ChessMove.fromAlgebraic(moveStr)
-                assertNotNull(move, "Move $moveStr should be valid")
-                state = adapter.applyMove(state, move!!)
+                val move = ChessMove.fromAlgebraic(moveStr) ?: fail("Move $moveStr should be valid")
+                state = adapter.applyMove(state, move)
             }
         }
         
         // Apply the first move again to create threefold repetition
-        val firstMove = ChessMove.fromAlgebraic("g1f3")!!
+        val firstMove = ChessMove.fromAlgebraic("g1f3") ?: fail("g1f3 should parse")
         state = adapter.applyMove(state, firstMove)
         
-        // Note: Chesslib may not detect repetition automatically without proper game history
-        // This test validates the repetition detection capability exists
-        val outcome = adapter.getOutcome(state)
-        // The outcome may or may not be terminal depending on chesslib's repetition tracking
+        // Note: Chesslib may not detect repetition automatically without proper game history.
+        // Call getOutcome to ensure the adapter handles the position without throwing.
+        adapter.getOutcome(state)
     }
     
     @Test
@@ -220,9 +216,8 @@ class ChesslibAdapterTest {
         )
         
         for (fen in testFens) {
-            val state = adapter.fromFen(fen)
-            assertNotNull(state, "Should be able to parse FEN: $fen")
-            assertEquals(fen, adapter.toFen(state!!), "FEN should round-trip correctly")
+            val state = adapter.fromFen(fen) ?: fail("Should be able to parse FEN: $fen")
+            assertEquals(fen, adapter.toFen(state), "FEN should round-trip correctly")
         }
     }
     
@@ -264,7 +259,7 @@ class ChesslibAdapterTest {
         val originalFen = initialState.fen
         
         // Apply a move
-        val e2e4Move = ChessMove.fromAlgebraic("e2e4")!!
+        val e2e4Move = ChessMove.fromAlgebraic("e2e4") ?: fail("e2e4 should be valid")
         val newState = adapter.applyMove(initialState, e2e4Move)
         
         // Original state should be unchanged
@@ -303,13 +298,12 @@ class ChesslibAdapterTest {
         val moves = listOf("e2e4", "e7e5", "g1f3", "b8c6", "f1b5")
         
         for (moveStr in moves) {
-            val move = ChessMove.fromAlgebraic(moveStr)
-            assertNotNull(move, "Move $moveStr should be valid")
-            
+            val move = ChessMove.fromAlgebraic(moveStr) ?: fail("Move $moveStr should be valid")
+
             val legalMoves = adapter.getLegalMoves(state)
             assertTrue(legalMoves.contains(move), "Move $moveStr should be legal in current position")
-            
-            state = adapter.applyMove(state, move!!)
+
+            state = adapter.applyMove(state, move)
             assertFalse(adapter.isTerminal(state), "Game should not be terminal after $moveStr")
         }
         
@@ -330,13 +324,12 @@ class ChesslibAdapterTest {
         )
         
         for (moveStr in italianGameMoves) {
-            val move = ChessMove.fromAlgebraic(moveStr)
-            assertNotNull(move, "Move $moveStr should be valid in Italian Game")
-            
+            val move = ChessMove.fromAlgebraic(moveStr) ?: fail("Move $moveStr should be valid in Italian Game")
+
             val legalMoves = adapter.getLegalMoves(state)
             assertTrue(legalMoves.contains(move), "Move $moveStr should be legal")
-            
-            state = adapter.applyMove(state, move!!)
+
+            state = adapter.applyMove(state, move)
         }
         
         // Verify we reached the Italian Game position
@@ -348,24 +341,24 @@ class ChesslibAdapterTest {
     fun testKnightMovesFromCorner() {
         // Test knight moves from corner position - use a simpler position
         val knightCornerState = adapter.fromFen("8/8/8/8/8/8/8/N6K w - - 0 1")
-        assertNotNull(knightCornerState, "Should parse knight corner position")
-        
+            ?: fail("Should parse knight corner position")
+
         try {
-            val legalMoves = adapter.getLegalMoves(knightCornerState!!)
+            val legalMoves = adapter.getLegalMoves(knightCornerState)
             val knightMoves = legalMoves.filter { it.from.rank == 0 && it.from.file == 0 }
-            
+
             // Knight in corner should have 2 moves
             assertTrue(knightMoves.size >= 2, "Knight in corner should have at least 2 moves")
-            
+
             val moveStrings = knightMoves.map { it.algebraic }.toSet()
             assertTrue(moveStrings.contains("a1b3") || moveStrings.contains("a1c2"), 
                       "Should contain at least one expected knight move")
         } catch (e: Exception) {
             // If chesslib has issues with this position, test a different knight position
             val alternateState = adapter.fromFen("8/8/8/8/8/8/8/1N5K w - - 0 1")
-            assertNotNull(alternateState, "Should parse alternate knight position")
-            
-            val legalMoves = adapter.getLegalMoves(alternateState!!)
+                ?: fail("Should parse alternate knight position")
+
+            val legalMoves = adapter.getLegalMoves(alternateState)
             assertTrue(legalMoves.isNotEmpty(), "Should have legal moves in alternate position")
         }
     }
@@ -374,9 +367,9 @@ class ChesslibAdapterTest {
     fun testPawnPromotionCapture() {
         // Test pawn promotion with capture
         val promotionCaptureState = adapter.fromFen("1n6/P7/8/8/8/8/8/4K2k w - - 0 1")
-        assertNotNull(promotionCaptureState, "Should parse promotion capture position")
-        
-        val legalMoves = adapter.getLegalMoves(promotionCaptureState!!)
+            ?: fail("Should parse promotion capture position")
+
+        val legalMoves = adapter.getLegalMoves(promotionCaptureState)
         val promotionMoves = legalMoves.filter { it.from == Position(6, 0) }
         
         // Should have promotion moves (both capture and non-capture)
@@ -394,11 +387,10 @@ class ChesslibAdapterTest {
         )
         
         for (fen in insufficientMaterialPositions) {
-            val state = adapter.fromFen(fen)
-            assertNotNull(state, "Should parse insufficient material FEN: $fen")
-            
-            assertTrue(adapter.isTerminal(state!!), "Position should be terminal: $fen")
-            
+            val state = adapter.fromFen(fen) ?: fail("Should parse insufficient material FEN: $fen")
+
+            assertTrue(adapter.isTerminal(state), "Position should be terminal: $fen")
+
             val outcome = adapter.getOutcome(state)
             assertEquals(GameOutcome.DRAW, outcome.outcome, "Should be draw for: $fen")
             assertEquals("insufficient_material", outcome.reason, "Should be insufficient material for: $fen")
@@ -412,11 +404,10 @@ class ChesslibAdapterTest {
         )
         
         for (fen in otherPositions) {
-            val state = adapter.fromFen(fen)
-            assertNotNull(state, "Should parse FEN: $fen")
-            
+            val state = adapter.fromFen(fen) ?: fail("Should parse FEN: $fen")
+
             // These may or may not be detected as terminal depending on chesslib's implementation
-            val outcome = adapter.getOutcome(state!!)
+            val outcome = adapter.getOutcome(state)
             if (outcome.isTerminal) {
                 assertEquals(GameOutcome.DRAW, outcome.outcome, "If terminal, should be draw for: $fen")
             }
@@ -425,9 +416,6 @@ class ChesslibAdapterTest {
     
     @Test
     fun testChesslibSpecificFeatures() {
-        // Test features that are specific to chesslib implementation
-        val initialState = adapter.initialState()
-        
         // Test that chesslib correctly handles FEN parsing edge cases
         val edgeCaseFens = listOf(
             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", // Standard
@@ -436,9 +424,8 @@ class ChesslibAdapterTest {
         )
         
         for (fen in edgeCaseFens) {
-            val state = adapter.fromFen(fen)
-            assertNotNull(state, "Chesslib should handle FEN: $fen")
-            assertEquals(fen, adapter.toFen(state!!), "FEN should round-trip: $fen")
+            val state = adapter.fromFen(fen) ?: fail("Chesslib should handle FEN: $fen")
+            assertEquals(fen, adapter.toFen(state), "FEN should round-trip: $fen")
         }
     }
 }

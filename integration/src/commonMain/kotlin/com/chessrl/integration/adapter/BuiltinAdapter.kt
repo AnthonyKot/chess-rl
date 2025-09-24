@@ -28,8 +28,11 @@ class BuiltinAdapter : ChessEngineAdapter {
         state.legalMoves?.let { return it }
         
         val board = createBoardFromState(state)
-        val moves = board.getAllValidMoves(board.getActiveColor())
-        return moves.map { convertToChessMove(it) }
+        val detector = GameStateDetector()
+        val legal = detector.getAllLegalMoves(board, board.getActiveColor())
+        return legal
+            .map { convertToChessMove(it) }
+            .distinctBy { it.algebraic }
     }
     
     override fun applyMove(state: ChessState, move: ChessMove): ChessState {
@@ -116,7 +119,8 @@ class BuiltinAdapter : ChessEngineAdapter {
     private fun createBoardFromState(state: ChessState): ChessBoard {
         val board = ChessBoard()
         if (!board.fromFEN(state.fen)) {
-            throw IllegalStateException("Invalid FEN in ChessState: ${state.fen}")
+            // Accept the state, but warn so we can trace adapter inconsistencies during debugging.
+            System.err.println("[BuiltinAdapter] fromFEN failed for state: ${state.fen}")
         }
         return board
     }

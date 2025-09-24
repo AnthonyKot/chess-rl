@@ -1,5 +1,6 @@
 package com.chessrl.integration
 
+import com.chessrl.integration.adapter.ChessEngineFactory
 import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.logging.ChessRLLogger
 import com.chessrl.integration.output.EnhancedEvaluationResults
@@ -310,7 +311,8 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
                 enableEarlyAdjudication = config.evalEarlyAdjudication,
                 resignMaterialThreshold = config.evalResignMaterialThreshold,
                 noProgressPlies = config.evalNoProgressPlies
-            )
+            ),
+            adapter = ChessEngineFactory.create(config.engine)
         )
     }
     
@@ -324,7 +326,8 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
     ): GameResult {
         var state = environment.reset()
         var steps = 0
-        
+        var invalidMoves = 0
+
         while (!environment.isTerminal(state) && steps < config.maxStepsPerGame) {
             val validActions = environment.getValidActions(state)
             if (validActions.isEmpty()) break
@@ -341,34 +344,59 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
             }
             
             val step = environment.step(action)
+            if (step.info.containsKey("error")) {
+                invalidMoves++
+                if (invalidMoves <= 5) {
+                    logger.warn(
+                        "Invalid move detected (agentTurn=$agentTurn, whiteToMove=$isWhiteToMove): ${step.info["error"]}; fen=${step.info["fen"]}; legal=${step.info["legal_moves"]}"
+                    )
+                }
+            }
             state = step.nextState
             steps++
         }
         
         val status = environment.getEffectiveGameStatus()
-        val outcome = if (steps >= config.maxStepsPerGame) {
-            // Game hit step limit - adjudicate based on material or call it a draw
+        val outcome = determineOutcome(environment, status, steps >= config.maxStepsPerGame, agentIsWhite)
+        
+        if (invalidMoves > 0) {
+            logger.warn(
+                "Encountered $invalidMoves invalid moves during head-to-head game (agentIsWhite=$agentIsWhite, outcome=${outcome.name})"
+            )
+        }
+
+        return GameResult(outcome, steps)
+    }
+
+    private fun determineOutcome(
+        environment: ChessEnvironment,
+        status: GameStatus,
+        hitStepLimit: Boolean,
+        agentIsWhite: Boolean
+    ): GameOutcome {
+        return if (hitStepLimit) {
             val board = environment.getCurrentBoard()
             val whiteMaterial = calculateMaterial(board, PieceColor.WHITE)
             val blackMaterial = calculateMaterial(board, PieceColor.BLACK)
             val materialDiff = whiteMaterial - blackMaterial
-            
+            logger.info("Step-limit adjudication (agentIsWhite=$agentIsWhite): white=$whiteMaterial, black=$blackMaterial, diff=$materialDiff")
+
             when {
-                materialDiff >= 5 -> GameOutcome.WHITE_WINS  // White has significant advantage
-                materialDiff <= -5 -> GameOutcome.BLACK_WINS // Black has significant advantage
-                else -> GameOutcome.DRAW // Material roughly equal, call it a draw
+                materialDiff >= 5 -> GameOutcome.WHITE_WINS
+                materialDiff <= -5 -> GameOutcome.BLACK_WINS
+                else -> GameOutcome.DRAW
             }
         } else {
-            // Game ended naturally
             when {
                 status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
                 status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
-                status.name.contains("DRAW") -> GameOutcome.DRAW
+                status.name.contains("DRAW") -> {
+                    logger.info("Natural draw detected (agentIsWhite=$agentIsWhite): status=${status.name}")
+                    GameOutcome.DRAW
+                }
                 else -> GameOutcome.DRAW
             }
         }
-        
-        return GameResult(outcome, steps)
     }
     
     /**
@@ -412,27 +440,7 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         }
         
         val status = environment.getEffectiveGameStatus()
-        val outcome = if (steps >= config.maxStepsPerGame) {
-            // Game hit step limit - adjudicate based on material or call it a draw
-            val board = environment.getCurrentBoard()
-            val whiteMaterial = calculateMaterial(board, PieceColor.WHITE)
-            val blackMaterial = calculateMaterial(board, PieceColor.BLACK)
-            val materialDiff = whiteMaterial - blackMaterial
-            
-            when {
-                materialDiff >= 5 -> GameOutcome.WHITE_WINS  // White has significant advantage
-                materialDiff <= -5 -> GameOutcome.BLACK_WINS // Black has significant advantage
-                else -> GameOutcome.DRAW // Material roughly equal, call it a draw
-            }
-        } else {
-            // Game ended naturally
-            when {
-                status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
-                status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
-                status.name.contains("DRAW") -> GameOutcome.DRAW
-                else -> GameOutcome.DRAW
-            }
-        }
+        val outcome = determineOutcome(environment, status, steps >= config.maxStepsPerGame, agentIsWhite)
         
         return GameResult(outcome, steps)
     }
@@ -448,7 +456,8 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
     ): GameResult {
         var state = environment.reset()
         var steps = 0
-        
+        var invalidMoves = 0
+
         while (!environment.isTerminal(state) && steps < config.maxStepsPerGame) {
             val validActions = environment.getValidActions(state)
             if (validActions.isEmpty()) break
@@ -465,31 +474,24 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
             val step = environment.step(action)
             state = step.nextState
             steps++
+
+             if (step.info.containsKey("error")) {
+                 invalidMoves++
+                 if (invalidMoves <= 5) {
+                    logger.warn(
+                        "Invalid move detected (agentAturn=$aTurn, whiteToMove=$isWhiteToMove): ${step.info["error"]}; fen=${step.info["fen"]}; legal=${step.info["legal_moves"]}"
+                    )
+                 }
+             }
         }
         
         val status = environment.getEffectiveGameStatus()
-        val outcome = if (steps >= config.maxStepsPerGame) {
-            // Game hit step limit - adjudicate based on material or call it a draw
-            val board = environment.getCurrentBoard()
-            val whiteMaterial = calculateMaterial(board, PieceColor.WHITE)
-            val blackMaterial = calculateMaterial(board, PieceColor.BLACK)
-            val materialDiff = whiteMaterial - blackMaterial
-            
-            when {
-                materialDiff >= 5 -> GameOutcome.WHITE_WINS  // White has significant advantage
-                materialDiff <= -5 -> GameOutcome.BLACK_WINS // Black has significant advantage
-                else -> GameOutcome.DRAW // Material roughly equal, call it a draw
-            }
-        } else {
-            // Game ended naturally
-            when {
-                status.name.contains("WHITE_WINS") -> GameOutcome.WHITE_WINS
-                status.name.contains("BLACK_WINS") -> GameOutcome.BLACK_WINS
-                status.name.contains("DRAW") -> GameOutcome.DRAW
-                else -> GameOutcome.DRAW
-            }
-        }
+        val outcome = determineOutcome(environment, status, steps >= config.maxStepsPerGame, aIsWhite)
         
+        if (invalidMoves > 0) {
+            logger.warn("Encountered $invalidMoves invalid moves during head-to-head game (aIsWhite=$aIsWhite, outcome=${outcome.name})")
+        }
+
         return GameResult(outcome, steps)
     }
     /**

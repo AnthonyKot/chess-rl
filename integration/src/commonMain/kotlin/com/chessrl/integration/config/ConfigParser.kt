@@ -1,5 +1,7 @@
 package com.chessrl.integration.config
 
+import com.chessrl.integration.adapter.EngineBackend
+
 /**
  * Configuration parser for Chess RL system.
  * 
@@ -179,6 +181,7 @@ object ConfigParser {
             "lossReward" -> config.copy(lossReward = value.toDoubleOrThrow(key))
             "drawReward" -> config.copy(drawReward = value.toDoubleOrThrow(key))
             "stepLimitPenalty" -> config.copy(stepLimitPenalty = value.toDoubleOrThrow(key))
+            "engine" -> config.copy(engine = parseEngine(value))
             "seed" -> config.copy(seed = if (value.equals("null", ignoreCase = true)) null else value.toLongOrThrow(key))
             "checkpointInterval" -> config.copy(checkpointInterval = value.toIntOrThrow(key))
             "checkpointDirectory" -> config.copy(checkpointDirectory = value.trim('"'))
@@ -193,6 +196,10 @@ object ConfigParser {
             "metricsFile" -> config.copy(metricsFile = value.trim('"'))
             else -> config
         }
+    }
+
+    private fun parseEngine(value: String): EngineBackend {
+        return EngineBackend.fromString(value.trim())
     }
 
     private fun String.toIntOrThrow(key: String): Int = toIntOrNull()
@@ -418,6 +425,7 @@ object ConfigParser {
         println("  --max-concurrent-games <games>    Concurrent games (default: 4)")
         println("  --max-steps-per-game <steps>      Max steps per game (default: 80)")
         println("  --max-cycles <cycles>      Maximum training cycles (default: 100)")
+        println("  --engine <backend>         Engine backend: builtin, chesslib (default: builtin)")
         println()
         println("Rewards:")
         println("  --win-reward <reward>      Reward for winning (default: 1.0)")

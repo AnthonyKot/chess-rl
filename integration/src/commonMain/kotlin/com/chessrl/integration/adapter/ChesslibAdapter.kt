@@ -42,7 +42,9 @@ class ChesslibAdapter : ChessEngineAdapter {
         board.loadFromFen(state.fen)
         
         val legalMoves = MoveGenerator.generateLegalMoves(board)
-        return legalMoves.map { convertToChessMove(it) }
+        return legalMoves
+            .map { convertToChessMove(it) }
+            .distinctBy { it.algebraic }
     }
     
     override fun applyMove(state: ChessState, move: ChessMove): ChessState {

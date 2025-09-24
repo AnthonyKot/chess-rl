@@ -90,6 +90,7 @@ class MultiProcessSelfPlay @JvmOverloads constructor(
                 "--step-limit-penalty", config.stepLimitPenalty.toString(),
                 "--hidden-layers", config.hiddenLayers.joinToString(",")
             ).apply {
+                command().addAll(listOf("--engine", config.engine.name.lowercase()))
                 masterSeed?.let { seed -> command().addAll(listOf("--seed", seed.toString())) }
                 config.trainOpponentType?.let { opt -> command().addAll(listOf("--opponent", opt)) }
                 if ((config.trainOpponentType?.equals("minimax", true) == true)) {

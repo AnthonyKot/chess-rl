@@ -1,5 +1,6 @@
 package com.chessrl.integration.config
 
+import com.chessrl.integration.adapter.EngineBackend
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -43,7 +44,9 @@ object DomainConfigLoader {
                 // Training environment controls
                 "trainEarlyAdjudication", "trainResignMaterialThreshold", "trainNoProgressPlies",
                 // Evaluation environment controls
-                "evalEarlyAdjudication", "evalResignMaterialThreshold", "evalNoProgressPlies"
+                "evalEarlyAdjudication", "evalResignMaterialThreshold", "evalNoProgressPlies",
+                // Engine selection
+                "engine"
             )
         );
 
@@ -312,6 +315,7 @@ object DomainConfigLoader {
             "evalEarlyAdjudication" -> base.copy(evalEarlyAdjudication = from.evalEarlyAdjudication)
             "evalResignMaterialThreshold" -> base.copy(evalResignMaterialThreshold = from.evalResignMaterialThreshold)
             "evalNoProgressPlies" -> base.copy(evalNoProgressPlies = from.evalNoProgressPlies)
+            "engine" -> base.copy(engine = from.engine)
             // checkpoint and logging
             "checkpointMaxVersions" -> base.copy(checkpointMaxVersions = from.checkpointMaxVersions)
             "checkpointValidationEnabled" -> base.copy(checkpointValidationEnabled = from.checkpointValidationEnabled)
@@ -357,6 +361,7 @@ object DomainConfigLoader {
             "evalEarlyAdjudication" -> base.copy(evalEarlyAdjudication = raw.equals("true", true))
             "evalResignMaterialThreshold" -> base.copy(evalResignMaterialThreshold = raw.toInt())
             "evalNoProgressPlies" -> base.copy(evalNoProgressPlies = raw.toInt())
+            "engine" -> base.copy(engine = EngineBackend.fromString(raw))
             // checkpoint and logging
             "checkpointMaxVersions" -> base.copy(checkpointMaxVersions = raw.toInt())
             "checkpointValidationEnabled" -> base.copy(checkpointValidationEnabled = raw.equals("true", true))

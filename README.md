@@ -234,10 +234,10 @@ Training orchestration and evaluation tools:
 ### External Libraries
 
 **chesslib (bhlangonijr/chesslib) v1.3.3**
-- **Purpose**: Alternative chess engine implementation for validation and testing
+- **Purpose**: Primary chess engine backend (default runtime engine)
 - **License**: Apache-2.0 (compatible with this project)
 - **Repository**: https://github.com/bhlangonijr/chesslib
-- **Usage**: Optional engine backend selectable via `--engine chesslib` flag
+- **Usage**: Runs by default; override with `--engine builtin` to fall back to the handcrafted engine
 
 The chesslib dependency provides an alternative chess rule implementation that can be used alongside the built-in engine for cross-validation and testing purposes. Both engines implement the same ChessEngineAdapter interface, ensuring identical behavior from the RL training perspective.
 

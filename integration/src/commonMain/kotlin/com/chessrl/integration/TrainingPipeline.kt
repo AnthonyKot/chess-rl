@@ -1,5 +1,6 @@
 package com.chessrl.integration
 
+import com.chessrl.integration.adapter.ChessEngineFactory
 import com.chessrl.integration.backend.DqnLearningBackend
 import com.chessrl.integration.backend.LearningBackend
 import com.chessrl.integration.backend.LearningSession
@@ -118,6 +119,7 @@ class TrainingPipeline(
             val mainAgent = learningSession.mainAgent
             
             // Create chess environment
+            val engineAdapter = ChessEngineFactory.create(config.engine)
             environment = ChessEnvironment(
                 rewardConfig = ChessRewardConfig(
                     winReward = config.winReward,
@@ -129,7 +131,8 @@ class TrainingPipeline(
                     enableEarlyAdjudication = config.trainEarlyAdjudication,
                     resignMaterialThreshold = config.trainResignMaterialThreshold,
                     noProgressPlies = config.trainNoProgressPlies
-                )
+                ),
+                adapter = engineAdapter
             )
             
             // Initialize consolidated components with error handling
@@ -943,7 +946,8 @@ class TrainingPipeline(
                 enableEarlyAdjudication = config.trainEarlyAdjudication,
                 resignMaterialThreshold = config.trainResignMaterialThreshold,
                 noProgressPlies = config.trainNoProgressPlies
-            )
+            ),
+            adapter = ChessEngineFactory.create(config.engine)
         )
     }
     

@@ -1,6 +1,13 @@
 package com.chessrl.integration
 
 import com.chessrl.chess.*
+import com.chessrl.integration.adapter.ActionSpaceMapping
+import com.chessrl.integration.adapter.ChessEngineAdapter
+import com.chessrl.integration.adapter.ChessEngineFactory
+import com.chessrl.integration.adapter.ChessMove
+import com.chessrl.integration.adapter.ChessState
+import com.chessrl.integration.adapter.EngineBackend
+import com.chessrl.integration.adapter.MoveConversion
 import com.chessrl.rl.*
 
 /**
@@ -142,50 +149,18 @@ class ChessActionEncoder {
         const val BOARD_SIZE = 64
         const val ACTION_SPACE_SIZE = BOARD_SIZE * BOARD_SIZE // 4096
     }
-    
-    /**
-     * Encode a chess move to action index
-     */
-    fun encodeMove(move: Move): Int {
-        val fromIndex = move.from.rank * 8 + move.from.file
-        val toIndex = move.to.rank * 8 + move.to.file
-        return fromIndex * BOARD_SIZE + toIndex
-    }
-    
-    /**
-     * Decode action index to chess move (without promotion info)
-     */
-    fun decodeAction(actionIndex: Int): Move {
-        val fromIndex = actionIndex / BOARD_SIZE
-        val toIndex = actionIndex % BOARD_SIZE
-        
-        val fromRank = fromIndex / 8
-        val fromFile = fromIndex % 8
-        val toRank = toIndex / 8
-        val toFile = toIndex % 8
-        
-        return Move(
-            from = Position(fromRank, fromFile),
-            to = Position(toRank, toFile)
-        )
-    }
-    
-    /**
-     * Get all possible action indices for legal moves
-     */
-    fun encodeValidMoves(moves: List<Move>): List<Int> {
-        return moves.map { encodeMove(it) }
-    }
-    
-    /**
-     * Create action mask for valid moves (1.0 for valid, 0.0 for invalid)
-     */
+
+    fun encodeMove(move: Move): Int = ActionSpaceMapping.encodeMove(MoveConversion.toChessMove(move))
+
+    fun decodeAction(actionIndex: Int): Move = MoveConversion.toEngineMove(ActionSpaceMapping.decodeAction(actionIndex))
+
+    fun decodeActionToChessMove(actionIndex: Int) = ActionSpaceMapping.decodeAction(actionIndex)
+
+    fun encodeValidMoves(moves: List<Move>): List<Int> = moves.map { encodeMove(it) }
+
     fun createActionMask(validMoves: List<Move>): DoubleArray {
-        val mask = DoubleArray(ACTION_SPACE_SIZE) { 0.0 }
-        for (move in validMoves) {
-            mask[encodeMove(move)] = 1.0
-        }
-        return mask
+        val mask = ActionSpaceMapping.createActionMask(validMoves.map { MoveConversion.toChessMove(it) })
+        return DoubleArray(mask.size) { idx -> if (mask[idx]) 1.0 else 0.0 }
     }
 }
 
@@ -423,18 +398,20 @@ class ChessPositionEvaluator {
  * 
  * @param rewardConfig Configuration for reward structure and game rules
  */
-class ChessEnvironment(
-    private val rewardConfig: ChessRewardConfig = ChessRewardConfig()
+class ChessEnvironment @JvmOverloads constructor(
+    private val rewardConfig: ChessRewardConfig = ChessRewardConfig(),
+    private val adapter: ChessEngineAdapter = ChessEngineFactory.create(EngineBackend.BUILTIN)
 ) : Environment<DoubleArray, Int> {
-    private var chessBoard = ChessBoard()
     private val stateEncoder = ChessStateEncoder()
     private val actionEncoder = ChessActionEncoder()
     private val gameStateDetector = GameStateDetector()
-    private val legalMoveValidator = LegalMoveValidator()
     private val positionEvaluator = ChessPositionEvaluator()
-    
+
+    private var engineState: ChessState = adapter.initialState()
+    private var chessBoard: ChessBoard = createBoardFromState(engineState)
+
     // Game history for draw detection
-    private val gameHistory = mutableListOf<String>()
+    private val gameHistory = mutableListOf(engineState.fen)
     
     // Game metrics tracking
     private var moveCount = 0
@@ -446,6 +423,10 @@ class ChessEnvironment(
     private var adjudicatedOutcome: GameStatus? = null
     private var checkCount = 0
     private var previousMaterialValue = 0
+
+    init {
+        reset()
+    }
     
     /**
      * Resets the chess environment to the starting position.
@@ -456,22 +437,20 @@ class ChessEnvironment(
      * @return 839-dimensional encoded starting position
      */
     override fun reset(): DoubleArray {
-        chessBoard = ChessBoard()
+        engineState = adapter.initialState()
+        chessBoard = createBoardFromState(engineState)
         gameHistory.clear()
-        gameHistory.add(chessBoard.toFEN())
-        
-        // Reset game metrics
+        gameHistory.add(engineState.fen)
+
         moveCount = 0
         captureCount = 0
         checkCount = 0
         previousMaterialValue = calculateTotalMaterialValue()
-        
-        // Reset adjudication state
-        val startFen = chessBoard.toFEN()
-        lastMaterialTotals = calculateMaterialTotals(startFen)
+
+        lastMaterialTotals = calculateMaterialTotals(engineState.fen)
         noProgressPlies = 0
         adjudicatedOutcome = null
-        
+
         return stateEncoder.encode(chessBoard)
     }
     
@@ -490,65 +469,66 @@ class ChessEnvironment(
         require(action in 0 until ChessActionEncoder.ACTION_SPACE_SIZE) {
             "Action index $action out of range [0, ${ChessActionEncoder.ACTION_SPACE_SIZE})"
         }
-        // Decode action to move
-        val baseMove = actionEncoder.decodeAction(action)
-        
-        // Find the actual legal move that matches this action
-        val legalMoves = legalMoveValidator.getAllLegalMoves(chessBoard, chessBoard.getActiveColor())
-        val actualMove = findMatchingMove(baseMove, legalMoves)
-        
+
+        val decodedMove = actionEncoder.decodeActionToChessMove(action)
+        val legalMoves = adapter.getLegalMoves(engineState)
+        val actualMove = ActionSpaceMapping.findMatchingMove(decodedMove, legalMoves)
+
         if (actualMove == null) {
-            // Invalid move - return current state with negative reward
+            val legalNotation = legalMoves.joinToString(separator = ",") { it.algebraic }
             val penalty = -1.0
             require(penalty.isFinite()) { "Invalid reward computed for invalid move" }
             return StepResult(
                 nextState = stateEncoder.encode(chessBoard),
-                reward = penalty, // Penalty for invalid move
+                reward = penalty,
                 done = false,
-                info = mapOf("error" to "Invalid move: ${baseMove.toAlgebraic()}")
+                info = mapOf(
+                    "error" to "Invalid move: ${decodedMove.algebraic}",
+                    "legal_moves" to legalNotation
+                )
             )
         }
-        
-        // Execute the move. The selected move comes from the current legal set,
-        // so we can apply it directly to avoid redundant re-validation that may
-        // diverge from the enumerator in rare edge cases.
-        val moveResult = chessBoard.makeMove(actualMove)
-        if (moveResult != MoveResult.SUCCESS) {
+
+        val newState = try {
+            adapter.applyMove(engineState, actualMove)
+        } catch (e: IllegalArgumentException) {
+            val legalNotation = legalMoves.joinToString(separator = ",") { it.algebraic }
+            val penalty = -1.0
             return StepResult(
                 nextState = stateEncoder.encode(chessBoard),
-                reward = -1.0,
+                reward = penalty,
                 done = false,
-                info = mapOf("error" to "Move execution failed")
+                info = mapOf(
+                    "error" to "Invalid move (adapter rejection): ${actualMove.algebraic}",
+                    "legal_moves" to legalNotation,
+                    "fen" to engineState.fen,
+                    "exception" to (e.message ?: "unknown")
+                )
             )
         }
-        
-        // Switch active color
-        chessBoard.switchActiveColor()
-        
-        // Add position to history for draw detection
-        gameHistory.add(chessBoard.toFEN())
-        
-        // Update game metrics
+        engineState = newState
+        chessBoard = createBoardFromState(engineState)
+
+        gameHistory.add(engineState.fen)
+
         updateGameMetrics()
-        
-        // Check for early adjudication first
+
         val adjudicatedStatus = checkEarlyAdjudication()
-        
-        // Get game status and calculate reward
         val gameStatus = adjudicatedStatus ?: gameStateDetector.getGameStatus(chessBoard, gameHistory)
-        val reward = calculateReward(gameStatus, actualMove, chessBoard.getActiveColor().opposite())
+        val movingColor = chessBoard.getActiveColor().opposite()
+        val reward = calculateReward(gameStatus, movingColor)
         require(reward.isFinite()) { "Non-finite reward computed: $reward" }
         val done = gameStatus.isGameOver
-        
+
         val nextState = stateEncoder.encode(chessBoard)
-        
+
         return StepResult(
             nextState = nextState,
             reward = reward,
             done = done,
             info = mapOf(
                 "game_status" to gameStatus.name,
-                "move" to actualMove.toAlgebraic(),
+                "move" to actualMove.algebraic,
                 "fen" to chessBoard.toFEN()
             )
         )
@@ -561,10 +541,33 @@ class ChessEnvironment(
     fun applyStepLimitPenalty(): Double {
         return rewardConfig.stepLimitPenalty
     }
-    
+
+    private fun createBoardFromState(state: ChessState): ChessBoard {
+        val newBoard = ChessBoard()
+        if (!newBoard.fromFEN(state.fen)) {
+            throw IllegalStateException("Adapter produced invalid FEN: ${state.fen}")
+        }
+        return newBoard
+    }
+
     /**
      * Calculate material totals from FEN string for adjudication
      */
+    fun getCurrentState(): ChessState = engineState
+
+    fun resolveActionToMove(action: Int): ChessMove? {
+        if (action !in 0 until ActionSpaceMapping.ACTION_SPACE_SIZE) return null
+        val decoded = actionEncoder.decodeActionToChessMove(action)
+        val legalMoves = adapter.getLegalMoves(engineState)
+        return ActionSpaceMapping.findMatchingMove(decoded, legalMoves)
+    }
+
+    fun previewBoardAfterAction(action: Int): ChessBoard? {
+        val move = resolveActionToMove(action) ?: return null
+        val nextState = runCatching { adapter.applyMove(engineState, move) }.getOrNull() ?: return null
+        return createBoardFromState(nextState)
+    }
+
     private fun calculateMaterialTotals(fen: String): Pair<Int, Int> {
         var white = 0
         var black = 0
@@ -661,28 +664,10 @@ class ChessEnvironment(
     }
     
     /**
-     * Find legal move that matches the decoded action (handles promotions)
-     */
-    private fun findMatchingMove(baseMove: Move, legalMoves: List<Move>): Move? {
-        // First try exact match
-        val exactMatch = legalMoves.find { it.from == baseMove.from && it.to == baseMove.to && it.promotion == null }
-        if (exactMatch != null) return exactMatch
-        
-        // If it's a pawn promotion, default to queen promotion
-        val promotionMatch = legalMoves.find { 
-            it.from == baseMove.from && it.to == baseMove.to && it.promotion == PieceType.QUEEN 
-        }
-        if (promotionMatch != null) return promotionMatch
-        
-        // Try any promotion
-        return legalMoves.find { it.from == baseMove.from && it.to == baseMove.to }
-    }
-    
-    /**
      * Calculate reward based on game outcome and position evaluation
      * This method handles legitimate chess outcomes only - step limit penalties are applied externally
      */
-    private fun calculateReward(gameStatus: GameStatus, move: Move, movingColor: PieceColor): Double {
+    private fun calculateReward(gameStatus: GameStatus, movingColor: PieceColor): Double {
         var reward: Double
         
         // Primary outcome-based rewards - only for legitimate chess game endings
@@ -824,18 +809,19 @@ class ChessEnvironment(
     
     override fun getValidActions(state: DoubleArray): List<Int> {
         require(state.size == getStateSize()) { "State size ${state.size} does not match expected ${getStateSize()}" }
-        val legalMoves = legalMoveValidator.getAllLegalMoves(chessBoard, chessBoard.getActiveColor())
-        return actionEncoder.encodeValidMoves(legalMoves)
+        val legalMoves = adapter.getLegalMoves(engineState)
+        return legalMoves.map { ActionSpaceMapping.encodeMove(it) }
     }
     
     override fun isTerminal(state: DoubleArray): Boolean {
+        adjudicatedOutcome?.let { return true }
         val gameStatus = gameStateDetector.getGameStatus(chessBoard, gameHistory)
         return gameStatus.isGameOver
     }
     
     override fun getStateSize(): Int = ChessStateEncoder.TOTAL_FEATURES
     
-    override fun getActionSize(): Int = ChessActionEncoder.ACTION_SPACE_SIZE
+    override fun getActionSize(): Int = ActionSpaceMapping.ACTION_SPACE_SIZE
     
     /**
      * Get current chess board (for debugging/visualization)
@@ -846,8 +832,9 @@ class ChessEnvironment(
      * Get action mask for current position
      */
     fun getActionMask(): DoubleArray {
-        val legalMoves = legalMoveValidator.getAllLegalMoves(chessBoard, chessBoard.getActiveColor())
-        return actionEncoder.createActionMask(legalMoves)
+        val legalMoves = adapter.getLegalMoves(engineState)
+        val mask = ActionSpaceMapping.createActionMask(legalMoves)
+        return DoubleArray(mask.size) { idx -> if (mask[idx]) 1.0 else 0.0 }
     }
     
     /**
@@ -899,13 +886,18 @@ class ChessEnvironment(
      * Load position from FEN string
      */
     fun loadFromFEN(fen: String): Boolean {
-        val newBoard = ChessBoard()
-        if (newBoard.fromFEN(fen)) {
-            chessBoard = newBoard
-            gameHistory.clear()
-            gameHistory.add(fen)
-            return true
-        }
-        return false
+        val newState = adapter.fromFen(fen) ?: return false
+        engineState = newState
+        chessBoard = createBoardFromState(newState)
+        gameHistory.clear()
+        gameHistory.add(newState.fen)
+        moveCount = 0
+        captureCount = 0
+        checkCount = 0
+        previousMaterialValue = calculateTotalMaterialValue()
+        lastMaterialTotals = calculateMaterialTotals(newState.fen)
+        noProgressPlies = 0
+        adjudicatedOutcome = null
+        return true
     }
 }

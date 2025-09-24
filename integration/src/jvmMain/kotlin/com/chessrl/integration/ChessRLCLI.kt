@@ -1,5 +1,6 @@
 package com.chessrl.integration
 
+import com.chessrl.integration.adapter.EngineBackend
 import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.config.ConfigParser
 import com.chessrl.integration.config.JvmConfigParser
@@ -360,6 +361,7 @@ object ChessRLCLI {
         getDoubleArg(args, "--loss-reward")?.let { config = config.copy(lossReward = it) }
         getDoubleArg(args, "--draw-reward")?.let { config = config.copy(drawReward = it) }
         getDoubleArg(args, "--step-limit-penalty")?.let { config = config.copy(stepLimitPenalty = it) }
+        getStringArg(args, "--engine")?.let { config = config.copy(engine = EngineBackend.fromString(it)) }
         getIntArg(args, "--evaluation-games")?.let { config = config.copy(evaluationGames = it) }
         // Training environment controls
         getBoolArg(args, "--train-early-adjudication")?.let { config = config.copy(trainEarlyAdjudication = it) }
@@ -711,6 +713,7 @@ object ChessRLCLI {
         println("    --loss-reward <x>        Reward shaping (loss)")
         println("    --draw-reward <x>        Reward shaping (draw)")
         println("    --step-limit-penalty <x> Penalty at step limit")
+        println("    --engine <backend>       Engine backend: builtin, chesslib")
         println()
         println("EVALUATION:")
         println("  --evaluate --baseline [OPTIONS]")

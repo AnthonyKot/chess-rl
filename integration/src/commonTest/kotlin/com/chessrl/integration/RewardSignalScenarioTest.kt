@@ -104,8 +104,6 @@ class RewardSignalScenarioTest {
         )
         
         env.reset()
-        val validActions = env.getValidActions(env.reset())
-        
         // Test multiple moves to ensure all rewards are finite
         for (i in 0 until 5) {
             val currentValidActions = env.getValidActions(env.reset())

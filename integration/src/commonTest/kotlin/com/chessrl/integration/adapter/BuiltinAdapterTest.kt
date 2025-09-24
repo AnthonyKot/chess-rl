@@ -57,10 +57,9 @@ class BuiltinAdapterTest {
     @Test
     fun testE2E4MoveProducesCorrectFEN() {
         val initialState = adapter.initialState()
-        val e2e4Move = ChessMove.fromAlgebraic("e2e4")
-        assertNotNull(e2e4Move, "e2e4 should be a valid move")
-        
-        val newState = adapter.applyMove(initialState, e2e4Move!!)
+        val e2e4Move = ChessMove.fromAlgebraic("e2e4") ?: fail("e2e4 should be a valid move")
+
+        val newState = adapter.applyMove(initialState, e2e4Move)
         
         val expectedFen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
         assertEquals(expectedFen, newState.fen, "e2e4 should produce the expected FEN")
@@ -70,11 +69,10 @@ class BuiltinAdapterTest {
     @Test
     fun testInvalidMoveThrowsException() {
         val initialState = adapter.initialState()
-        val invalidMove = ChessMove.fromAlgebraic("e2e5") // Invalid pawn move
-        assertNotNull(invalidMove)
-        
+        val invalidMove = ChessMove.fromAlgebraic("e2e5") ?: fail("e2e5 should parse as move")
+
         assertFailsWith<IllegalArgumentException> {
-            adapter.applyMove(initialState, invalidMove!!)
+            adapter.applyMove(initialState, invalidMove)
         }
     }
     
@@ -82,10 +80,10 @@ class BuiltinAdapterTest {
     fun testCheckmateDetection() {
         // Fool's mate position: 1.f3 e5 2.g4 Qh4#
         val checkmateState = adapter.fromFen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
-        assertNotNull(checkmateState, "Should be able to parse checkmate FEN")
-        
-        assertTrue(adapter.isTerminal(checkmateState!!), "Position should be terminal")
-        
+            ?: fail("Should be able to parse checkmate FEN")
+
+        assertTrue(adapter.isTerminal(checkmateState), "Position should be terminal")
+
         val outcome = adapter.getOutcome(checkmateState)
         assertTrue(outcome.isTerminal, "Outcome should be terminal")
         assertEquals(GameOutcome.BLACK_WINS, outcome.outcome, "Black should win")
@@ -96,10 +94,10 @@ class BuiltinAdapterTest {
     fun testStalemateDetection() {
         // Stalemate position: King vs King with stalemate
         val stalemateState = adapter.fromFen("k7/8/1K6/8/8/8/8/8 b - - 0 1")
-        assertNotNull(stalemateState, "Should be able to parse stalemate FEN")
-        
-        assertTrue(adapter.isTerminal(stalemateState!!), "Position should be terminal")
-        
+            ?: fail("Should be able to parse stalemate FEN")
+
+        assertTrue(adapter.isTerminal(stalemateState), "Position should be terminal")
+
         val outcome = adapter.getOutcome(stalemateState)
         assertTrue(outcome.isTerminal, "Outcome should be terminal")
         assertEquals(GameOutcome.DRAW, outcome.outcome, "Should be a draw")
@@ -111,9 +109,9 @@ class BuiltinAdapterTest {
     fun testCastlingHandling() {
         // Position where white can castle kingside
         val castlingState = adapter.fromFen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1")
-        assertNotNull(castlingState, "Should be able to parse castling FEN")
-        
-        val legalMoves = adapter.getLegalMoves(castlingState!!)
+            ?: fail("Should be able to parse castling FEN")
+
+        val legalMoves = adapter.getLegalMoves(castlingState)
         val moveStrings = legalMoves.map { it.algebraic }.toSet()
         
         assertTrue(moveStrings.contains("e1g1"), "Should allow kingside castling")
@@ -124,9 +122,9 @@ class BuiltinAdapterTest {
     fun testEnPassantHandling() {
         // Position with en passant opportunity
         val enPassantState = adapter.fromFen("rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3")
-        assertNotNull(enPassantState, "Should be able to parse en passant FEN")
-        
-        val legalMoves = adapter.getLegalMoves(enPassantState!!)
+            ?: fail("Should be able to parse en passant FEN")
+
+        val legalMoves = adapter.getLegalMoves(enPassantState)
         val moveStrings = legalMoves.map { it.algebraic }.toSet()
         
         assertTrue(moveStrings.contains("e5f6"), "Should allow en passant capture")
@@ -136,9 +134,9 @@ class BuiltinAdapterTest {
     fun testPromotionHandling() {
         // Position where white pawn can promote
         val promotionState = adapter.fromFen("8/P7/8/8/8/8/8/4K2k w - - 0 1")
-        assertNotNull(promotionState, "Should be able to parse promotion FEN")
-        
-        val legalMoves = adapter.getLegalMoves(promotionState!!)
+            ?: fail("Should be able to parse promotion FEN")
+
+        val legalMoves = adapter.getLegalMoves(promotionState)
         val moveStrings = legalMoves.map { it.algebraic }.toSet()
         
         assertTrue(moveStrings.contains("a7a8q"), "Should allow queen promotion")
@@ -151,10 +149,10 @@ class BuiltinAdapterTest {
     fun testFiftyMoveRuleDetection() {
         // Position with 50-move rule (100 half-moves)
         val fiftyMoveState = adapter.fromFen("8/8/8/8/8/8/8/4K2k w - - 100 50")
-        assertNotNull(fiftyMoveState, "Should be able to parse fifty-move FEN")
-        
-        assertTrue(adapter.isTerminal(fiftyMoveState!!), "Position should be terminal due to fifty-move rule")
-        
+            ?: fail("Should be able to parse fifty-move FEN")
+
+        assertTrue(adapter.isTerminal(fiftyMoveState), "Position should be terminal due to fifty-move rule")
+
         val outcome = adapter.getOutcome(fiftyMoveState)
         assertTrue(outcome.isTerminal, "Outcome should be terminal")
         assertEquals(GameOutcome.DRAW, outcome.outcome, "Should be a draw")
@@ -166,10 +164,10 @@ class BuiltinAdapterTest {
     fun testInsufficientMaterialDetection() {
         // King vs King - insufficient material
         val insufficientMaterialState = adapter.fromFen("8/8/8/8/8/8/8/4K2k w - - 0 1")
-        assertNotNull(insufficientMaterialState, "Should be able to parse insufficient material FEN")
-        
-        assertTrue(adapter.isTerminal(insufficientMaterialState!!), "Position should be terminal due to insufficient material")
-        
+            ?: fail("Should be able to parse insufficient material FEN")
+
+        assertTrue(adapter.isTerminal(insufficientMaterialState), "Position should be terminal due to insufficient material")
+
         val outcome = adapter.getOutcome(insufficientMaterialState)
         assertTrue(outcome.isTerminal, "Outcome should be terminal")
         assertEquals(GameOutcome.DRAW, outcome.outcome, "Should be a draw")
@@ -186,9 +184,8 @@ class BuiltinAdapterTest {
         )
         
         for (fen in testFens) {
-            val state = adapter.fromFen(fen)
-            assertNotNull(state, "Should be able to parse FEN: $fen")
-            assertEquals(fen, adapter.toFen(state!!), "FEN should round-trip correctly")
+            val state = adapter.fromFen(fen) ?: fail("Should be able to parse FEN: $fen")
+            assertEquals(fen, adapter.toFen(state), "FEN should round-trip correctly")
         }
     }
     
@@ -231,7 +228,7 @@ class BuiltinAdapterTest {
         val originalFen = initialState.fen
         
         // Apply a move
-        val e2e4Move = ChessMove.fromAlgebraic("e2e4")!!
+        val e2e4Move = ChessMove.fromAlgebraic("e2e4") ?: fail("e2e4 should be valid")
         val newState = adapter.applyMove(initialState, e2e4Move)
         
         // Original state should be unchanged
@@ -270,13 +267,12 @@ class BuiltinAdapterTest {
         val moves = listOf("e2e4", "e7e5", "g1f3", "b8c6", "f1b5")
         
         for (moveStr in moves) {
-            val move = ChessMove.fromAlgebraic(moveStr)
-            assertNotNull(move, "Move $moveStr should be valid")
-            
+            val move = ChessMove.fromAlgebraic(moveStr) ?: fail("Move $moveStr should be valid")
+
             val legalMoves = adapter.getLegalMoves(state)
             assertTrue(legalMoves.contains(move), "Move $moveStr should be legal in current position")
-            
-            state = adapter.applyMove(state, move!!)
+
+            state = adapter.applyMove(state, move)
             assertFalse(adapter.isTerminal(state), "Game should not be terminal after $moveStr")
         }
         

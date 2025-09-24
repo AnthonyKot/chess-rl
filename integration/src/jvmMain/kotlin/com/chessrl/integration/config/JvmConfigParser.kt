@@ -1,6 +1,7 @@
 package com.chessrl.integration.config
 
 import com.chessrl.integration.ProfilesLoader
+import com.chessrl.integration.adapter.EngineBackend
 
 /**
  * JVM-specific configuration parser that integrates with the existing ProfilesLoader.
@@ -69,6 +70,7 @@ object JvmConfigParser {
                     "lossReward" -> config.copy(lossReward = value.toDouble())
                     "drawReward" -> config.copy(drawReward = value.toDouble())
                     "stepLimitPenalty" -> config.copy(stepLimitPenalty = value.toDouble())
+                    "engine" -> config.copy(engine = EngineBackend.fromString(value))
                     "seed" -> config.copy(seed = if (value == "null") null else value.toLong())
                     "checkpointInterval" -> config.copy(checkpointInterval = value.toInt())
                     "checkpointDirectory" -> config.copy(checkpointDirectory = value.trim('"'))
