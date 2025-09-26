@@ -11,7 +11,7 @@ Successfully implemented Task 2 "Central Configuration System Implementation" by
 **Location**: `integration/src/commonMain/kotlin/com/chessrl/integration/config/ChessRLConfig.kt`
 
 **Key Features**:
-- **18 essential parameters** (reduced from 65+ scattered parameters)
+- **19 essential parameters** (reduced from 65+ scattered parameters)
 - **4 logical groups**: Neural Network (3), RL Training (3), Self-Play (4), Rewards (4), System (4)
 - **Comprehensive validation** with clear error messages and warnings
 - **Profile methods**: `forFastDebug()`, `forLongTraining()`, `forEvaluationOnly()`
@@ -187,7 +187,7 @@ if (!validation.isValid) {
 - **High maintenance burden** with overlapping functionality
 
 ### After Refactoring:
-- **18 essential parameters** in single system
+- **19 essential parameters** in single system
 - **3 focused profiles** with clear purposes
 - **Centralized configuration logic** in config package
 - **70% reduction** in configuration complexity

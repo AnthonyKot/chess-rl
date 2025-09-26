@@ -1,6 +1,7 @@
 package com.chessrl.integration
 
 import com.chessrl.rl.*
+import com.chessrl.integration.backend.*
 import kotlin.math.*
 
 /**
@@ -122,7 +123,7 @@ class CheckpointManager(
     }
     
     /**
-     * Load a checkpoint and restore agent state
+     * Load a checkpoint and restore agent state with backend compatibility checking
      */
     fun loadCheckpoint(checkpointInfo: CheckpointInfo, agent: ChessAgent): LoadResult {
         val loadStartTime = System.currentTimeMillis()
@@ -136,14 +137,29 @@ class CheckpointManager(
                 }
             }
             
-            // Load agent state – prefer dedicated model artifact if present/valid
-            val primary = checkpointInfo.path
-            val modelPath = primary
-                .replace(".json.gz", "_qnet.json")
-                .replace(".json", "_qnet.json")
-            val loaded = runCatching { agent.load(modelPath) }.isSuccess ||
-                         runCatching { agent.load(primary) }.isSuccess
-            if (!loaded) throw CheckpointException("Failed to load model from $modelPath or $primary")
+            // Load agent state with backend-aware checkpoint resolution
+            // The agent's load method will handle format detection and compatibility
+            val loaded = try {
+                // Try primary path first
+                agent.load(checkpointInfo.path)
+                true
+            } catch (e: Exception) {
+                // Try alternative model artifact paths for backward compatibility
+                val primary = checkpointInfo.path
+                val modelPath = primary
+                    .replace(".json.gz", "_qnet.json")
+                    .replace(".json", "_qnet.json")
+                
+                try {
+                    agent.load(modelPath)
+                    true
+                } catch (e2: Exception) {
+                    // Both attempts failed, throw the original exception
+                    throw e
+                }
+            }
+            
+            if (!loaded) throw CheckpointException("Failed to load checkpoint from ${checkpointInfo.path}")
             
             totalCheckpointsLoaded++
             
@@ -249,6 +265,92 @@ class CheckpointManager(
         } catch (e: Exception) {
             println("❌ Failed to delete checkpoint version $version: ${e.message}")
             return false
+        }
+    }
+    
+    /**
+     * Load checkpoint with backend compatibility checking
+     */
+    fun loadCheckpointWithBackend(
+        checkpointPath: String, 
+        agent: ChessAgent, 
+        preferredBackend: BackendType
+    ): LoadResult {
+        val loadStartTime = System.currentTimeMillis()
+        
+        try {
+            // Use checkpoint compatibility system to resolve the path
+            val resolution = CheckpointCompatibility.resolveCheckpointPath(checkpointPath, preferredBackend)
+            
+            when (resolution) {
+                is CheckpointResolution.Success -> {
+                    // Load the checkpoint
+                    agent.load(resolution.path)
+                    
+                    val loadEndTime = System.currentTimeMillis()
+                    val loadDuration = loadEndTime - loadStartTime
+                    
+                    println("📂 Checkpoint loaded: ${resolution.path} with ${resolution.backend.name} backend (${loadDuration}ms)")
+                    
+                    return LoadResult(
+                        success = true,
+                        version = -1, // Version not available for direct path loading
+                        loadDuration = loadDuration,
+                        metadata = CheckpointMetadata(
+                            cycle = -1,
+                            performance = 0.0,
+                            description = "Direct path load: ${resolution.path}",
+                            isBest = false
+                        )
+                    )
+                }
+                is CheckpointResolution.FormatMismatch -> {
+                    val errorMessage = "Checkpoint format mismatch: ${resolution.suggestion}"
+                    println("❌ $errorMessage")
+                    return LoadResult(
+                        success = false,
+                        version = -1,
+                        loadDuration = 0L,
+                        metadata = CheckpointMetadata(
+                            cycle = -1,
+                            performance = 0.0,
+                            description = "Format mismatch",
+                            isBest = false
+                        ),
+                        error = errorMessage
+                    )
+                }
+                is CheckpointResolution.NotFound -> {
+                    println("❌ ${resolution.message}")
+                    return LoadResult(
+                        success = false,
+                        version = -1,
+                        loadDuration = 0L,
+                        metadata = CheckpointMetadata(
+                            cycle = -1,
+                            performance = 0.0,
+                            description = "Not found",
+                            isBest = false
+                        ),
+                        error = resolution.message
+                    )
+                }
+            }
+            
+        } catch (e: Exception) {
+            println("❌ Failed to load checkpoint from $checkpointPath: ${e.message}")
+            return LoadResult(
+                success = false,
+                version = -1,
+                loadDuration = 0L,
+                metadata = CheckpointMetadata(
+                    cycle = -1,
+                    performance = 0.0,
+                    description = "Load failed",
+                    isBest = false
+                ),
+                error = e.message
+            )
         }
     }
     

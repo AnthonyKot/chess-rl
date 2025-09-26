@@ -228,6 +228,14 @@ class FormatManager(
             }
         }
     }
+
+    fun formatScientific(value: Double, significantDigits: Int = 3): String {
+        if (value.isNaN()) return "NaN"
+        if (value.isInfinite()) return if (value > 0) "∞" else "-∞"
+        val digits = significantDigits.coerceIn(1, 6)
+        return String.format("%1.${digits.coerceAtLeast(1) - 1}e", value)
+            .replace(',', '.')
+    }
     
     /**
      * Format duration in consistent time display (3.4s format)

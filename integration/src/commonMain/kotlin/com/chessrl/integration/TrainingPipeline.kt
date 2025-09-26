@@ -13,6 +13,8 @@ import com.chessrl.integration.CheckpointMetadata
 import com.chessrl.rl.*
 import kotlin.math.abs
 import kotlin.random.Random
+import com.chessrl.integration.opponent.OpponentKind
+import com.chessrl.integration.opponent.OpponentSelector
 
 /**
  * Core training pipeline that orchestrates self-play games and agent training.
@@ -648,11 +650,24 @@ class TrainingPipeline(
         return try {
             val startTime = System.currentTimeMillis()
             val experiences = mutableListOf<Experience<DoubleArray, Int>>()
-            val opponentType = config.trainOpponentType?.lowercase()
+            val selectionRandom = runCatching { SeedManager.getInstance().createSeededRandom("trainOpponentSelection-$gameId") }
+                .getOrNull() ?: Random.Default
+            val opponentSelection = OpponentSelector.select(config.trainOpponentType, config.trainOpponentDepth, selectionRandom)
+            val normalizedOpponentType = config.trainOpponentType?.lowercase()
+            if (normalizedOpponentType != null && normalizedOpponentType in setOf("random", "mixed", "hybrid")) {
+                val opponentLabel = when (opponentSelection.kind) {
+                    OpponentKind.SELF -> "self"
+                    OpponentKind.HEURISTIC -> "heuristic"
+                    OpponentKind.MINIMAX -> "minimax(d=${opponentSelection.minimaxDepth ?: config.trainOpponentDepth})"
+                }
+                logger.debug("Game $gameId opponent selection: $opponentLabel")
+            }
             val actionEncoder = ChessActionEncoder()
-            val minimaxTeacher = if (opponentType == "minimax") {
-                val rnd = runCatching { SeedManager.getInstance().createSeededRandom("minimaxTeacher") }.getOrNull()
-                com.chessrl.teacher.MinimaxTeacher(depth = config.trainOpponentDepth, random = rnd ?: kotlin.random.Random.Default)
+            val minimaxTeacher = if (opponentSelection.kind == OpponentKind.MINIMAX) {
+                val depth = opponentSelection.minimaxDepth ?: config.trainOpponentDepth
+                val teacherDepth = if (depth <= 0) 2 else depth
+                val rnd = runCatching { SeedManager.getInstance().createSeededRandom("minimaxTeacher-$gameId") }.getOrNull()
+                com.chessrl.teacher.MinimaxTeacher(depth = teacherDepth, random = rnd ?: Random.Default)
             } else null
             
             // Reset environment
@@ -675,14 +690,14 @@ class TrainingPipeline(
                 
                 // Agent selects action (with per-agent lock for thread safety)
                 val lock = if (currentAgent === whiteAgent) whiteLock else blackLock
-                val action = if (currentAgent === blackAgent && (opponentType == "minimax" || opponentType == "heuristic")) {
-                    when (opponentType) {
-                        "minimax" -> {
+                val action = if (currentAgent === blackAgent && opponentSelection.kind != OpponentKind.SELF) {
+                    when (opponentSelection.kind) {
+                        OpponentKind.MINIMAX -> {
                             val move = minimaxTeacher!!.act(environment.getCurrentBoard()).bestMove
                             val idx = actionEncoder.encodeMove(move)
                             if (idx in validActions) idx else validActions.first()
                         }
-                        "heuristic" -> {
+                        OpponentKind.HEURISTIC -> {
                             val idx = BaselineHeuristicOpponent.selectAction(environment, validActions)
                             if (idx >= 0) idx else validActions.first()
                         }

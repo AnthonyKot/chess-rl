@@ -31,6 +31,10 @@ dependencies {
     
     // Chess library for alternative engine implementation
     implementation("com.github.bhlangonijr:chesslib:1.3.3")
+    
+    // DL4J dependencies for neural network backend
+    implementation("org.deeplearning4j:deeplearning4j-core:1.0.0-M2.1")
+    implementation("org.nd4j:nd4j-native-platform:1.0.0-M2.1")
 
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.8.2")

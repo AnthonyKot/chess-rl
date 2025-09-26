@@ -37,7 +37,7 @@ The central configuration system has been implemented with the following archite
 
 ### 3. Parameter Mapping
 **Current State**:
-- New ChessRLConfig uses 18 essential parameters
+- New ChessRLConfig uses 19 essential parameters
 - Existing profiles.yaml may have legacy parameter names
 - JvmConfigParser includes legacy parameter mapping (episodes → maxCycles, etc.)
 
@@ -81,7 +81,7 @@ val config = ChessRLConfig().forFastDebug().withSeed(12345L)
 ## Migration Path
 
 ### Phase 1: Current Implementation ✅
-- ChessRLConfig with 18 essential parameters
+- ChessRLConfig with 19 essential parameters
 - ConfigParser with built-in profiles and CLI parsing
 - JvmConfigParser with ProfilesLoader integration
 - Backward compatibility for legacy parameter names

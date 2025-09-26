@@ -48,7 +48,7 @@ val replayType: String = "UNIFORM",           // Remove: use single strategy
 val gamma: Double = 0.99,                     // Remove: use fixed value for chess
 ```
 
-**Recommendation**: Reduce from 38 to 18 essential parameters
+**Recommendation**: Reduce from 38 to 19 essential parameters
 - **Remove**: 12 system/internal parameters
 - **Consolidate**: 8 related parameters into 4 groups
 - **Keep**: 18 parameters that directly impact training effectiveness

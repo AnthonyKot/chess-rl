@@ -23,7 +23,15 @@ object RealChessAgentFactory {
         targetUpdateFrequency: Int = 100,
         doubleDqn: Boolean = false,
         replayType: String = "UNIFORM",
-        gamma: Double = 0.99
+        gamma: Double = 0.99,
+        lossFunction: String = "huber",
+        optimizer: String = "adam",
+        l2Regularization: Double = 0.001,
+        beta1: Double = 0.9,
+        beta2: Double = 0.999,
+        epsilon: Double = 1e-8,
+        momentum: Double = 0.0,
+        weightInitType: String = "he"
     ): RealChessAgent {
         // Seeded randoms if available
         val nnRandom = try { SeedManager.getNeuralNetworkRandom() } catch (_: Throwable) { kotlin.random.Random.Default }
@@ -38,7 +46,8 @@ object RealChessAgentFactory {
                     inputSize = currentInputSize,
                     outputSize = hiddenSize,
                     activation = ReLUActivation(),
-                    random = nnRandom
+                    random = nnRandom,
+                    weightInitType = weightInitType
                 )
             )
             currentInputSize = hiddenSize
@@ -50,15 +59,27 @@ object RealChessAgentFactory {
                 inputSize = currentInputSize,
                 outputSize = outputSize,
                 activation = LinearActivation(),
-                random = nnRandom
+                random = nnRandom,
+                weightInitType = weightInitType
             )
         )
         
+        val lossFn = createLossFunction(lossFunction)
+        val optimizerInstance = createOptimizer(
+            optimizer = optimizer,
+            learningRate = learningRate,
+            beta1 = beta1,
+            beta2 = beta2,
+            epsilon = epsilon,
+            momentum = momentum
+        )
+        val regularization = if (l2Regularization > 0.0) L2Regularization(l2Regularization) else null
+        
         val qNetwork = FeedforwardNetwork(
             _layers = qNetworkLayers,
-            lossFunction = HuberLoss(delta = 1.0),
-            optimizer = AdamOptimizer(learningRate = learningRate),
-            regularization = L2Regularization(lambda = 0.001)
+            lossFunction = lossFn,
+            optimizer = optimizerInstance,
+            regularization = regularization
         )
         
         // Create target network (copy of main network)
@@ -71,7 +92,8 @@ object RealChessAgentFactory {
                     inputSize = currentInputSize,
                     outputSize = hiddenSize,
                     activation = ReLUActivation(),
-                    random = nnRandom
+                    random = nnRandom,
+                    weightInitType = weightInitType
                 )
             )
             currentInputSize = hiddenSize
@@ -82,15 +104,23 @@ object RealChessAgentFactory {
                 inputSize = currentInputSize,
                 outputSize = outputSize,
                 activation = LinearActivation(),
-                random = nnRandom
+                random = nnRandom,
+                weightInitType = weightInitType
             )
         )
         
         val targetNetwork = FeedforwardNetwork(
             _layers = targetNetworkLayers,
-            lossFunction = HuberLoss(delta = 1.0),
-            optimizer = AdamOptimizer(learningRate = learningRate),
-            regularization = L2Regularization(lambda = 0.001)
+            lossFunction = lossFn,
+            optimizer = createOptimizer(
+                optimizer = optimizer,
+                learningRate = learningRate,
+                beta1 = beta1,
+                beta2 = beta2,
+                epsilon = epsilon,
+                momentum = momentum
+            ),
+            regularization = regularization
         )
         
         // Create experience replay buffer (uniform or prioritized)
@@ -200,7 +230,14 @@ object RealChessAgentFactory {
         targetUpdateFrequency: Int = 100,
         replayType: String = "UNIFORM",
         gamma: Double = 0.99,
-        doubleDqn: Boolean = false
+        doubleDqn: Boolean = false,
+        lossFunction: String = "huber",
+        optimizer: String = "adam",
+        l2Regularization: Double = 0.001,
+        beta1: Double = 0.9,
+        beta2: Double = 0.999,
+        epsilon: Double = 1e-8,
+        momentum: Double = 0.0
     ): RealChessAgent {
         
         // Create main Q-network with seeded initialization
@@ -230,12 +267,21 @@ object RealChessAgentFactory {
                 weightInitType = weightInitType
             )
         )
-        
+        val seededLossFn = createLossFunction(lossFunction)
+        val seededOptimizer = createOptimizer(
+            optimizer = optimizer,
+            learningRate = learningRate,
+            beta1 = beta1,
+            beta2 = beta2,
+            epsilon = epsilon,
+            momentum = momentum
+        )
+        val seededRegularization = if (l2Regularization > 0.0) L2Regularization(l2Regularization) else null
         val qNetwork = FeedforwardNetwork(
             _layers = qNetworkLayers,
-            lossFunction = HuberLoss(delta = 1.0),
-            optimizer = AdamOptimizer(learningRate = learningRate),
-            regularization = L2Regularization(lambda = 0.001)
+            lossFunction = seededLossFn,
+            optimizer = seededOptimizer,
+            regularization = seededRegularization
         )
         
         // Create target network with same seeded initialization
@@ -267,9 +313,16 @@ object RealChessAgentFactory {
         
         val targetNetwork = FeedforwardNetwork(
             _layers = targetNetworkLayers,
-            lossFunction = HuberLoss(delta = 1.0),
-            optimizer = AdamOptimizer(learningRate = learningRate),
-            regularization = L2Regularization(lambda = 0.001)
+            lossFunction = seededLossFn,
+            optimizer = createOptimizer(
+                optimizer = optimizer,
+                learningRate = learningRate,
+                beta1 = beta1,
+                beta2 = beta2,
+                epsilon = epsilon,
+                momentum = momentum
+            ),
+            regularization = seededRegularization
         )
         
         // Create seeded experience replay buffer (uniform) or prioritized (unseeded)
@@ -375,6 +428,48 @@ object RealChessAgentFactory {
             qNetwork = policyNetwork,
             targetNetwork = null
         )
+    }
+
+    private fun createLossFunction(type: String): LossFunction {
+        return when (type.lowercase()) {
+            "huber" -> HuberLoss(delta = 1.0)
+            "mse" -> MSELoss()
+            else -> HuberLoss(delta = 1.0)
+        }
+    }
+
+    private fun createOptimizer(
+        optimizer: String,
+        learningRate: Double,
+        beta1: Double,
+        beta2: Double,
+        epsilon: Double,
+        momentum: Double
+    ): Optimizer {
+        return when (optimizer.lowercase()) {
+            "adam" -> AdamOptimizer(
+                learningRate = learningRate,
+                beta1 = beta1,
+                beta2 = beta2,
+                epsilon = epsilon
+            )
+            "sgd" -> SGDOptimizer(
+                learningRate = learningRate,
+                momentum = momentum
+            )
+            "rmsprop" -> RMSpropOptimizer(
+                learningRate = learningRate,
+                decay = beta2,
+                epsilon = epsilon,
+                momentum = momentum
+            )
+            else -> AdamOptimizer(
+                learningRate = learningRate,
+                beta1 = beta1,
+                beta2 = beta2,
+                epsilon = epsilon
+            )
+        }
     }
 }
 

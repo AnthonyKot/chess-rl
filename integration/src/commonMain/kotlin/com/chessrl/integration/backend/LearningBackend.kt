@@ -50,8 +50,12 @@ interface LearningSession : AutoCloseable {
  * Default backend using the existing DQN implementation from the rl-framework
  * module. This keeps behaviour identical to previous revisions while exposing
  * the pluggable abstraction for future backends (e.g., DL4J).
+ * 
+ * Now supports pluggable neural network backends via BackendType parameter.
  */
-class DqnLearningBackend : LearningBackend {
+class DqnLearningBackend(
+    private val nnBackendType: BackendType = BackendType.MANUAL
+) : LearningBackend {
     override val id: String = "dqn"
 
     override fun createSession(config: ChessRLConfig): LearningSession {
@@ -60,24 +64,60 @@ class DqnLearningBackend : LearningBackend {
             maxBufferSize = config.maxExperienceBuffer,
             targetUpdateFrequency = config.targetUpdateFrequency
         )
-        val mainAgent = ChessAgentFactory.createSeededDQNAgent(
-            hiddenLayers = config.hiddenLayers,
-            learningRate = config.learningRate,
-            explorationRate = config.explorationRate,
-            config = agentConfig,
-            replayType = config.replayType,
-            gamma = config.gamma,
-            enableDoubleDQN = config.doubleDqn
-        )
-        val opponentAgent = ChessAgentFactory.createSeededDQNAgent(
-            hiddenLayers = config.hiddenLayers,
-            learningRate = config.learningRate,
-            explorationRate = config.explorationRate,
-            config = agentConfig,
-            replayType = config.replayType,
-            gamma = config.gamma,
-            enableDoubleDQN = config.doubleDqn
-        )
+        
+        // Create agents with specified neural network backend
+        val mainAgent = if (nnBackendType != BackendType.MANUAL) {
+            ChessAgentFactory.createSeededDQNAgent(
+                backendType = nnBackendType,
+                hiddenLayers = config.hiddenLayers,
+                learningRate = config.learningRate,
+                optimizer = config.optimizer,
+                explorationRate = config.explorationRate,
+                config = agentConfig,
+                replayType = config.replayType,
+                gamma = config.gamma,
+                enableDoubleDQN = config.doubleDqn
+            )
+        } else {
+            // Use existing method for manual backend (backward compatibility)
+            ChessAgentFactory.createSeededDQNAgent(
+                hiddenLayers = config.hiddenLayers,
+                learningRate = config.learningRate,
+                optimizer = config.optimizer,
+                explorationRate = config.explorationRate,
+                config = agentConfig,
+                replayType = config.replayType,
+                gamma = config.gamma,
+                enableDoubleDQN = config.doubleDqn
+            )
+        }
+        
+        val opponentAgent = if (nnBackendType != BackendType.MANUAL) {
+            ChessAgentFactory.createSeededDQNAgent(
+                backendType = nnBackendType,
+                hiddenLayers = config.hiddenLayers,
+                learningRate = config.learningRate,
+                optimizer = config.optimizer,
+                explorationRate = config.explorationRate,
+                config = agentConfig,
+                replayType = config.replayType,
+                gamma = config.gamma,
+                enableDoubleDQN = config.doubleDqn
+            )
+        } else {
+            // Use existing method for manual backend (backward compatibility)
+            ChessAgentFactory.createSeededDQNAgent(
+                hiddenLayers = config.hiddenLayers,
+                learningRate = config.learningRate,
+                optimizer = config.optimizer,
+                explorationRate = config.explorationRate,
+                config = agentConfig,
+                replayType = config.replayType,
+                gamma = config.gamma,
+                enableDoubleDQN = config.doubleDqn
+            )
+        }
+        
         return DqnLearningSession(config, mainAgent, opponentAgent)
     }
 }

@@ -31,8 +31,16 @@ class ConfigParserTest {
     fun testParseArgsHiddenLayers() {
         val args = arrayOf("--hidden-layers", "1024,512,256,128")
         val config = ConfigParser.parseArgs(args)
-        
+
         assertEquals(listOf(1024, 512, 256, 128), config.hiddenLayers)
+    }
+
+    @Test
+    fun testParseArgsOptimizer() {
+        val args = arrayOf("--optimizer", "rmsprop")
+        val config = ConfigParser.parseArgs(args)
+
+        assertEquals("rmsprop", config.optimizer)
     }
     
     @Test

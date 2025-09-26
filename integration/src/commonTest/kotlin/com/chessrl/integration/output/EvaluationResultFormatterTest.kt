@@ -76,6 +76,7 @@ class EvaluationResultFormatterTest {
             averageGameLength = 42.0,
             confidenceInterval = 0.25..0.75,
             statisticalSignificance = false,
+            pValue = 0.42,
             effectSize = 0.3,
             colorAlternation = colorStats
         )

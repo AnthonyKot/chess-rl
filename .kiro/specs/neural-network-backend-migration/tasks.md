@@ -1,54 +1,56 @@
 # Implementation Plan
 
-- [ ] 1. Backend Flag and Factory Routing Infrastructure
+- [x] 1. Backend Flag and Factory Routing Infrastructure
   - Add CLI flag parsing for --nn manual|dl4j|kotlindl with manual as default
   - Extend ChessAgentFactory to route based on backend type while preserving existing manual workflow
   - Implement BackendType enum and BackendSelector with graceful fallback to manual backend
   - _Requirements: 1.1, 1.4, 1.5_
 
-- [ ] 2. Core Network Adapter Interface and Manual Implementation
+- [x] 2. Core Network Adapter Interface and Manual Implementation
   - Define NetworkAdapter interface that implements NeuralNetwork, TrainableNeuralNetwork, and SynchronizableNetwork
   - Create ManualNetworkAdapter that wraps existing FeedforwardNetwork without modification
   - Implement BackendConfig data class for network architecture configuration
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [ ] 3. DL4J Dependencies and Skeleton Implementation
+- [x] 3. DL4J Dependencies and Skeleton Implementation
   - Add DL4J dependencies (deeplearning4j-core, nd4j-native-platform) to build.gradle.kts
   - Create Dl4jNetworkAdapter skeleton with MultiLayerNetwork initialization
   - Implement forward pass with 839→[hidden]→4096 architecture using ReLU activation and identity output
   - _Requirements: 9.1, 9.2, 2.1, 2.2_
 
-- [ ] 4. DL4J Training and Optimization Implementation
+- [x] 4. DL4J Training and Optimization Implementation
+  - Document how you map DoubleArray/FloatArray into INDArray, making sure masking, value/policy heads, and batching stay consistent. Call out precision (DL4J defaults to float32)
   - Implement trainBatch method with INDArray conversion and DataSet training
   - Add Adam optimizer configuration with learning rate and L2 regularization
   - Implement Huber loss function for DQN compatibility with gradient clipping
   - _Requirements: 2.3, 7.2, 7.4_
 
-- [ ] 5. DL4J Weight Synchronization and Persistence
+- [x] 5. DL4J Weight Synchronization and Persistence
+  - Check Checkpoint compatibility: current JSON checkpoints must still load when --nn manual is used. Spell out conversion rules (e.g. manual can’t load .zip, DL4J can’t load vanilla JSON) and how you surface a helpful error
   - Implement copyWeightsTo method for target network synchronization using params() and updater state
   - Add save/load methods using ModelSerializer with updater state preservation (ZIP format)
   - Implement parameter count and memory usage estimation methods
   - _Requirements: 2.4, 2.5, 6.1, 6.2_
 
-- [ ] 6. Backend-Aware Agent Factory Integration
+- [x] 6. Backend-Aware Agent Factory Integration
   - Create BackendAwareChessAgentFactory with createDQNAgent method that routes based on BackendType
   - Implement separate agent creation paths for manual and DL4J backends
   - Ensure identical DQN algorithm configuration across all backends
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 7. Save/Load Compatibility and Checkpoint Resolution
+- [x] 7. Save/Load Compatibility and Checkpoint Resolution
   - Implement checkpoint file format detection (.json for manual, .zip for DL4J)
   - Update checkpoint loading logic to detect and route to appropriate backend based on file extension
   - Add save/load round-trip validation tests for both backends
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-- [ ] 8. Backend Validation and Error Handling
+- [x] 8. Backend Validation and Error Handling
   - Implement comprehensive adapter validation with forward pass dimension checks and finite value validation
   - Add SafeNetworkAdapter wrapper with fallback error handling for production use
   - Create gradient validation utilities for debugging training issues
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 9. Synthetic Task Comparison Framework
+- [x] 9. Synthetic Task Comparison Framework
   - Implement SyntheticTaskComparison class with XOR learning, sine regression, and chess pattern recognition tasks
   - Create performance benchmarking for inference and training speed comparison
   - Add comprehensive comparison report generation with accuracy, speed, and convergence metrics

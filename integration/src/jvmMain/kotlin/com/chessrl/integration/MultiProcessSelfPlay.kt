@@ -76,34 +76,44 @@ class MultiProcessSelfPlay @JvmOverloads constructor(
             } catch (_: Exception) {
                 config.seed // May be null
             }
-            val pb = ProcessBuilder(
-                java,
-                "-cp", classpath,
-                "com.chessrl.integration.SelfPlayWorker",
-                "--model", modelPath,
-                "--game-id", id.toString(),
-                "--output", outputFile.toString(),
-                "--max-steps", config.maxStepsPerGame.toString(),
-                "--win-reward", config.winReward.toString(),
-                "--loss-reward", config.lossReward.toString(),
-                "--draw-reward", config.drawReward.toString(),
-                "--step-limit-penalty", config.stepLimitPenalty.toString(),
-                "--hidden-layers", config.hiddenLayers.joinToString(",")
-            ).apply {
-                command().addAll(listOf("--engine", config.engine.name.lowercase()))
-                masterSeed?.let { seed -> command().addAll(listOf("--seed", seed.toString())) }
-                config.trainOpponentType?.let { opt -> command().addAll(listOf("--opponent", opt)) }
-                if ((config.trainOpponentType?.equals("minimax", true) == true)) {
-                    command().addAll(listOf("--opponent-depth", config.trainOpponentDepth.toString()))
+            val command = buildList {
+                add(java)
+                config.workerHeap?.trim()?.takeIf { it.isNotEmpty() }?.let { heap ->
+                    add("-Xmx$heap")
+                }
+                addAll(listOf(
+                    "-cp", classpath,
+                    "com.chessrl.integration.SelfPlayWorker",
+                    "--model", modelPath,
+                    "--game-id", id.toString(),
+                    "--output", outputFile.toString(),
+                    "--max-steps", config.maxStepsPerGame.toString(),
+                    "--win-reward", config.winReward.toString(),
+                    "--loss-reward", config.lossReward.toString(),
+                    "--draw-reward", config.drawReward.toString(),
+                    "--step-limit-penalty", config.stepLimitPenalty.toString(),
+                    "--hidden-layers", config.hiddenLayers.joinToString(","),
+                    "--engine", config.engine.name.lowercase(),
+                    "--nn-backend", config.nnBackend.name.lowercase()
+                ))
+                masterSeed?.let { seed ->
+                    addAll(listOf("--seed", seed.toString()))
+                }
+                config.trainOpponentType?.let { opt ->
+                    addAll(listOf("--opponent", opt))
+                }
+                val normalizedOpponent = config.trainOpponentType?.lowercase()
+                if (normalizedOpponent == "minimax" || normalizedOpponent in setOf("random", "mixed", "hybrid")) {
+                    addAll(listOf("--opponent-depth", config.trainOpponentDepth.toString()))
                 }
                 // Training environment flags for parity with parent process
-                command().addAll(listOf(
+                addAll(listOf(
                     "--train-early-adjudication", config.trainEarlyAdjudication.toString(),
                     "--train-resign-threshold", config.trainResignMaterialThreshold.toString(),
                     "--train-no-progress-plies", config.trainNoProgressPlies.toString()
                 ))
-                redirectErrorStream(true)
             }
+            val pb = ProcessBuilder(command).apply { redirectErrorStream(true) }
             return try {
                 val proc = pb.start()
                 ProcessInfo(id, proc, outputFile)

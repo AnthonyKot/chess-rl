@@ -10,6 +10,8 @@ import com.chessrl.integration.output.StatisticalUtils
 import com.chessrl.teacher.MinimaxTeacher
 import com.chessrl.chess.*
 import kotlin.random.Random
+import com.chessrl.integration.opponent.OpponentKind
+import com.chessrl.integration.opponent.OpponentSelector
 
 /**
  * Evaluator for testing agents against baseline opponents.
@@ -202,6 +204,120 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
             opponentType = "Minimax-$depth"
         )
     }
+
+    fun evaluateAgainstMixedOpponents(agent: ChessAgent, games: Int): EnhancedEvaluationResults {
+        logger.info("Evaluating agent against mixed opponents (heuristic + minimax d1/d2) over $games games")
+
+        val environment = createEvaluationEnvironment()
+        val baseRandom = config.seed?.let { Random(it) } ?: Random.Default
+        val selectionRandom = Random(baseRandom.nextLong())
+        val teacherDepth1 = MinimaxTeacher(depth = 1, random = Random(baseRandom.nextLong()))
+        val teacherDepth2 = MinimaxTeacher(depth = 2, random = Random(baseRandom.nextLong()))
+
+        var wins = 0
+        var draws = 0
+        var losses = 0
+        var totalLength = 0
+
+        var whiteGames = 0
+        var blackGames = 0
+        var whiteWins = 0
+        var blackWins = 0
+        var whiteDraws = 0
+        var blackDraws = 0
+        var whiteLosses = 0
+        var blackLosses = 0
+
+        var heuristicGames = 0
+        var minimaxDepth1Games = 0
+        var minimaxDepth2Games = 0
+
+        repeat(games) { gameIndex ->
+            val agentIsWhite = gameIndex % 2 == 0
+            val selection = OpponentSelector.select("random", 2, selectionRandom)
+            val result = when (selection.kind) {
+                OpponentKind.HEURISTIC -> {
+                    heuristicGames++
+                    playGameAgainstHeuristic(environment, agent, agentIsWhite)
+                }
+                OpponentKind.MINIMAX -> {
+                    val depth = selection.minimaxDepth ?: 2
+                    if (depth <= 1) {
+                        minimaxDepth1Games++
+                        playGameAgainstMinimax(environment, agent, teacherDepth1, agentIsWhite)
+                    } else {
+                        minimaxDepth2Games++
+                        playGameAgainstMinimax(environment, agent, teacherDepth2, agentIsWhite)
+                    }
+                }
+                else -> playGameAgainstHeuristic(environment, agent, agentIsWhite)
+            }
+
+            if (agentIsWhite) {
+                whiteGames++
+                when (result.outcome) {
+                    GameOutcome.WHITE_WINS -> { wins++; whiteWins++ }
+                    GameOutcome.BLACK_WINS -> { losses++; whiteLosses++ }
+                    else -> { draws++; whiteDraws++ }
+                }
+            } else {
+                blackGames++
+                when (result.outcome) {
+                    GameOutcome.WHITE_WINS -> { losses++; blackLosses++ }
+                    GameOutcome.BLACK_WINS -> { wins++; blackWins++ }
+                    else -> { draws++; blackDraws++ }
+                }
+            }
+
+            totalLength += result.gameLength
+        }
+
+        val winRate = wins.toDouble() / games
+        val drawRate = draws.toDouble() / games
+        val lossRate = losses.toDouble() / games
+        val avgLength = totalLength.toDouble() / games
+
+        val confidenceInterval = StatisticalUtils.calculateWinRateConfidenceInterval(wins, games)
+        val isSignificant = StatisticalUtils.testStatisticalSignificance(wins, games)
+
+        val colorStats = ColorAlternationStats(
+            whiteGames = whiteGames,
+            blackGames = blackGames,
+            whiteWins = whiteWins,
+            blackWins = blackWins,
+            whiteDraws = whiteDraws,
+            blackDraws = blackDraws,
+            whiteLosses = whiteLosses,
+            blackLosses = blackLosses
+        )
+
+        logger.info(
+            "Mixed opponent breakdown: heuristic=$heuristicGames, " +
+                "minimax(d=1)=$minimaxDepth1Games, minimax(d=2)=$minimaxDepth2Games"
+        )
+        logger.info("Mixed evaluation complete: ${String.format("%.1f%%", winRate * 100)} win rate over $games games")
+        confidenceInterval?.let {
+            logger.info("95% confidence interval: ${StatisticalUtils.formatConfidenceInterval(it)}")
+        }
+        if (isSignificant) {
+            logger.info("Result is statistically significant (p < 0.05)")
+        }
+
+        return EnhancedEvaluationResults(
+            totalGames = games,
+            wins = wins,
+            draws = draws,
+            losses = losses,
+            winRate = winRate,
+            drawRate = drawRate,
+            lossRate = lossRate,
+            averageGameLength = avgLength,
+            confidenceInterval = confidenceInterval,
+            statisticalSignificance = isSignificant,
+            colorAlternation = colorStats,
+            opponentType = "Mixed"
+        )
+    }
     
     /**
      * Compare two models head-to-head.
@@ -252,10 +368,13 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         val drawRate = draws.toDouble() / games
         val bWinRate = bWins.toDouble() / games
         val avgLength = totalLength.toDouble() / games
-        
-        // Calculate statistical measures for agent A
-        val confidenceInterval = StatisticalUtils.calculateWinRateConfidenceInterval(aWins, games)
-        val isSignificant = StatisticalUtils.testStatisticalSignificance(aWins, games)
+
+        val decisiveGames = aWins + bWins
+        val decisivePValue = if (decisiveGames > 0) {
+            StatisticalUtils.binomialTwoTailedPValue(aWins, decisiveGames, 0.5)
+        } else 1.0
+        val winRateCI = StatisticalUtils.calculateWinRateConfidenceInterval(aWins, games)
+        val isSignificant = decisivePValue < 0.05
         val effectSize = StatisticalUtils.calculateEffectSize(aWinRate, bWinRate)
         
         val colorStats = ColorAlternationStats(
@@ -270,9 +389,10 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         )
         
         logger.info("Model comparison complete: A=${String.format("%.1f%%", aWinRate * 100)}, B=${String.format("%.1f%%", bWinRate * 100)}")
-        if (confidenceInterval != null) {
-            logger.info("Agent A 95% confidence interval: ${StatisticalUtils.formatConfidenceInterval(confidenceInterval)}")
+        winRateCI?.let {
+            logger.info("Agent A 95% confidence interval: ${StatisticalUtils.formatConfidenceInterval(it)}")
         }
+        logger.info("Two-tailed binomial p-value (decisive games): ${"%.4g".format(decisivePValue)}")
         if (isSignificant) {
             logger.info("Performance difference is statistically significant (p < 0.05)")
         }
@@ -287,8 +407,9 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
             drawRate = drawRate,
             modelBWinRate = bWinRate,
             averageGameLength = avgLength,
-            confidenceInterval = confidenceInterval,
+            confidenceInterval = winRateCI,
             statisticalSignificance = isSignificant,
+            pValue = decisivePValue,
             effectSize = effectSize,
             colorAlternation = colorStats
         )

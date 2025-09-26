@@ -20,3 +20,8 @@ fun appendTextFile(path: String, content: String) {
         StandardOpenOption.CREATE, StandardOpenOption.APPEND
     )
 }
+
+fun deleteFile(path: String) {
+    val p = Path.of(path)
+    Files.deleteIfExists(p)
+}

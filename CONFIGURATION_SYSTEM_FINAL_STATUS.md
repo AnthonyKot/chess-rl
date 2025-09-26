@@ -38,7 +38,7 @@
 **Aligned defaults with simplified philosophy while keeping proven features**
 
 **Defaults Philosophy:**
-- Keep the 18 essential parameters in `ChessRLConfig`
+- Keep the 19 essential parameters in `ChessRLConfig`
 - Disable experimental shaping features by default
 - Provide sensible evaluation/back-end defaults (e.g., game-length adjudication, seeded RNGs)
 - Offer profile-specific tweaks via `profiles.yaml`
@@ -67,7 +67,7 @@ BUILD SUCCESSFUL
 ```
 ┌─────────────────────┐    ┌──────────────────────────┐
 │   ChessRLConfig     │    │   LearningBackend        │
-│   (18 essential     │◄──►│   (pluggable RL engines) │
+│   (19 essential     │◄──►│   (pluggable RL engines) │
 │    parameters)      │    │   e.g. DqnLearningBackend│
 └─────────────────────┘    └──────────────────────────┘
            ▲                           ▲

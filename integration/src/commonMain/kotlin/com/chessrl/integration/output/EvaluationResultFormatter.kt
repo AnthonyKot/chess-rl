@@ -98,18 +98,21 @@ class EvaluationResultFormatter(
         builder.appendLine("Average game length: ${formatManager.formatNumber(result.averageGameLength, 1)} moves")
         
         // Statistical analysis
+        builder.appendLine()
+        builder.appendLine("Statistical Analysis:")
         result.confidenceInterval?.let { interval ->
-            builder.appendLine()
-            builder.appendLine("Statistical Analysis:")
             builder.appendLine("  Model A 95% confidence interval: ${StatisticalUtils.formatConfidenceInterval(interval)}")
-            if (result.statisticalSignificance) {
-                builder.appendLine("  Performance difference is statistically significant (p < 0.05)")
-            } else {
-                builder.appendLine("  Performance difference is not statistically significant (p ≥ 0.05)")
-            }
-            builder.appendLine("  Effect size: ${formatManager.formatNumber(result.effectSize, 3)} " +
-                    "(${StatisticalUtils.interpretEffectSize(result.effectSize)})")
         }
+        if (!result.pValue.isNaN()) {
+            builder.appendLine("  p-value (two-tailed, decisive games): ${formatManager.formatScientific(result.pValue, 4)}")
+        }
+        if (result.statisticalSignificance) {
+            builder.appendLine("  Performance difference is statistically significant (p < 0.05)")
+        } else {
+            builder.appendLine("  Performance difference is not statistically significant (p ≥ 0.05)")
+        }
+        builder.appendLine("  Effect size: ${formatManager.formatNumber(result.effectSize, 3)} " +
+                "(${StatisticalUtils.interpretEffectSize(result.effectSize)})")
         
         // Color performance for Model A
         val colorStats = result.colorAlternation

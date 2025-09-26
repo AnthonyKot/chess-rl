@@ -2,6 +2,7 @@ package com.chessrl.integration
 
 import com.chessrl.integration.adapter.ChessEngineFactory
 import com.chessrl.integration.adapter.EngineBackend
+import com.chessrl.integration.backend.BackendType
 import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.config.ConfigParser
 import com.chessrl.rl.Experience
@@ -9,6 +10,9 @@ import com.chessrl.rl.Experience
 import java.io.File
 import kotlin.system.exitProcess
 import com.chessrl.teacher.MinimaxTeacher
+import com.chessrl.integration.opponent.OpponentKind
+import com.chessrl.integration.opponent.OpponentSelector
+import kotlin.random.Random
 
 /**
  * Self-play worker that runs as a separate process.
@@ -56,7 +60,8 @@ object SelfPlayWorker {
                 ?: EnvironmentDefaults.RESIGN_MATERIAL_THRESHOLD,
             trainNoProgressPlies = argsMap["--train-no-progress-plies"]?.toInt()
                 ?: EnvironmentDefaults.NO_PROGRESS_PLIES,
-            engine = argsMap["--engine"]?.let { EngineBackend.fromString(it) } ?: EngineBackend.BUILTIN
+            engine = argsMap["--engine"]?.let { EngineBackend.fromString(it) } ?: EngineBackend.BUILTIN,
+            nnBackend = argsMap["--nn-backend"]?.let { BackendType.fromString(it) } ?: BackendType.getDefault()
         )
     }
     
@@ -83,8 +88,8 @@ object SelfPlayWorker {
         )
         
         // Create agents by loading the model
-        val mainAgent = loadAgent(params.modelPath, config)
-        val opponentAgent = loadAgent(params.modelPath, config) // Same model for self-play
+        val mainAgent = loadAgent(params.modelPath, config, params.nnBackend)
+        val opponentAgent = loadAgent(params.modelPath, config, params.nnBackend) // Same model for self-play
         
         // Create environment
         val environment = ChessEnvironment(
@@ -107,10 +112,14 @@ object SelfPlayWorker {
         var state = environment.reset()
         var stepCount = 0
         var stalledNoEncodableMoves = false
-        val opponentType = params.opponent?.lowercase()
-        val minimaxTeacher = if (opponentType == "minimax") {
-            val rnd = runCatching { SeedManager.getInstance().createSeededRandom("minimaxWorker") }.getOrNull()
-            MinimaxTeacher(depth = params.opponentDepth, random = rnd ?: kotlin.random.Random.Default)
+        val selectionRandom = runCatching { SeedManager.getInstance().createSeededRandom("workerOpponentSelection-${params.gameId}") }
+            .getOrNull() ?: Random.Default
+        val opponentSelection = OpponentSelector.select(params.opponent, params.opponentDepth, selectionRandom)
+        val minimaxTeacher = if (opponentSelection.kind == OpponentKind.MINIMAX) {
+            val depth = opponentSelection.minimaxDepth ?: params.opponentDepth
+            val teacherDepth = if (depth <= 0) 2 else depth
+            val rnd = runCatching { SeedManager.getInstance().createSeededRandom("minimaxWorker-${params.gameId}") }.getOrNull()
+            MinimaxTeacher(depth = teacherDepth, random = rnd ?: Random.Default)
         } else null
         val actionEncoder = ChessActionEncoder()
         
@@ -123,9 +132,9 @@ object SelfPlayWorker {
             if (validActions.isEmpty()) { stalledNoEncodableMoves = true; break }
             
             // Agent selects action (no synchronization needed - single process)
-            val action = if (currentAgent === opponentAgent && (opponentType == "minimax" || opponentType == "heuristic")) {
-                when (opponentType) {
-                    "minimax" -> {
+            val action = if (currentAgent === opponentAgent && opponentSelection.kind != OpponentKind.SELF) {
+                when (opponentSelection.kind) {
+                    OpponentKind.MINIMAX -> {
                         val move = minimaxTeacher!!.act(environment.getCurrentBoard()).bestMove
                         val idx = actionEncoder.encodeMove(move)
                         if (idx in validActions) idx else {
@@ -136,7 +145,7 @@ object SelfPlayWorker {
                             fallback ?: validActions.first()
                         }
                     }
-                    "heuristic" -> {
+                    OpponentKind.HEURISTIC -> {
                         val idx = BaselineHeuristicOpponent.selectAction(environment, validActions)
                         if (idx >= 0) idx else validActions.first()
                     }
@@ -209,7 +218,7 @@ object SelfPlayWorker {
         )
     }
     
-    private fun loadAgent(modelPath: String, config: ChessRLConfig): ChessAgent {
+    private fun loadAgent(modelPath: String, config: ChessRLConfig, backendType: BackendType): ChessAgent {
         // Create agent configuration
         val agentConfig = ChessAgentConfig(
             batchSize = config.batchSize,
@@ -219,8 +228,10 @@ object SelfPlayWorker {
         
         // Create agent and load model
         val agent = ChessAgentFactory.createSeededDQNAgent(
+            backendType = backendType,
             hiddenLayers = config.hiddenLayers,
             learningRate = config.learningRate,
+            optimizer = config.optimizer,
             explorationRate = config.explorationRate,
             config = agentConfig,
             replayType = config.replayType,
@@ -308,7 +319,8 @@ private data class WorkerParams(
     val trainEarlyAdjudication: Boolean = EnvironmentDefaults.ENABLE_EARLY_ADJUDICATION,
     val trainResignMaterialThreshold: Int = EnvironmentDefaults.RESIGN_MATERIAL_THRESHOLD,
     val trainNoProgressPlies: Int = EnvironmentDefaults.NO_PROGRESS_PLIES,
-    val engine: EngineBackend = EngineBackend.BUILTIN
+    val engine: EngineBackend = EngineBackend.BUILTIN,
+    val nnBackend: BackendType = BackendType.getDefault()
 )
 
 /**

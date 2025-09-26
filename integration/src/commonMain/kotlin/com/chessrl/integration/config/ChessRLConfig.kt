@@ -1,6 +1,7 @@
 package com.chessrl.integration.config
 
 import com.chessrl.integration.adapter.EngineBackend
+import com.chessrl.integration.backend.BackendType
 
 /**
  * Central configuration class for Chess RL training system.
@@ -8,8 +9,8 @@ import com.chessrl.integration.adapter.EngineBackend
  * This replaces the scattered configuration parameters from profiles.yaml and TrainingConfiguration.kt
  * with a single, focused set of essential parameters that directly impact training effectiveness.
  * 
- * Based on CONFIGURATION_AUDIT.md analysis, this includes only the 18 essential parameters
- * that have proven impact on training competitive chess agents.
+ * Based on CONFIGURATION_AUDIT.md analysis, this includes only the core set of essential parameters
+ * (currently 19) that have proven impact on training competitive chess agents.
  */
 data class ChessRLConfig(
     // Neural Network Configuration (3 parameters)
@@ -26,6 +27,12 @@ data class ChessRLConfig(
      * Recommended: 0.0005 for balanced, 0.0003 for stable, 0.001 for aggressive.
      */
     val learningRate: Double = 0.0005,
+
+    /**
+     * Optimizer used by the neural network backend.
+     * Supported: adam, sgd, rmsprop (backend dependent).
+     */
+    val optimizer: String = "adam",
     
     /** 
      * Batch size for training - affects memory usage and gradient stability.
@@ -33,6 +40,10 @@ data class ChessRLConfig(
      * Recommended: 32-128 depending on available memory.
      */
     val batchSize: Int = 64,
+    /**
+     * Neural network backend to use (manual, dl4j, etc.). Defaults to pluggable DL4J backend with manual fallback.
+     */
+    val nnBackend: BackendType = BackendType.getDefault(),
     
     // RL Training Configuration (6 parameters)
     /** 
@@ -126,7 +137,7 @@ data class ChessRLConfig(
     /** Directory for saving checkpoints */
     val checkpointDirectory: String = "checkpoints",
     /** Number of games for evaluation runs */
-    val evaluationGames: Int = 100,
+    val evaluationGames: Int = 20,
     
     // Training opponent controls (optional)
     /** Opponent policy during training: null/self, "minimax", or "heuristic" */
@@ -158,7 +169,9 @@ data class ChessRLConfig(
 
     // Training controls
     val maxBatchesPerCycle: Int = 100,
-    
+    /** Optional heap size (e.g. "4g") for worker JVMs running self-play */
+    val workerHeap: String? = null,
+
     // Logging controls (lightweight)
     val logInterval: Int = 1,
     val summaryOnly: Boolean = false,
@@ -187,6 +200,11 @@ data class ChessRLConfig(
         if (batchSize <= 0) {
             errors.add("Batch size must be positive, got: $batchSize")
         }
+        val normalizedOptimizer = optimizer.lowercase()
+        val supportedOptimizers = setOf("adam", "sgd", "rmsprop")
+        if (normalizedOptimizer !in supportedOptimizers) {
+            errors.add("Optimizer must be one of ${supportedOptimizers.joinToString(", ")}, got: $optimizer")
+        }
         
         // RL Training validation
         if (explorationRate < 0.0 || explorationRate > 1.0) {
@@ -203,6 +221,12 @@ data class ChessRLConfig(
         }
         if (logInterval <= 0) {
             errors.add("Log interval must be positive, got: $logInterval")
+        }
+        workerHeap?.let { heapSpec ->
+            val pattern = Regex("^[0-9]+[kKmMgG]?$")
+            if (!pattern.matches(heapSpec.trim())) {
+                warnings.add("Worker heap '$heapSpec' is not a recognised JVM size; expected format like 1024m or 4g")
+            }
         }
         if (maxExperienceBuffer <= 0) {
             errors.add("Max experience buffer must be positive, got: $maxExperienceBuffer")
@@ -321,7 +345,8 @@ data class ChessRLConfig(
         return buildString {
             appendLine("Chess RL Configuration Summary:")
             appendLine("  Engine: ${engine.name.lowercase()}")
-            appendLine("  Network: ${hiddenLayers.joinToString("x")} layers, lr=$learningRate, batch=$batchSize")
+            appendLine("  Backend: ${nnBackend.name.lowercase()}")
+            appendLine("  Network: ${hiddenLayers.joinToString("x")} layers, lr=$learningRate, optimizer=${optimizer.lowercase()}, batch=$batchSize")
             appendLine("  RL: exploration=$explorationRate, target_update=$targetUpdateFrequency, doubleDQN=$doubleDqn, gamma=$gamma, buffer=$maxExperienceBuffer")
             appendLine("      replay=$replayType")
             appendLine("  Self-play: $gamesPerCycle games/cycle, $maxConcurrentGames concurrent, $maxStepsPerGame max_steps")

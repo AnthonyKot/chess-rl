@@ -1,0 +1,15 @@
+{
+  "backend": "dl4j",
+  "version": "1.0",
+  "format": "zip",
+  "timestamp": "1758833280699",
+  "config": {
+    "inputSize": 10,
+    "outputSize": 5,
+    "hiddenLayers": [8, 6],
+    "learningRate": 0.01,
+    "optimizer": "adam",
+    "lossFunction": "huber"
+  },
+  "parameterCount": 177
+}

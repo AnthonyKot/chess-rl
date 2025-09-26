@@ -1,6 +1,7 @@
 package com.chessrl.integration.config
 
 import com.chessrl.integration.adapter.EngineBackend
+import com.chessrl.integration.backend.BackendType
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -17,7 +18,7 @@ object DomainConfigLoader {
     enum class Domain(val dirName: String, val allowedKeys: Set<String>) {
         NETWORK(
             dirName = "network",
-            allowedKeys = setOf("hiddenLayers", "learningRate", "batchSize")
+            allowedKeys = setOf("hiddenLayers", "learningRate", "batchSize", "optimizer", "nnBackend")
         ),
         RL(
             dirName = "rl",
@@ -286,6 +287,8 @@ object DomainConfigLoader {
         return when (key) {
             "hiddenLayers" -> base.copy(hiddenLayers = from.hiddenLayers)
             "learningRate" -> base.copy(learningRate = from.learningRate)
+            "nnBackend" -> base.copy(nnBackend = from.nnBackend)
+            "optimizer" -> base.copy(optimizer = from.optimizer)
             "batchSize" -> base.copy(batchSize = from.batchSize)
             "explorationRate" -> base.copy(explorationRate = from.explorationRate)
             "targetUpdateFrequency" -> base.copy(targetUpdateFrequency = from.targetUpdateFrequency)
@@ -316,6 +319,7 @@ object DomainConfigLoader {
             "evalResignMaterialThreshold" -> base.copy(evalResignMaterialThreshold = from.evalResignMaterialThreshold)
             "evalNoProgressPlies" -> base.copy(evalNoProgressPlies = from.evalNoProgressPlies)
             "engine" -> base.copy(engine = from.engine)
+            "workerHeap" -> base.copy(workerHeap = from.workerHeap)
             // checkpoint and logging
             "checkpointMaxVersions" -> base.copy(checkpointMaxVersions = from.checkpointMaxVersions)
             "checkpointValidationEnabled" -> base.copy(checkpointValidationEnabled = from.checkpointValidationEnabled)
@@ -332,6 +336,12 @@ object DomainConfigLoader {
         return when (key) {
             "hiddenLayers" -> base.copy(hiddenLayers = parseHiddenLayers(raw))
             "learningRate" -> base.copy(learningRate = raw.toDouble())
+            "nnBackend" -> {
+                val backend = BackendType.fromString(raw)
+                    ?: throw IllegalArgumentException("Unknown backend '$raw'")
+                base.copy(nnBackend = backend)
+            }
+            "optimizer" -> base.copy(optimizer = raw.lowercase())
             "batchSize" -> base.copy(batchSize = raw.toInt())
             "explorationRate" -> base.copy(explorationRate = raw.toDouble())
             "targetUpdateFrequency" -> base.copy(targetUpdateFrequency = raw.toInt())
@@ -362,6 +372,7 @@ object DomainConfigLoader {
             "evalResignMaterialThreshold" -> base.copy(evalResignMaterialThreshold = raw.toInt())
             "evalNoProgressPlies" -> base.copy(evalNoProgressPlies = raw.toInt())
             "engine" -> base.copy(engine = EngineBackend.fromString(raw))
+            "workerHeap" -> base.copy(workerHeap = raw)
             // checkpoint and logging
             "checkpointMaxVersions" -> base.copy(checkpointMaxVersions = raw.toInt())
             "checkpointValidationEnabled" -> base.copy(checkpointValidationEnabled = raw.equals("true", true))

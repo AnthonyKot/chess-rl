@@ -1,6 +1,10 @@
 package com.chessrl.integration
 
 import com.chessrl.integration.adapter.EngineBackend
+import com.chessrl.integration.backend.BackendSelector
+import com.chessrl.integration.backend.BackendType
+import com.chessrl.integration.backend.CheckpointCompatibility
+import com.chessrl.integration.backend.DqnLearningBackend
 import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.config.ConfigParser
 import com.chessrl.integration.config.JvmConfigParser
@@ -68,7 +72,11 @@ object ChessRLCLI {
         val config = parseTrainingConfig(args)
         logger.info("Training configuration loaded: profile=${getProfileName(args)}")
         
-        val pipeline = TrainingPipeline(config)
+        // Determine neural network backend from CLI args
+        val backendType = BackendSelector.parseBackendFromArgs(args)
+        val backend = DqnLearningBackend(backendType)
+        
+        val pipeline = TrainingPipeline(config, backend)
         
         if (!pipeline.initialize()) {
             logger.error("Failed to initialize training pipeline")
@@ -142,16 +150,18 @@ object ChessRLCLI {
         logger.info("Evaluating model $modelPath against $opponent baseline over $games games")
         
         val evaluator = BaselineEvaluator(config)
-        val agent = loadAgent(modelPath, config)
+        val agent = loadAgent(modelPath, config, args)
         
-        val results = when (opponent.lowercase()) {
+        val normalizedOpponent = opponent.lowercase()
+        val results = when (normalizedOpponent) {
             "heuristic" -> evaluator.evaluateAgainstHeuristic(agent, games)
             "minimax" -> {
                 val depth = getIntArg(args, "--depth") ?: 2
                 evaluator.evaluateAgainstMinimax(agent, games, depth)
             }
+            "random", "mixed", "hybrid" -> evaluator.evaluateAgainstMixedOpponents(agent, games)
             else -> {
-                println("Error: Unknown opponent type '$opponent'. Use 'heuristic' or 'minimax'")
+                println("Error: Unknown opponent type '$opponent'. Use 'heuristic', 'minimax', or 'random'")
                 exitProcess(1)
             }
         }
@@ -179,8 +189,8 @@ object ChessRLCLI {
         logger.info("Comparing models: $modelAPath vs $modelBPath over $games games")
         
         val evaluator = BaselineEvaluator(config)
-        val agentA = loadAgent(modelAPath, config)
-        val agentB = loadAgent(modelBPath, config)
+        val agentA = loadAgent(modelAPath, config, args)
+        val agentB = loadAgent(modelBPath, config, args)
         
         val results = evaluator.compareModels(agentA, agentB, games)
         
@@ -207,7 +217,7 @@ object ChessRLCLI {
         
         logger.info("Starting interactive play: human as $humanColor vs model $modelPath")
         
-        val agent = loadAgent(modelPath, config)
+        val agent = loadAgent(modelPath, config, args)
         
         // Create play session config
         val profileName = getStringArg(args, "--profile") ?: getStringArg(args, "--config") ?: "fast-debug"
@@ -343,8 +353,20 @@ object ChessRLCLI {
         getIntArg(args, "--max-steps")?.let { config = config.copy(maxStepsPerGame = it) }
         getIntArg(args, "--batch-size")?.let { config = config.copy(batchSize = it) }
         getDoubleArg(args, "--learning-rate")?.let { config = config.copy(learningRate = it) }
+        getStringArg(args, "--optimizer")?.let { config = config.copy(optimizer = it.lowercase()) }
         getLongArg(args, "--seed")?.let { config = config.copy(seed = it) }
         getStringArg(args, "--checkpoint-dir")?.let { config = config.copy(checkpointDirectory = it) }
+        
+        // Neural network backend selection
+        getStringArg(args, "--nn")?.let { nnBackend ->
+            val backendType = BackendType.fromString(nnBackend)
+            if (backendType != null) {
+                config = config.copy(nnBackend = backendType)
+                logger.info("Neural network backend selected: ${backendType.name.lowercase()}")
+            } else {
+                logger.warn("Unknown neural network backend '$nnBackend', keeping ${config.nnBackend.name.lowercase()}")
+            }
+        }
 
         // Expanded set for fine-tuning
         getStringArg(args, "--hidden-layers")?.let { config = config.copy(hiddenLayers = parseHiddenLayers(it)) }
@@ -353,6 +375,7 @@ object ChessRLCLI {
         getIntArg(args, "--target-update-frequency")?.let { config = config.copy(targetUpdateFrequency = it) }
         getIntArg(args, "--max-experience-buffer")?.let { config = config.copy(maxExperienceBuffer = it) }
         getIntArg(args, "--checkpoint-interval")?.let { config = config.copy(checkpointInterval = it) }
+        getStringArg(args, "--worker-heap")?.let { config = config.copy(workerHeap = it) }
         if (args.contains("--double-dqn")) { config = config.copy(doubleDqn = true) }
         getStringArg(args, "--replay-type")?.let { config = config.copy(replayType = it) }
         getDoubleArg(args, "--gamma")?.let { config = config.copy(gamma = it) }
@@ -410,9 +433,9 @@ object ChessRLCLI {
     }
     
     /**
-     * Load agent from model file
+     * Load agent from model file with backend support
      */
-    private fun loadAgent(modelPath: String, config: ChessRLConfig): ChessAgent {
+    private fun loadAgent(modelPath: String, config: ChessRLConfig, args: Array<String> = emptyArray()): ChessAgent {
         // Initialize SeedManager for consistent agent creation
         if (config.seed != null) {
             SeedManager.initializeWithSeed(config.seed)
@@ -420,9 +443,17 @@ object ChessRLCLI {
             SeedManager.initializeWithRandomSeed()
         }
         
+        // Determine backend type: explicit --nn overrides auto-detection from checkpoint format
+        val explicitBackend = if (args.contains("--nn")) BackendSelector.parseBackendFromArgs(args) else null
+        val inferredBackend = CheckpointCompatibility.detectBackendFromFile(modelPath)
+        val backendType = explicitBackend ?: inferredBackend ?: BackendType.getDefault()
+        logger.info("Resolved backend ${backendType.name.lowercase()} for model $modelPath")
+        
         val agent = ChessAgentFactory.createSeededDQNAgent(
+            backendType = backendType,
             hiddenLayers = config.hiddenLayers,
             learningRate = config.learningRate,
+            optimizer = config.optimizer,
             explorationRate = config.explorationRate,
             config = ChessAgentConfig(
                 batchSize = config.batchSize,
@@ -430,12 +461,13 @@ object ChessRLCLI {
                 targetUpdateFrequency = config.targetUpdateFrequency
             ),
             replayType = config.replayType,
-            gamma = config.gamma
+            gamma = config.gamma,
+            enableDoubleDQN = config.doubleDqn
         )
         
         try {
             agent.load(modelPath)
-            logger.info("Successfully loaded model from $modelPath")
+            logger.info("Successfully loaded model from $modelPath using ${backendType.name} backend")
         } catch (e: Exception) {
             logger.error("Failed to load model from $modelPath", e)
             println("Error: Failed to load model from $modelPath: ${e.message}")
@@ -587,17 +619,27 @@ object ChessRLCLI {
                 logger.info("Resolved model in $candidate -> ${compat.toString()} (best_model.json)")
                 return compat.toString()
             }
+            val compatZip = dir.resolve("best_model.json.zip")
+            if (java.nio.file.Files.exists(compatZip)) {
+                logger.info("Resolved model in $candidate -> ${compatZip.toString()} (best_model.json.zip)")
+                return compatZip.toString()
+            }
+            val compatAltZip = dir.resolve("best_model.zip")
+            if (java.nio.file.Files.exists(compatAltZip)) {
+                logger.info("Resolved model in $candidate -> ${compatAltZip.toString()} (best_model.zip)")
+                return compatAltZip.toString()
+            }
         }
 
-        // 1) Prefer meta files *_qnet_meta.json
-        val metas = entries.filter { it.fileName.toString().endsWith("_qnet_meta.json") }
+        // 1) Prefer meta files (*.meta.json)
+        val metas = entries.filter { it.fileName.toString().endsWith(".meta.json") }
         if (metas.isNotEmpty()) {
             data class Cand(val json: String, val perf: Double, val isBest: Boolean, val mtime: Long)
             val cands = metas.mapNotNull { meta ->
                 val text = runCatching { java.nio.file.Files.readString(meta) }.getOrNull() ?: return@mapNotNull null
                 val perf = extractDouble(text, "\\\"performance\\\"\\s*:\\s*([-0-9.eE]+)") ?: 0.0
                 val isBest = extractBool(text, "\\\"isBest\\\"\\s*:\\s*(true|false)") ?: false
-                val json = meta.toString().replace("_qnet_meta.json", "_qnet.json")
+                val json = meta.toString().removeSuffix(".meta.json")
                 val mt = runCatching { java.nio.file.Files.getLastModifiedTime(meta).toMillis() }.getOrNull() ?: 0L
                 if (exists(json)) Cand(json, perf, isBest, mt) else null
             }
@@ -610,8 +652,11 @@ object ChessRLCLI {
             }
         }
 
-        // 2) Fallback to newest *_qnet.json
-        val qnets = entries.filter { it.fileName.toString().endsWith("_qnet.json") }
+        // 2) Fallback to newest *_qnet.(json|zip)
+        val qnets = entries.filter {
+            val name = it.fileName.toString()
+            name.endsWith("_qnet.json") || name.endsWith("_qnet.zip") || name.endsWith("_qnet.json.zip")
+        }
         if (qnets.isNotEmpty()) {
             val best = qnets.maxByOrNull { runCatching { java.nio.file.Files.getLastModifiedTime(it).toMillis() }.getOrNull() ?: 0L }
             if (best != null) {
@@ -624,7 +669,7 @@ object ChessRLCLI {
         // (handled above)
 
         // 4) Last resort: checkpoint_cycle_*.json (uncompressed)
-        val cycles = entries.filter { val n = it.fileName.toString(); n.startsWith("checkpoint_cycle_") && n.endsWith(".json") }
+        val cycles = entries.filter { val n = it.fileName.toString(); n.startsWith("checkpoint_cycle_") && (n.endsWith(".json") || n.endsWith(".zip")) }
         if (cycles.isNotEmpty()) {
             val latest = cycles.maxByOrNull { runCatching { java.nio.file.Files.getLastModifiedTime(it).toMillis() }.getOrNull() ?: 0L }
             if (latest != null) {
@@ -683,9 +728,11 @@ object ChessRLCLI {
         println("    --seed <n>               Random seed for reproducibility")
         println("    --checkpoint-dir <dir>   Checkpoint directory")
         println("    --learning-rate <rate>   Learning rate override")
+        println("    --optimizer <name>       Optimizer (adam, sgd, rmsprop)")
         println("    --batch-size <size>      Batch size override")
         println("    --hidden-layers <list>   Hidden layers (e.g., 512,256,128)")
         println("    --max-concurrent-games n Concurrency for self-play")
+        println("    --worker-heap <size>     Max heap for worker JVMs (e.g., 4g or 4096m)")
         println("    --exploration-rate <x>   Exploration epsilon")
         println("    --target-update-frequency n  Target net update frequency")
         println("    --max-experience-buffer n    Replay buffer size")
@@ -696,7 +743,7 @@ object ChessRLCLI {
         println("    --train-early-adjudication <true|false>  Enable early adjudication in training")
         println("    --train-resign-threshold <n>            Material threshold (training)")
         println("    --train-no-progress-plies <n>           No-progress plies (training)")
-        println("    --train-opponent <type>  Training opponent: self|minimax|heuristic")
+        println("    --train-opponent <type>  Training opponent: self|minimax|heuristic|random")
         println("    --train-opponent-depth n Minimax depth during training (default: 2)")
         println("    --resume                 Resume training by auto-loading best_model.json from checkpoint dir")
         println("    --load <path>            Resume training from an explicit model file path")
@@ -714,12 +761,13 @@ object ChessRLCLI {
         println("    --draw-reward <x>        Reward shaping (draw)")
         println("    --step-limit-penalty <x> Penalty at step limit")
         println("    --engine <backend>       Engine backend: builtin, chesslib")
+        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl (default: dl4j)")
         println()
         println("EVALUATION:")
         println("  --evaluate --baseline [OPTIONS]")
         println("    --model <path|dir>       Model file or directory (auto-selects best inside dir; falls back to best in checkpoint dir if omitted)")
         println("    --games <n>              Number of evaluation games (default: 100)")
-        println("    --opponent <type>        Opponent type: heuristic, minimax (default: heuristic)")
+        println("    --opponent <type>        Opponent type: heuristic, minimax, random (default: heuristic)")
         println("    --depth <n>              Minimax depth for minimax opponent (default: 2)")
         println("    --seed <n>               Random seed for reproducibility")
         println("    --eval-epsilon <x>       Evaluation exploration (0.0 = greedy)")
@@ -729,12 +777,14 @@ object ChessRLCLI {
         println("    --profile <spec>         Optional: legacy or composed profiles for evaluation")
         println("    --config <name|path>     Optional: root config for evaluation")
         println("    --override k=v           Optional: overrides for evaluation config")
+        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl (default: dl4j)")
         println()
         println("  --evaluate --compare [OPTIONS]")
         println("    --modelA <path|dir>      First model file or directory (auto-selects best inside dir)")
         println("    --modelB <path|dir>      Second model file or directory (auto-selects best inside dir)")
         println("    --games <n>              Number of comparison games (default: 100)")
         println("    --seed <n>               Random seed for reproducibility")
+        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl (default: dl4j)")
         println()
         println("PLAY:")
         println("  --play [OPTIONS]")
@@ -744,9 +794,10 @@ object ChessRLCLI {
         println("    --override k=v           Optional overrides for play settings")
         println("    --as <color>             Human player color: white, black (default: white)")
         println("    --verbose                Show detailed engine analysis and diagnostics")
+        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl (default: dl4j)")
         println()
         println("PROFILES:")
-        println("  Legacy: fast-debug, long-train, eval-only")
+        println("  Legacy: fast-debug, long-train, long-train-mixed, eval-only")
         println("  Composed examples (from ./config):")
         println("    --profile network:big,selfplay:long | --profile big,long")
         println("    --config long-term-learning  # loads config/long-term-learning.yaml")
@@ -758,6 +809,9 @@ object ChessRLCLI {
         println("  # Production training with custom parameters")
         println("  chess-rl --train --profile long-train --cycles 100 --learning-rate 0.001")
         println()
+        println("  # Mixed-opponent curriculum")
+        println("  chess-rl --train --profile long-train-mixed --train-opponent random --cycles 100")
+        println()
         println("  # Composed profiles from domain configs")
         println("  chess-rl --train --profile network:big,selfplay:long --override checkpointDirectory=experiments/run1")
         println()
@@ -766,6 +820,9 @@ object ChessRLCLI {
         println()
         println("  # Evaluate against minimax depth-3")
         println("  chess-rl --evaluate --baseline --model best-model.json --opponent minimax --depth 3")
+        println()
+        println("  # Evaluate against mixed opponents")
+        println("  chess-rl --evaluate --baseline --model best-model.json --opponent random --games 200")
         println()
         println("  # Compare two models")
         println("  chess-rl --evaluate --compare --modelA model1.json --modelB model2.json --games 100")

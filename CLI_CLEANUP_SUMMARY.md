@@ -102,7 +102,7 @@ The following experimental benchmarking scripts were identified as removed in pr
 
 ### Profile System
 - **3 focused profiles**: `fast-debug`, `long-train`, `eval-only`
-- **Clean configuration**: Only 18 essential parameters per profile
+- **Clean configuration**: Only 19 essential parameters per profile
 - **No experimental flags**: All experimental parameters removed from profiles
 
 ## ✅ Benefits Achieved

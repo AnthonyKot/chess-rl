@@ -44,10 +44,9 @@ object StatisticalUtils {
         
         return lower..upper
     }
-    
+
     /**
-     * Test statistical significance of win rate difference from expected value
-     * Uses binomial test to determine if observed win rate is significantly different from 0.5
+     * Convenience wrapper: compute two-tailed binomial test p-value and compare to threshold.
      */
     fun testStatisticalSignificance(
         wins: Int,
@@ -56,31 +55,34 @@ object StatisticalUtils {
         significanceLevel: Double = 0.05
     ): Boolean {
         if (totalGames <= 0) return false
-        
-        val observedWinRate = wins.toDouble() / totalGames
-        val n = totalGames.toDouble()
-        val p = expectedWinRate
-        
-        // Use normal approximation to binomial for large samples
-        if (n * p >= 5 && n * (1 - p) >= 5) {
-            val standardError = sqrt(p * (1 - p) / n)
-            val zScore = abs(observedWinRate - p) / standardError
-            
-            // Two-tailed test
-            val criticalValue = when {
-                significanceLevel <= 0.01 -> 2.576
-                significanceLevel <= 0.05 -> 1.96
-                else -> 1.645
-            }
-            
-            return zScore > criticalValue
-        }
-        
-        // For small samples, use exact binomial test (simplified)
-        // This is a conservative approximation
-        return abs(observedWinRate - p) > 2 * sqrt(p * (1 - p) / n)
+        val pValue = binomialTwoTailedPValue(wins, totalGames, expectedWinRate)
+        return pValue < significanceLevel
     }
-    
+
+    /**
+     * Exact two-tailed binomial p-value for observing exactly k successes out of n trials
+     * with success probability p0 under the null hypothesis.
+     * Uses cumulative probability of values with probability less than or equal to the observed outcome.
+     */
+    fun binomialTwoTailedPValue(k: Int, n: Int, p0: Double = 0.5): Double {
+        if (n <= 0) return 1.0
+        if (k < 0 || k > n) return 1.0
+
+        val pmf = DoubleArray(n + 1)
+        for (i in 0..n) {
+            pmf[i] = binomialProbability(i, n, p0)
+        }
+
+        val observedProb = pmf[k]
+        var cumulative = 0.0
+        for (i in 0..n) {
+            if (pmf[i] <= observedProb + 1e-15) {
+                cumulative += pmf[i]
+            }
+        }
+        return min(1.0, cumulative)
+    }
+
     /**
      * Calculate effect size (Cohen's h) for comparing two win rates
      */
@@ -109,7 +111,7 @@ object StatisticalUtils {
         if (totalGames <= 0) return 0.0
         return sqrt(winRate * (1 - winRate) / totalGames)
     }
-    
+
     /**
      * Format confidence interval as string
      */
@@ -120,5 +122,26 @@ object StatisticalUtils {
         val lower = formatWithPlaces(interval.start, decimalPlaces)
         val upper = formatWithPlaces(interval.endInclusive, decimalPlaces)
         return "[$lower, $upper]"
+    }
+
+    private fun binomialProbability(k: Int, n: Int, p: Double): Double {
+        if (p <= 0.0) return if (k == 0) 1.0 else 0.0
+        if (p >= 1.0) return if (k == n) 1.0 else 0.0
+
+        val logCoeff = logCombination(n, k)
+        val logProb = k * ln(p) + (n - k) * ln(1 - p)
+        return exp(logCoeff + logProb)
+    }
+
+    private fun logCombination(n: Int, k: Int): Double {
+        if (k < 0 || k > n) return Double.NEGATIVE_INFINITY
+        if (k == 0 || k == n) return 0.0
+
+        val kEff = min(k, n - k)
+        var result = 0.0
+        for (i in 1..kEff) {
+            result += ln((n - kEff + i).toDouble()) - ln(i.toDouble())
+        }
+        return result
     }
 }

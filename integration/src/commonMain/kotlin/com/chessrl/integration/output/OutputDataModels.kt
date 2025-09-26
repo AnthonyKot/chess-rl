@@ -409,6 +409,7 @@ data class EnhancedComparisonResults(
     val averageGameLength: Double,
     val confidenceInterval: ClosedFloatingPointRange<Double>? = null,
     val statisticalSignificance: Boolean = false,
+    val pValue: Double = Double.NaN,
     val effectSize: Double,
     val colorAlternation: ColorAlternationStats
 ) {
@@ -423,5 +424,6 @@ data class EnhancedComparisonResults(
         require(modelBWinRate in 0.0..1.0) { "Model B win rate must be between 0 and 1" }
         require(averageGameLength >= 0) { "Average game length cannot be negative" }
         require(effectSize >= 0) { "Effect size cannot be negative" }
+        require(pValue.isNaN() || (pValue in 0.0..1.0)) { "p-value must be between 0 and 1" }
     }
 }

@@ -79,6 +79,7 @@ val config = ChessRLConfig(
     // Neural Network
     hiddenLayers = listOf(768, 512, 256),
     learningRate = 0.0005,
+    optimizer = "adam",
     batchSize = 64,
     
     // RL Training
@@ -113,6 +114,7 @@ val config = ChessRLConfig(
     maxConcurrentGames = 4,
     hiddenLayers = listOf(512, 256, 128),
     learningRate = 0.001,
+    optimizer = "adam",
     checkpointDirectory = "checkpoints/experiment1"
 )
 
@@ -148,6 +150,10 @@ println("vs Heuristic: ${heuristicResults.winRate * 100}% win rate")
 // Against minimax depth-2
 val minimaxResults = evaluator.evaluateAgainstMinimax(agent, games = 100, depth = 2)
 println("vs Minimax-2: ${minimaxResults.winRate * 100}% win rate")
+
+// Against mixed opponents (heuristic + minimax d1/d2)
+val mixedResults = evaluator.evaluateAgainstMixedOpponents(agent, games = 100)
+println("vs Mixed: ${mixedResults.winRate * 100}% win rate")
 
 // Head-to-head comparison
 val agent2 = ChessAgent.loadFromFile("checkpoints/model2.json")
@@ -392,7 +398,7 @@ The following notes summarize validated practices from earlier iterations that r
 
 - Adjudication to reduce long/stalled games
   - Training knobs: `trainEarlyAdjudication`, `trainResignMaterialThreshold` (≈12), `trainNoProgressPlies` (≈80–100).
-  - Evaluation knobs mirror training (`evalEarlyAdjudication`, etc.). For fair eval, set `--eval-epsilon 0.0` and consider adjudication.
+  - Evaluation knobs mirror training (`evalEarlyAdjudication`, etc.). By default the evaluator reuses the profile's exploration rate (0.05 in `eval-only`); override with `--eval-epsilon` if you need greedy play.
 
 - Performance and platform guidance
   - Historically, JVM JIT outperformed native on long/complex runs, while native excelled at very short tasks. Current stack uses JVM; leverage JIT for long training.
@@ -471,9 +477,11 @@ The package provides a simplified command-line interface:
 # Training
 ./gradlew :integration:run --args="--train --profile fast-debug"
 ./gradlew :integration:run --args="--train --cycles 50 --games-per-cycle 20"
+./gradlew :integration:run --args="--train --profile long-train-mixed --train-opponent random"
 
 # Evaluation  
 ./gradlew :integration:run --args="--evaluate --baseline --games 100"
+./gradlew :integration:run --args="--evaluate --baseline --opponent random --games 100"
 ./gradlew :integration:run --args="--evaluate --compare --modelA model1.json --modelB model2.json"
 
 # Interactive play
@@ -482,7 +490,7 @@ The package provides a simplified command-line interface:
 
 ## Configuration Profiles
 
-Three essential profiles are provided:
+Four essential profiles are provided:
 
 ### fast-debug
 Quick development iterations:
@@ -500,6 +508,19 @@ gamesPerCycle: 50
 maxCycles: 200
 maxConcurrentGames: 8
 hiddenLayers: [768, 512, 256]
+drawReward: -0.05
+stepLimitPenalty: -0.6
+```
+
+### long-train-mixed
+Curriculum that mixes heuristic and shallow minimax opponents during self-play:
+```yaml
+gamesPerCycle: 50
+maxCycles: 200
+maxConcurrentGames: 8
+hiddenLayers: [768, 512, 256]
+trainOpponentType: random
+checkpointDirectory: "checkpoints/long-train-mixed"
 ```
 
 ### eval-only

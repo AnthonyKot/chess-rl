@@ -1,6 +1,7 @@
 package com.chessrl.integration.config
 
 import com.chessrl.integration.adapter.EngineBackend
+import com.chessrl.integration.backend.BackendType
 
 /**
  * Configuration parser for Chess RL system.
@@ -165,6 +166,12 @@ object ConfigParser {
         return when (key) {
             "hiddenLayers" -> config.copy(hiddenLayers = parseHiddenLayers(value))
             "learningRate" -> config.copy(learningRate = value.toDoubleOrThrow(key))
+            "nnBackend" -> {
+                val backend = BackendType.fromString(value)
+                    ?: throw IllegalArgumentException("Invalid backend for $key: $value")
+                config.copy(nnBackend = backend)
+            }
+            "optimizer" -> config.copy(optimizer = value.lowercase())
             "batchSize" -> config.copy(batchSize = value.toIntOrThrow(key))
             "explorationRate" -> config.copy(explorationRate = value.toDoubleOrThrow(key))
             "targetUpdateFrequency" -> config.copy(targetUpdateFrequency = value.toIntOrThrow(key))
@@ -194,6 +201,7 @@ object ConfigParser {
             "logInterval" -> config.copy(logInterval = value.toIntOrThrow(key))
             "summaryOnly" -> config.copy(summaryOnly = value.equals("true", true))
             "metricsFile" -> config.copy(metricsFile = value.trim('"'))
+            "workerHeap" -> config.copy(workerHeap = value.trim('"'))
             else -> config
         }
     }

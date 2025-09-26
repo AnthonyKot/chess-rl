@@ -2,49 +2,91 @@ package com.chessrl.integration
 
 import com.chessrl.rl.*
 import com.chessrl.nn.*
+import com.chessrl.integration.backend.*
 
 /**
  * Factory for creating chess agents with proper integration between
- * the RL framework and neural network implementations
+ * the RL framework and neural network implementations.
+ * 
+ * Now supports pluggable neural network backends via BackendAwareChessAgentFactory.
+ * The manual backend (existing FeedforwardNetwork) remains the default.
  */
 object ChessAgentFactory {
     
     /**
      * Create a DQN agent with default configuration
+     * Uses manual backend by default for backward compatibility
      */
     fun createDQNAgent(
         hiddenLayers: List<Int> = listOf(512, 256, 128),
         learningRate: Double = 0.001,
+        optimizer: String = "adam",
         explorationRate: Double = 0.1,
         config: ChessAgentConfig = ChessAgentConfig(),
         enableDoubleDQN: Boolean = false,
         replayType: String = "UNIFORM",
         gamma: Double = 0.99
     ): ChessAgent {
-        return RealChessAgentFactory.createRealDQNAgent(
-            inputSize = ChessStateEncoder.TOTAL_FEATURES, // Chess state features
-            outputSize = 4096, // Chess action space
+        val agentConfig = config.copy(explorationRate = explorationRate)
+        // Use manual backend by default to preserve existing behavior
+        val backendConfig = BackendAwareChessAgentFactory.createBackendConfig(
             hiddenLayers = hiddenLayers,
             learningRate = learningRate,
-            explorationRate = explorationRate,
-            batchSize = config.batchSize,
-            maxBufferSize = config.maxBufferSize,
-            targetUpdateFrequency = config.targetUpdateFrequency,
-            doubleDqn = enableDoubleDQN,
+            batchSize = agentConfig.batchSize,
+            optimizer = optimizer
+        )
+        
+        return BackendAwareChessAgentFactory.createDQNAgent(
+            backendType = BackendType.MANUAL,
+            backendConfig = backendConfig,
+            agentConfig = agentConfig,
+            enableDoubleDQN = enableDoubleDQN,
             replayType = replayType,
             gamma = gamma
-        ).let { realAgent ->
-            ChessAgentAdapter(realAgent, config)
-        }
+        )
+    }
+    
+    /**
+     * Create a DQN agent with specified neural network backend
+     */
+    fun createDQNAgent(
+        backendType: BackendType,
+        hiddenLayers: List<Int> = listOf(512, 256, 128),
+        learningRate: Double = 0.001,
+        optimizer: String = "adam",
+        explorationRate: Double = 0.1,
+        config: ChessAgentConfig = ChessAgentConfig(),
+        enableDoubleDQN: Boolean = false,
+        replayType: String = "UNIFORM",
+        gamma: Double = 0.99
+    ): ChessAgent {
+        val agentConfig = config.copy(explorationRate = explorationRate)
+        val backendConfig = BackendAwareChessAgentFactory.createBackendConfig(
+            hiddenLayers = hiddenLayers,
+            learningRate = learningRate,
+            batchSize = agentConfig.batchSize,
+            optimizer = optimizer
+        )
+        
+        return BackendAwareChessAgentFactory.createDQNAgent(
+            backendType = backendType,
+            backendConfig = backendConfig,
+            agentConfig = agentConfig,
+            enableDoubleDQN = enableDoubleDQN,
+            replayType = replayType,
+            gamma = gamma
+        )
     }
     
     
     /**
      * Create a seeded DQN agent for deterministic training
+     * Uses manual backend by default for backward compatibility
      */
     fun createSeededDQNAgent(
         hiddenLayers: List<Int> = listOf(512, 256, 128),
         learningRate: Double = 0.001,
+        optimizer: String = "adam",
         explorationRate: Double = 0.1,
         config: ChessAgentConfig = ChessAgentConfig(),
         seedManager: SeedManager = SeedManager.getInstance(),
@@ -52,24 +94,58 @@ object ChessAgentFactory {
         gamma: Double = 0.99,
         enableDoubleDQN: Boolean = false
     ): ChessAgent {
-        return RealChessAgentFactory.createSeededDQNAgent(
-            inputSize = ChessStateEncoder.TOTAL_FEATURES,
-            outputSize = 4096,
+        val agentConfig = config.copy(explorationRate = explorationRate)
+        // Use manual backend by default to preserve existing behavior
+        val backendConfig = BackendAwareChessAgentFactory.createBackendConfig(
             hiddenLayers = hiddenLayers,
             learningRate = learningRate,
-            explorationRate = explorationRate,
-            batchSize = config.batchSize,
-            maxBufferSize = config.maxBufferSize,
-            neuralNetworkRandom = seedManager.getNeuralNetworkRandom(),
-            explorationRandom = seedManager.getExplorationRandom(),
-            replayBufferRandom = seedManager.getReplayBufferRandom(),
+            batchSize = agentConfig.batchSize,
+            optimizer = optimizer
+        )
+        
+        return BackendAwareChessAgentFactory.createSeededDQNAgent(
+            backendType = BackendType.MANUAL,
+            backendConfig = backendConfig,
+            agentConfig = agentConfig,
+            seedManager = seedManager,
+            enableDoubleDQN = enableDoubleDQN,
             replayType = replayType,
-            targetUpdateFrequency = config.targetUpdateFrequency,
-            gamma = gamma,
-            doubleDqn = enableDoubleDQN
-        ).let { realAgent ->
-            ChessAgentAdapter(realAgent, config)
-        }
+            gamma = gamma
+        )
+    }
+    
+    /**
+     * Create a seeded DQN agent with specified neural network backend
+     */
+    fun createSeededDQNAgent(
+        backendType: BackendType,
+        hiddenLayers: List<Int> = listOf(512, 256, 128),
+        learningRate: Double = 0.001,
+        optimizer: String = "adam",
+        explorationRate: Double = 0.1,
+        config: ChessAgentConfig = ChessAgentConfig(),
+        seedManager: SeedManager = SeedManager.getInstance(),
+        replayType: String = "UNIFORM",
+        gamma: Double = 0.99,
+        enableDoubleDQN: Boolean = false
+    ): ChessAgent {
+        val agentConfig = config.copy(explorationRate = explorationRate)
+        val backendConfig = BackendAwareChessAgentFactory.createBackendConfig(
+            hiddenLayers = hiddenLayers,
+            learningRate = learningRate,
+            batchSize = agentConfig.batchSize,
+            optimizer = optimizer
+        )
+        
+        return BackendAwareChessAgentFactory.createSeededDQNAgent(
+            backendType = backendType,
+            backendConfig = backendConfig,
+            agentConfig = agentConfig,
+            seedManager = seedManager,
+            enableDoubleDQN = enableDoubleDQN,
+            replayType = replayType,
+            gamma = gamma
+        )
     }
     
 }
