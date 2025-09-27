@@ -1,6 +1,7 @@
 package com.chessrl.integration
 
 import com.chessrl.integration.adapter.ChessEngineFactory
+import com.chessrl.integration.backend.BackendType
 import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.logging.ChessRLLogger
 import com.chessrl.integration.output.EnhancedEvaluationResults
@@ -17,12 +18,14 @@ import com.chessrl.integration.opponent.OpponentSelector
  * Evaluator for testing agents against baseline opponents.
  * 
  * Provides consistent evaluation against heuristic and minimax opponents
- * with proper statistical reporting.
+ * with proper statistical reporting. Now supports loading checkpoints from
+ * both manual (.json) and RL4J (.zip) formats.
  */
 class BaselineEvaluator(private val config: ChessRLConfig) {
     
     private val logger = ChessRLLogger.forComponent("BaselineEvaluator")
     private val actionEncoder = ChessActionEncoder()
+    private val unifiedCheckpointManager = UnifiedCheckpointManager()
     
     /**
      * Evaluate agent against heuristic baseline.
@@ -317,6 +320,120 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
             colorAlternation = colorStats,
             opponentType = "Mixed"
         )
+    }
+    
+    /**
+     * Load an agent from a checkpoint path with automatic format detection.
+     */
+    fun loadAgentFromCheckpoint(
+        checkpointPath: String,
+        agent: ChessAgent,
+        targetBackend: BackendType = BackendType.MANUAL
+    ): Boolean {
+        logger.info("Loading agent from checkpoint: $checkpointPath")
+        
+        return try {
+            val result = unifiedCheckpointManager.loadCheckpointByPath(checkpointPath, agent, targetBackend)
+            
+            if (result.success) {
+                logger.info("Successfully loaded checkpoint: ${result.resolvedPath} (${result.loadedBackend?.name} format)")
+                if (result.originalBackend != null && result.originalBackend != result.loadedBackend) {
+                    logger.info("Cross-backend loading: ${result.originalBackend.name} -> ${result.loadedBackend?.name}")
+                }
+                true
+            } else {
+                logger.error("Failed to load checkpoint: ${result.error}")
+                false
+            }
+        } catch (e: Exception) {
+            logger.error("Exception loading checkpoint $checkpointPath: ${e.message}")
+            false
+        }
+    }
+    
+    /**
+     * Evaluate an agent loaded from a checkpoint against heuristic baseline.
+     */
+    fun evaluateCheckpointAgainstHeuristic(
+        checkpointPath: String,
+        agent: ChessAgent,
+        games: Int,
+        targetBackend: BackendType = BackendType.MANUAL
+    ): EnhancedEvaluationResults? {
+        logger.info("Evaluating checkpoint $checkpointPath against heuristic baseline")
+        
+        return if (loadAgentFromCheckpoint(checkpointPath, agent, targetBackend)) {
+            evaluateAgainstHeuristic(agent, games)
+        } else {
+            logger.error("Could not load checkpoint for evaluation: $checkpointPath")
+            null
+        }
+    }
+    
+    /**
+     * Evaluate an agent loaded from a checkpoint against minimax baseline.
+     */
+    fun evaluateCheckpointAgainstMinimax(
+        checkpointPath: String,
+        agent: ChessAgent,
+        games: Int,
+        depth: Int = 2,
+        targetBackend: BackendType = BackendType.MANUAL
+    ): EnhancedEvaluationResults? {
+        logger.info("Evaluating checkpoint $checkpointPath against minimax depth-$depth")
+        
+        return if (loadAgentFromCheckpoint(checkpointPath, agent, targetBackend)) {
+            evaluateAgainstMinimax(agent, games, depth)
+        } else {
+            logger.error("Could not load checkpoint for evaluation: $checkpointPath")
+            null
+        }
+    }
+    
+    /**
+     * Evaluate an agent loaded from a checkpoint against mixed opponents.
+     */
+    fun evaluateCheckpointAgainstMixedOpponents(
+        checkpointPath: String,
+        agent: ChessAgent,
+        games: Int,
+        targetBackend: BackendType = BackendType.MANUAL
+    ): EnhancedEvaluationResults? {
+        logger.info("Evaluating checkpoint $checkpointPath against mixed opponents")
+        
+        return if (loadAgentFromCheckpoint(checkpointPath, agent, targetBackend)) {
+            evaluateAgainstMixedOpponents(agent, games)
+        } else {
+            logger.error("Could not load checkpoint for evaluation: $checkpointPath")
+            null
+        }
+    }
+    
+    /**
+     * Compare two checkpoints head-to-head.
+     */
+    fun compareCheckpoints(
+        checkpointPathA: String,
+        agentA: ChessAgent,
+        checkpointPathB: String,
+        agentB: ChessAgent,
+        games: Int,
+        targetBackendA: BackendType = BackendType.MANUAL,
+        targetBackendB: BackendType = BackendType.MANUAL
+    ): EnhancedComparisonResults? {
+        logger.info("Comparing checkpoints: $checkpointPathA vs $checkpointPathB")
+        
+        val loadedA = loadAgentFromCheckpoint(checkpointPathA, agentA, targetBackendA)
+        val loadedB = loadAgentFromCheckpoint(checkpointPathB, agentB, targetBackendB)
+        
+        return if (loadedA && loadedB) {
+            compareModels(agentA, agentB, games)
+        } else {
+            logger.error("Could not load one or both checkpoints for comparison")
+            if (!loadedA) logger.error("Failed to load checkpoint A: $checkpointPathA")
+            if (!loadedB) logger.error("Failed to load checkpoint B: $checkpointPathB")
+            null
+        }
     }
     
     /**
@@ -641,6 +758,36 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
     }
 
     /**
+     * Get information about available checkpoint formats.
+     */
+    fun getCheckpointFormatInfo(checkpointPath: String): CheckpointFormatInfo {
+        val format = when {
+            checkpointPath.endsWith(".zip") -> CheckpointFormat.ZIP
+            checkpointPath.endsWith(".json.gz") -> CheckpointFormat.JSON_COMPRESSED
+            checkpointPath.endsWith(".json") -> CheckpointFormat.JSON
+            else -> CheckpointFormat.UNKNOWN
+        }
+        
+        val suggestedBackend = when (format) {
+            CheckpointFormat.ZIP -> BackendType.RL4J
+            CheckpointFormat.JSON, CheckpointFormat.JSON_COMPRESSED -> BackendType.MANUAL
+            CheckpointFormat.UNKNOWN -> BackendType.MANUAL
+        }
+        
+        return CheckpointFormatInfo(
+            path = checkpointPath,
+            format = format,
+            suggestedBackend = suggestedBackend,
+            isSupported = format != CheckpointFormat.UNKNOWN
+        )
+    }
+    
+    /**
+     * Get unified checkpoint manager for advanced operations.
+     */
+    fun getUnifiedCheckpointManager(): UnifiedCheckpointManager = unifiedCheckpointManager
+
+    /**
      * Result from a single game.
      */
     private data class GameResult(
@@ -648,6 +795,16 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         val gameLength: Int
     )
 }
+
+/**
+ * Information about a checkpoint format.
+ */
+data class CheckpointFormatInfo(
+    val path: String,
+    val format: CheckpointFormat,
+    val suggestedBackend: BackendType,
+    val isSupported: Boolean
+)
 
 /**
  * Results from evaluating an agent against a baseline.

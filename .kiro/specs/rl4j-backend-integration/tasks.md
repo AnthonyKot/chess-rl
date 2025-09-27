@@ -26,17 +26,17 @@
     - Verify observation and action space dimensions
     - _Requirements: 3.4, Acceptance Test for Requirement 3_
 
-- [-] 3. Implement configuration mapping and validation
+- [x] 3. Implement configuration mapping and validation
   
-  - [ ] 3.0 Clean up the same from previous task (RL4J-specific)
+  - [x] 3.0 Clean up the same from previous task (RL4J-specific)
 
-  - [ ] 3.1 Create ConfigurationMapper class
+  - [x] 3.1 Create ConfigurationMapper class
     - Map ChessRLConfig to QLearning.QLConfiguration
     - Map learningRate, batchSize, gamma, targetUpdateFrequency, maxExperienceBuffer, hiddenLayers
     - Ensure identical parameter values for both backends
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 3.2 Turn these wrappers into actual RL4J implementations:
+  - [x] 3.2 Turn these wrappers into actual RL4J implementations:
 
     class ChessMDP(
         private val env: ChessEnvironment
@@ -55,70 +55,76 @@
 
     And likewise convert ChessObservationSpace to extend ObservationSpace<ChessObservation> and ChessActionSpace to extend DiscreteSpace. Once those exist, we can hook them into an RL4J QLearning config and prove the integration.
 
-  - [ ] 3.3 Add parameter validation with clear error messages
+  - [x] 3.3 Add parameter validation with clear error messages
     - Validate learning rate is positive (reject -0.1 with clear error)
     - Validate batch size, gamma range, buffer size constraints
     - Provide actionable error messages for invalid values
     - _Requirements: 2.3, Acceptance Test for Requirement 2_
 
-  - [ ] 3.4 Implement configuration consistency verification
+  - [x] 3.4 Implement configuration consistency verification
     - Print configuration summary at startup for both backends
     - Verify identical hyperparameter values are used
     - Add logging to confirm parameter mapping correctness
     - _Requirements: 2.4_
 
-- [ ] 4. Extend CLI to support RL4J backend selection
-  - [ ] 4.1 Modify ChessRLCLI to handle --nn rl4j flag
+- [x] 4. Extend CLI to support RL4J backend selection
+  - [x] 4.1 Modify ChessRLCLI to handle --nn rl4j flag
     - Extend existing --nn flag parsing to include rl4j option
     - Add NeuralNetworkBackend.RL4J enum value
     - Implement backend selection routing logic
     - _Requirements: 1.3_
 
-  - [ ] 4.2 Create BackendFactory for backend instantiation
+  - [x] 4.2 Create BackendFactory for backend instantiation
     - Implement factory pattern for creating Manual vs RL4J backends
     - Handle backend-specific configuration and initialization
     - Add error handling for missing RL4J dependencies
     - _Requirements: 1.3_
 
-  - [ ] 4.3 Test CLI integration end-to-end
+  - [x] 4.3 Test CLI integration end-to-end
     - Verify `./gradlew :integration:run --args="--train --nn rl4j ..."` completes one cycle
     - Test backend switching without changing other configuration
     - Validate error handling for invalid backend selection
     - _Requirements: Acceptance Test for Requirement 1_
 
-- [ ] 5. Implement RL4J training backend
-  - [ ] 5.1 Create RL4JBackend class
+- [x] 5. Implement RL4J training backend
+  - [x] 5.1 Create RL4JBackend class
     - Implement RL4J QLearningDiscreteDense trainer setup
     - Configure DQNFactoryStdDense with mapped parameters
     - Integrate ChessMDP with RL4J training loop
     - _Requirements: 1.1, 1.2_
 
-  - [ ] 5.2 Add training session management
+  - [x] 5.2 Add training session management
     - Implement training cycle execution matching manual backend
     - Add progress tracking and metrics collection
     - Handle training interruption and resumption
     - _Requirements: 4.1, 4.2_
 
-  - [ ] 5.3 Test RL4J training pipeline
+  - [x] 5.3 Test RL4J training pipeline
     - Run complete training cycle without errors
     - Verify training metrics are collected correctly
     - Test training can be stopped and resumed
     - _Requirements: Acceptance Test for Requirement 1_
 
-- [ ] 6. Implement checkpoint compatibility system
-  - [ ] 6.1 Create UnifiedCheckpointManager
+- [x] 6. Implement checkpoint compatibility system
+
+  - [x] 6.0 Verify that we already have:
+    - working RL4Jbackend
+    - working session management
+    - RL4J can be used end‑to‑end with training pipeline
+
+  - [x] 6.1 Create UnifiedCheckpointManager
     - Handle saving RL4J models with metadata
     - Support loading both manual (.json) and RL4J (.zip) formats
     - Add checkpoint format detection and validation
     - _Requirements: 1.4_
 
-  - [ ] 6.2 Ensure BaselineEvaluator compatibility
+  - [x] 6.2 Ensure BaselineEvaluator compatibility
     - Modify BaselineEvaluator to load RL4J checkpoints
     - Test evaluation pipeline with RL4J-trained models
     - Verify identical evaluation methodology for both backends
     - _Requirements: 1.4_
 
-  - [ ] 6.3 Test checkpoint round-trip functionality
+  - [x] 6.3 Test checkpoint round-trip functionality
     - Save RL4J checkpoint and reload for evaluation
     - Verify RL4J checkpoint loads and plays 20 evaluation games
     - Test checkpoint metadata handling and format detection
