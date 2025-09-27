@@ -21,7 +21,7 @@ object CheckpointCompatibility {
     enum class CheckpointFormat(val extension: String, val backend: BackendType) {
         JSON(".json", BackendType.MANUAL),
         JSON_GZ(".json.gz", BackendType.MANUAL),
-        ZIP(".zip", BackendType.DL4J),
+        ZIP(".zip", BackendType.RL4J),
         H5(".h5", BackendType.KOTLINDL),
         SAVEDMODEL(".savedmodel", BackendType.KOTLINDL);
         

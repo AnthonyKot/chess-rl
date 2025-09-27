@@ -2,7 +2,7 @@ package com.chessrl.integration.backend.rl4j
 
 import com.chessrl.integration.ChessAgent
 import com.chessrl.integration.ChessAgentConfig
-import com.chessrl.integration.ChessAgentFactory
+import com.chessrl.integration.ChessEnvironment
 import com.chessrl.integration.backend.BackendType
 import com.chessrl.integration.backend.BackendAwareChessAgentFactory
 import com.chessrl.integration.backend.LearningBackend

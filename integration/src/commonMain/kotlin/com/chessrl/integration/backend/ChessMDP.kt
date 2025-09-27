@@ -1,6 +1,8 @@
 package com.chessrl.integration.backend
 
 import com.chessrl.integration.ChessEnvironment
+import com.chessrl.integration.backend.rl4j.ChessObservationSpace
+import com.chessrl.integration.backend.rl4j.ChessActionSpace
 import com.chessrl.integration.logging.ChessRLLogger
 
 /**

@@ -1,7 +1,8 @@
 package com.chessrl.integration
 
 import com.chessrl.integration.adapter.ChessEngineFactory
-import com.chessrl.integration.backend.DqnLearningBackend
+import com.chessrl.integration.backend.BackendFactory
+import com.chessrl.integration.backend.BackendType
 import com.chessrl.integration.backend.LearningBackend
 import com.chessrl.integration.backend.LearningSession
 import com.chessrl.integration.config.ChessRLConfig
@@ -35,7 +36,7 @@ import com.chessrl.integration.opponent.OpponentSelector
  */
 class TrainingPipeline(
     private val config: ChessRLConfig,
-    private val backend: LearningBackend = DqnLearningBackend()
+    private val backend: LearningBackend = BackendFactory.createBackend(BackendType.MANUAL, config)
 ) {
     
     // Core components

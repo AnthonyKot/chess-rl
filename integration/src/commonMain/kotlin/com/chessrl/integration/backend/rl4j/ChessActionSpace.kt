@@ -47,14 +47,7 @@ class ChessActionSpace {
         return isValid
     }
     
-    /**
-     * Sample a random action from this space.
-     * 
-     * @return Random action in range [0, 4095]
-     */
-    fun sample(): Int {
-        return kotlin.random.Random.Default.nextInt(ACTION_COUNT)
-    }
+
     
     /**
      * Get all possible actions in this space.
@@ -77,6 +70,15 @@ class ChessActionSpace {
         } else {
             "InvalidAction($action)"
         }
+    }
+    
+    /**
+     * Sample a random action from this space.
+     * 
+     * @return Random action in range [0, 4095]
+     */
+    fun sample(): Int {
+        return kotlin.random.Random.Default.nextInt(ACTION_COUNT)
     }
     
     /**

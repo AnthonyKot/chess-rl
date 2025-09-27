@@ -1,6 +1,7 @@
 package com.chessrl.integration.backend.rl4j
 
 import com.chessrl.integration.ChessEnvironment
+import com.chessrl.integration.backend.RL4JAvailability
 import com.chessrl.integration.logging.ChessRLLogger
 
 /**
@@ -9,6 +10,9 @@ import com.chessrl.integration.logging.ChessRLLogger
  * This class adapts our existing ChessEnvironment to RL4J's MDP interface,
  * enabling RL4J algorithms to train on chess while maintaining our existing
  * game logic, state encoding, and reward computation.
+ * 
+ * When RL4J is available, this implements the actual RL4J MDP interface.
+ * When RL4J is not available, it provides a compatible API for testing.
  */
 class ChessMDP(private val chessEnvironment: ChessEnvironment) {
     
@@ -271,22 +275,26 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
     fun getChessEnvironment(): ChessEnvironment = chessEnvironment
     
     /**
-     * Create an RL4J-compatible MDP instance using reflection.
+     * Create an RL4J-compatible MDP instance.
      * 
      * This method creates an actual RL4J MDP implementation that can be used
-     * with RL4J algorithms, while avoiding compile-time dependencies.
+     * with RL4J algorithms when RL4J is available.
      * 
-     * @return RL4J MDP instance
-     * @throws IllegalStateException if RL4J classes are not available
+     * @return RL4J MDP instance or compatible wrapper
+     * @throws IllegalStateException if RL4J classes are not available when needed
      */
     fun toRL4JMDP(): Any {
-        try {
-            // This would create an actual RL4J MDP implementation
-            // For now, we return this instance as it implements the required interface
-            logger.info("Creating RL4J-compatible MDP wrapper")
-            return RL4JMDPWrapper(this)
-        } catch (e: Exception) {
-            throw IllegalStateException("Failed to create RL4J MDP wrapper", e)
+        return if (RL4JAvailability.isAvailable()) {
+            try {
+                logger.info("Creating actual RL4J MDP implementation")
+                RL4JMDPImpl(this)
+            } catch (e: Exception) {
+                logger.error("Failed to create RL4J MDP implementation: ${e.message}")
+                throw IllegalStateException("Failed to create RL4J MDP implementation", e)
+            }
+        } else {
+            logger.info("RL4J not available, creating compatible wrapper for testing")
+            RL4JMDPWrapper(this)
         }
     }
     
@@ -306,10 +314,70 @@ data class StepReply(
 )
 
 /**
- * Wrapper class that implements RL4J's MDP interface using reflection.
+ * Actual RL4J MDP implementation when RL4J is available.
  * 
- * This allows us to create RL4J-compatible MDP instances without compile-time
- * dependencies on RL4J classes.
+ * This class implements the real RL4J MDP interface using proper RL4J classes.
+ */
+private class RL4JMDPImpl(private val chessMDP: ChessMDP) : org.deeplearning4j.rl4j.mdp.MDP<ChessObservation, Int, org.deeplearning4j.rl4j.space.DiscreteSpace> {
+    
+    companion object {
+        private val logger = ChessRLLogger.forComponent("RL4JMDPImpl")
+    }
+    
+    private val observationSpace = org.deeplearning4j.rl4j.space.ArrayObservationSpace<ChessObservation>(intArrayOf(ChessObservationSpace.DIMENSIONS))
+    private val actionSpace = org.deeplearning4j.rl4j.space.DiscreteSpace(ChessActionSpace.ACTION_COUNT)
+    
+    init {
+        logger.debug("Created actual RL4J MDP implementation")
+    }
+    
+    override fun reset(): ChessObservation {
+        logger.debug("RL4J MDP reset called")
+        return chessMDP.reset()
+    }
+    
+    override fun step(action: Int): org.deeplearning4j.rl4j.mdp.MDP.StepReply<ChessObservation> {
+        logger.debug("RL4J MDP step called with action: $action")
+        val stepReply = chessMDP.step(action)
+        
+        return object : org.deeplearning4j.rl4j.mdp.MDP.StepReply<ChessObservation> {
+            override fun getObservation(): ChessObservation = stepReply.observation
+            override fun getReward(): Double = stepReply.reward
+            override fun isDone(): Boolean = stepReply.isDone
+            override fun getInfo(): Any = stepReply.info
+        }
+    }
+    
+    override fun isDone(): Boolean {
+        return chessMDP.isDone()
+    }
+    
+    override fun getObservationSpace(): org.deeplearning4j.rl4j.space.ObservationSpace<ChessObservation> {
+        return observationSpace
+    }
+    
+    override fun getActionSpace(): org.deeplearning4j.rl4j.space.DiscreteSpace {
+        return actionSpace
+    }
+    
+    override fun close() {
+        logger.debug("RL4J MDP close called")
+        // Chess environment doesn't need explicit cleanup
+    }
+    
+    override fun newInstance(): org.deeplearning4j.rl4j.mdp.MDP<ChessObservation, Int, org.deeplearning4j.rl4j.space.DiscreteSpace> {
+        logger.debug("RL4J MDP newInstance called")
+        // Create a new chess environment for parallel training
+        val newChessEnv = ChessEnvironment()
+        val newChessMDP = ChessMDP(newChessEnv)
+        return RL4JMDPImpl(newChessMDP)
+    }
+}
+
+/**
+ * Wrapper class for testing when RL4J is not available.
+ * 
+ * This provides a compatible API for testing without RL4J dependencies.
  */
 private class RL4JMDPWrapper(private val chessMDP: ChessMDP) {
     
@@ -318,10 +386,9 @@ private class RL4JMDPWrapper(private val chessMDP: ChessMDP) {
     }
     
     init {
-        logger.debug("Created RL4J MDP wrapper")
+        logger.debug("Created RL4J MDP wrapper for testing")
     }
     
-    // These methods would be called by RL4J via reflection
     fun reset(): Any {
         val observation = chessMDP.reset()
         return observation.getINDArray()
@@ -330,28 +397,26 @@ private class RL4JMDPWrapper(private val chessMDP: ChessMDP) {
     fun step(action: Int): Any {
         val stepReply = chessMDP.step(action)
         
-        // Create RL4J StepReply using reflection
-        try {
-            val stepReplyClass = Class.forName("org.deeplearning4j.rl4j.mdp.MDP\$StepReply")
-            val constructor = stepReplyClass.constructors.first()
-            
-            return constructor.newInstance(
-                stepReply.observation.getINDArray(),
-                stepReply.reward,
-                stepReply.isDone,
-                stepReply.info
-            )
-        } catch (e: Exception) {
-            logger.error("Failed to create RL4J StepReply: ${e.message}")
-            throw IllegalStateException("Failed to create RL4J StepReply", e)
-        }
+        // Return a simple map for testing
+        return mapOf(
+            "observation" to stepReply.observation.getINDArray(),
+            "reward" to stepReply.reward,
+            "done" to stepReply.isDone,
+            "info" to stepReply.info
+        )
     }
     
     fun isDone(): Boolean = chessMDP.isDone()
     
-    fun getObservationSpace(): Any = chessMDP.getObservationSpace().toRL4JObservationSpace()
+    fun getObservationSpace(): Any = mapOf(
+        "shape" to intArrayOf(ChessObservationSpace.DIMENSIONS),
+        "type" to "ArrayObservationSpace"
+    )
     
-    fun getActionSpace(): Any = chessMDP.getActionSpace().toRL4JDiscreteSpace()
+    fun getActionSpace(): Any = mapOf(
+        "size" to ChessActionSpace.ACTION_COUNT,
+        "type" to "DiscreteSpace"
+    )
     
     fun close() = chessMDP.close()
     

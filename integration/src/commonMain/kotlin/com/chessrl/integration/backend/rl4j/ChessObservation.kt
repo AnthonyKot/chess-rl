@@ -1,5 +1,6 @@
 package com.chessrl.integration.backend.rl4j
 
+import com.chessrl.integration.backend.RL4JAvailability
 import com.chessrl.integration.logging.ChessRLLogger
 
 /**
@@ -8,8 +9,10 @@ import com.chessrl.integration.logging.ChessRLLogger
  * Wraps the 839-dimensional chess state vector in RL4J's Observation interface.
  * This ensures compatibility with RL4J's MDP framework while maintaining
  * our existing state encoding.
+ * 
+ * Implements RL4J's Encodable interface when RL4J is available.
  */
-class ChessObservation(private val stateVector: DoubleArray) {
+class ChessObservation(private val stateVector: DoubleArray) : org.deeplearning4j.rl4j.space.Encodable {
     
     companion object {
         private val logger = ChessRLLogger.forComponent("ChessObservation")
@@ -28,7 +31,7 @@ class ChessObservation(private val stateVector: DoubleArray) {
      * 
      * @return 839-dimensional double array representing the chess position
      */
-    fun getData(): DoubleArray = stateVector.copyOf()
+    override fun getData(): DoubleArray = stateVector.copyOf()
     
     /**
      * Get the state vector as an INDArray for RL4J compatibility.
@@ -40,6 +43,26 @@ class ChessObservation(private val stateVector: DoubleArray) {
      * @throws IllegalStateException if ND4J classes are not available
      */
     fun getINDArray(): Any {
+        return if (RL4JAvailability.isAvailable()) {
+            createINDArrayWithRealND4J()
+        } else {
+            createINDArrayWithReflection()
+        }
+    }
+    
+    /**
+     * Create INDArray using real ND4J API when available.
+     */
+    private fun createINDArrayWithRealND4J(): Any {
+        // This would use real ND4J APIs when RL4J is on the classpath
+        // For now, fall back to reflection
+        return createINDArrayWithReflection()
+    }
+    
+    /**
+     * Create INDArray using reflection for compatibility.
+     */
+    private fun createINDArrayWithReflection(): Any {
         try {
             val nd4jClass = Class.forName("org.nd4j.linalg.factory.Nd4j")
             val createMethod = nd4jClass.getMethod("create", DoubleArray::class.java)
@@ -99,5 +122,14 @@ class ChessObservation(private val stateVector: DoubleArray) {
     
     override fun hashCode(): Int {
         return stateVector.contentHashCode()
+    }
+    
+    // Implement Encodable interface for RL4J compatibility
+    override fun toArray(): DoubleArray {
+        return stateVector.copyOf()
+    }
+    
+    override fun isSkipped(): Boolean {
+        return false // Chess observations are never skipped
     }
 }

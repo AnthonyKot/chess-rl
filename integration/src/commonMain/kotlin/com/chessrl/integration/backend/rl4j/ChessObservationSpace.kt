@@ -120,6 +120,8 @@ class ChessObservationSpace {
         }
     }
     
+
+    
     override fun toString(): String {
         return "ChessObservationSpace(dimensions=$DIMENSIONS, bounds=[${getLow()[0]}, ${getHigh()[0]}])"
     }
