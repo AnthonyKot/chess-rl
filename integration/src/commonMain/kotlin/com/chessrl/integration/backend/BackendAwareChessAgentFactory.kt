@@ -47,6 +47,7 @@ object BackendAwareChessAgentFactory {
             BackendType.MANUAL -> createManualDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma)
             BackendType.DL4J -> createDl4jDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma)
             BackendType.KOTLINDL -> createKotlinDlDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma)
+            BackendType.RL4J -> throw UnsupportedOperationException("RL4J agent creation not yet implemented")
         }
     }
     
@@ -80,6 +81,7 @@ object BackendAwareChessAgentFactory {
             BackendType.MANUAL -> createSeededManualDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma)
             BackendType.DL4J -> createSeededDl4jDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma)
             BackendType.KOTLINDL -> createSeededKotlinDlDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma)
+            BackendType.RL4J -> throw UnsupportedOperationException("RL4J seeded agent creation not yet implemented")
         }
     }
     

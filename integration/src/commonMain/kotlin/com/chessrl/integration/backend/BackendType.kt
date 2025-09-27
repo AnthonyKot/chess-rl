@@ -6,7 +6,8 @@ package com.chessrl.integration.backend
 enum class BackendType {
     MANUAL,    // FeedforwardNetwork implementation (legacy/manual fallback)
     DL4J,      // DeepLearning4J library backend (default)
-    KOTLINDL;  // KotlinDL library backend
+    KOTLINDL,  // KotlinDL library backend
+    RL4J;      // RL4J reinforcement learning backend
     
     companion object {
         /**

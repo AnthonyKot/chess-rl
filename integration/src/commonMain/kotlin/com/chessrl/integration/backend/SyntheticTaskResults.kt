@@ -171,7 +171,7 @@ data class ComprehensiveComparisonReport(
         csv.appendLine("Backend,XOR_Accuracy,XOR_Converged,Sine_Accuracy,Sine_Converged,Chess_Accuracy,Chess_Converged,Inference_Time_ms,Training_Time_ms,Memory_MB,Parameters,Overall_Score")
         
         // Data rows
-        for ((backend, summary) in backendSummaries) {
+        for ((_, summary) in backendSummaries) {
             csv.appendLine("${summary.backend},${summary.xorAccuracy},${summary.xorConverged},${summary.sineAccuracy},${summary.sineConverged},${summary.chessAccuracy},${summary.chessConverged},${summary.avgInferenceTimeMs},${summary.avgTrainingTimeMs},${summary.memoryUsageMB},${summary.parameterCount},${summary.overallScore}")
         }
         

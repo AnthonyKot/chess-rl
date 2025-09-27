@@ -35,6 +35,12 @@ dependencies {
     // DL4J dependencies for neural network backend
     implementation("org.deeplearning4j:deeplearning4j-core:1.0.0-M2.1")
     implementation("org.nd4j:nd4j-native-platform:1.0.0-M2.1")
+    
+    // RL4J dependencies (guarded by Gradle property)
+    if (project.hasProperty("enableRL4J") && project.property("enableRL4J") == "true") {
+        implementation("org.deeplearning4j:rl4j-core:1.0.0-beta7")
+        implementation("org.deeplearning4j:rl4j-api:1.0.0-beta7")
+    }
 
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.8.2")

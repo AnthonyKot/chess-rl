@@ -14,8 +14,7 @@ class PolicyGradientVerificationTest {
             outputSize = 4,
             hiddenLayers = listOf(8),
             learningRate = 0.02,
-            temperature = 1.0,
-            batchSize = 4
+            temperature = 1.0
         )
 
         val state = DoubleArray(6) { i -> (i + 1) * 0.1 }
@@ -47,4 +46,3 @@ class PolicyGradientVerificationTest {
         assertTrue(p1After < p1Before, "Expected p(action=1) to decrease: before=$p1Before after=$p1After")
     }
 }
-

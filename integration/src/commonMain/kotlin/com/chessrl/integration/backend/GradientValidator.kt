@@ -19,8 +19,6 @@ object GradientValidator {
     fun validateGradients(adapter: NetworkAdapter): GradientValidationResult {
         val issues = mutableListOf<String>()
         val warnings = mutableListOf<String>()
-        val config = adapter.getConfig()
-        
         logger.info("Starting gradient validation for ${adapter.getBackendName()} adapter")
         
         try {
@@ -76,6 +74,15 @@ object GradientValidator {
             
             // Forward pass
             val output = adapter.forward(input)
+
+            if (output.size != config.outputSize) {
+                issues.add(
+                    "Forward pass produced ${output.size} outputs, expected ${config.outputSize}"
+                )
+            }
+            if (output.any { !it.isFinite() }) {
+                issues.add("Forward pass produced non-finite activations")
+            }
             
             // Backward pass - this returns loss, not gradients
             val lossArray = adapter.backward(target)
@@ -128,6 +135,10 @@ object GradientValidator {
             // Get baseline loss
             adapter.forward(input)
             val baselineLoss = adapter.backward(target)[0]
+            if (!baselineLoss.isFinite()) {
+                issues.add("Numerical gradient check failed: baseline loss was $baselineLoss")
+                return
+            }
             
             // Check loss consistency with small perturbations
             var maxLossChange = 0.0
@@ -302,7 +313,7 @@ object GradientValidator {
             val lossVariations = mutableListOf<Double>()
             
             for (magnitude in perturbationMagnitudes) {
-                val perturbedInput = input.mapIndexed { i, value ->
+                val perturbedInput = input.map { value ->
                     value + magnitude * (Random.nextDouble() - 0.5)
                 }.toDoubleArray()
                 
@@ -324,7 +335,7 @@ object GradientValidator {
                 warnings.add("Loss landscape appears very flat (max variation: $maxVariation vs baseline: $baselineLoss)")
             }
             
-            logger.debug("Loss landscape analysis: baseline=$baselineLoss, max_variation=$maxVariation")
+            logger.debug("Loss landscape analysis: baseline=$baselineLoss, max_variation=$maxVariation, min_variation=$minVariation")
             
         } catch (e: Exception) {
             warnings.add("Loss landscape analysis failed: ${e.message}")

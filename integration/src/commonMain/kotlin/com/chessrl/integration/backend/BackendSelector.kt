@@ -98,6 +98,15 @@ object BackendSelector {
                     logger.warn("KotlinDL backend not available: ${e.message}")
                 }
             }
+            BackendType.RL4J -> {
+                // Check if RL4J classes are available using the availability checker
+                if (RL4JAvailability.isAvailable()) {
+                    logger.debug("RL4J backend validation: OK")
+                } else {
+                    issues.add("RL4J classes not found on classpath. Set enableRL4J=true in gradle.properties and rebuild.")
+                    logger.warn("RL4J backend not available")
+                }
+            }
         }
         
         return ValidationResult(

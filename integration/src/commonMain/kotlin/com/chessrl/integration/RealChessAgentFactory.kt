@@ -159,8 +159,7 @@ object RealChessAgentFactory {
         outputSize: Int = 4096,
         hiddenLayers: List<Int> = listOf(512, 256, 128),
         learningRate: Double = 0.001,
-        temperature: Double = 1.0,
-        batchSize: Int = 32
+        temperature: Double = 1.0
     ): RealChessAgent {
         // Create policy network
         val policyNetworkLayers = mutableListOf<Layer>()
@@ -368,7 +367,6 @@ object RealChessAgentFactory {
         hiddenLayers: List<Int> = listOf(512, 256, 128),
         learningRate: Double = 0.001,
         temperature: Double = 1.0,
-        batchSize: Int = 32,
         neuralNetworkRandom: kotlin.random.Random,
         explorationRandom: kotlin.random.Random,
         weightInitType: String = "he"

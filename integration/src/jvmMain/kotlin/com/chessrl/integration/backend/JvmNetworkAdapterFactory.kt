@@ -29,6 +29,10 @@ object JvmNetworkAdapterFactory {
                     logger.warn("KotlinDL backend not yet implemented, falling back to manual")
                     ManualNetworkAdapter(config)
                 }
+                BackendType.RL4J -> {
+                    logger.warn("RL4J backend not yet implemented, falling back to manual")
+                    ManualNetworkAdapter(config)
+                }
             }
         } catch (e: Exception) {
             if (backendType != BackendType.MANUAL) {

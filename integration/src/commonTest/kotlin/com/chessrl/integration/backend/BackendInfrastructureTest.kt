@@ -18,12 +18,14 @@ class BackendInfrastructureTest {
         assertEquals(BackendType.DL4J, BackendType.fromString("DL4J"))
         assertEquals(BackendType.KOTLINDL, BackendType.fromString("kotlindl"))
         assertEquals(BackendType.KOTLINDL, BackendType.fromString("KOTLINDL"))
+        assertEquals(BackendType.RL4J, BackendType.fromString("rl4j"))
+        assertEquals(BackendType.RL4J, BackendType.fromString("RL4J"))
         assertEquals(null, BackendType.fromString("unknown"))
     }
     
     @Test
     fun testBackendTypeDefault() {
-        assertEquals(BackendType.MANUAL, BackendType.getDefault())
+        assertEquals(BackendType.DL4J, BackendType.getDefault())
     }
     
     @Test
@@ -34,11 +36,11 @@ class BackendInfrastructureTest {
         
         // Test without --nn flag
         val args2 = arrayOf("--train", "--cycles", "10")
-        assertEquals(BackendType.MANUAL, BackendSelector.parseBackendFromArgs(args2))
+        assertEquals(BackendType.DL4J, BackendSelector.parseBackendFromArgs(args2))
         
         // Test with invalid backend
         val args3 = arrayOf("--train", "--nn", "invalid", "--cycles", "10")
-        assertEquals(BackendType.MANUAL, BackendSelector.parseBackendFromArgs(args3))
+        assertEquals(BackendType.DL4J, BackendSelector.parseBackendFromArgs(args3))
     }
     
     @Test
@@ -49,11 +51,11 @@ class BackendInfrastructureTest {
         
         // Test without nnBackend in profile
         val profile2 = mapOf("learningRate" to 0.001)
-        assertEquals(BackendType.MANUAL, BackendSelector.parseBackendFromProfile(profile2))
+        assertEquals(BackendType.DL4J, BackendSelector.parseBackendFromProfile(profile2))
         
         // Test with invalid backend in profile
         val profile3 = mapOf("nnBackend" to "invalid")
-        assertEquals(BackendType.MANUAL, BackendSelector.parseBackendFromProfile(profile3))
+        assertEquals(BackendType.DL4J, BackendSelector.parseBackendFromProfile(profile3))
     }
     
     @Test
@@ -71,7 +73,7 @@ class BackendInfrastructureTest {
         // Default should be used if neither
         val args3 = arrayOf("--train")
         val profile3 = mapOf("learningRate" to 0.001)
-        assertEquals(BackendType.MANUAL, BackendSelector.selectBackend(args3, profile3))
+        assertEquals(BackendType.DL4J, BackendSelector.selectBackend(args3, profile3))
     }
     
     @Test

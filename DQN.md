@@ -13,10 +13,10 @@ Deep Q-Network (DQN) is a reinforcement learning algorithm that learns an action
 - Output: 4096 Q-values (one for each possible chess move)
 - Architecture: Configurable hidden layers with ReLU activation
 
-**Target Network**: Periodically updated copy of the main network for stable training
+**Target Network**: Periodically updated copy of the main network for stability
 - Provides stable targets for Q-learning updates
-- Updated every `targetUpdateFrequency` steps (default: 100)
-- Prevents moving target problem in neural network training
+- Updated every `targetUpdateFrequency` optimiser steps (default: 200 in production profiles)
+- Prevents moving-target drift in the neural network
 
 **Experience Replay**: Stores and samples past experiences for training
 - Circular buffer storing (state, action, reward, next_state, done) tuples
@@ -45,11 +45,11 @@ Chess moves are mapped to a 4096-dimensional action space:
 - **Legal Move Masking**: Only valid moves considered during selection
 
 ### Reward Structure
-Terminal rewards based on game outcomes:
+Terminal rewards and penalties:
 - **Win**: +1.0
 - **Loss**: -1.0
-- **Draw**: -0.2 (encourages decisive play)
-- **Step Limit Penalty**: -1.0 (encourages efficiency)
+- **Draw**: 0.0 by default (long-train profiles apply -0.05 to discourage early draws)
+- **Step Limit Penalty**: -0.5 (production profiles increase to -0.6)
 
 ## Implementation Architecture
 
@@ -63,9 +63,10 @@ val dqn = DQNAlgorithm(
     stateSize = 839,
     actionSize = 4096,
     hiddenLayers = listOf(512, 256, 128),
-    learningRate = 0.001,
+    learningRate = 5e-4,
     gamma = 0.99,
-    targetUpdateFrequency = 100
+    targetUpdateFrequency = 200,
+    doubleDqn = true
 )
 ```
 
@@ -74,9 +75,9 @@ Orchestrates self-play, experience collection, batch training, and evaluation.
 
 ```kotlin
 val pipeline = TrainingPipeline(config)
-pipeline.initialize()
-runBlocking { 
-    val results = pipeline.runTraining() 
+if (pipeline.initialize()) {
+    val results = pipeline.runTraining()
+    println("Training complete: ${results.totalGamesPlayed} games")
 }
 ```
 
@@ -125,35 +126,36 @@ val stepResult = environment.step(action)
 # Quick development training
 ./gradlew :integration:run --args="--train --profile fast-debug"
 
-# Production training
-./gradlew :integration:run --args="--train --profile long-train --cycles 200"
+# Production training (DL4J backend, multi-process self-play)
+./gradlew :integration:run --args="--train --profile long-train --nn dl4j --cycles 200"
 
 # Custom parameters
-./gradlew :integration:run --args="--train --cycles 50 --learning-rate 0.0005 --seed 12345"
+./gradlew :integration:run --args="--train --nn dl4j --cycles 60 --games-per-cycle 60 --seed 12345"
 ```
 
 ### Configuration Parameters
 
 #### Neural Network
 ```kotlin
-hiddenLayers = listOf(512, 256, 128)  // Network architecture
-learningRate = 0.001                  // Adam optimizer learning rate
-batchSize = 64                        // Training batch size
+hiddenLayers = listOf(512, 256, 128)  // Balanced network
+learningRate = 0.0005                 // Stable Adam learning rate
+batchSize = 64                        // Batch size
 ```
 
 #### RL Algorithm
 ```kotlin
 gamma = 0.99                          // Discount factor
-targetUpdateFrequency = 100           // Target network update frequency
+targetUpdateFrequency = 200           // Target sync cadence
 maxExperienceBuffer = 50000           // Replay buffer size
-explorationRate = 0.1                 // Epsilon-greedy exploration
+explorationRate = 0.05                // Epsilon-greedy exploration
+doubleDqn = true                      // Overestimation mitigation
 ```
 
 #### Self-Play
 ```kotlin
-gamesPerCycle = 20                    // Games per training cycle
+gamesPerCycle = 30                    // Games per training cycle
 maxConcurrentGames = 4                // Parallel game limit
-maxStepsPerGame = 80                  // Maximum moves per game
+maxStepsPerGame = 120                 // Maximum moves per game
 ```
 
 ### Monitoring Training Progress
@@ -166,11 +168,11 @@ maxStepsPerGame = 80                  // Maximum moves per game
 
 #### Log Messages
 ```
-🔁 DQN target network synchronized at update=100 (freq=100)
-🧩 DQN next-state action masking enabled (provider set)
-ℹ️ Training cycle 10/100 completed
-   Games: 20, Win rate: 45%, Avg length: 67.3
-   Avg reward: 0.1500, Duration: 45s
+🔁 DQN target network synchronized at update=200 (freq=200)
+🛡️ Legal-action mask applied (4096 → 28)
+ℹ️ Training cycle 10/200 completed
+   Games: 30, Win rate: 38%, Avg length: 112.4
+   Avg reward: -0.0020, Duration: 3m 12s
 ```
 
 ### Evaluation
@@ -189,73 +191,43 @@ maxStepsPerGame = 80                  // Maximum moves per game
 ## Advanced Features
 
 ### Double DQN
-Reduces overestimation bias by using main network for action selection and target network for evaluation:
+Reduces overestimation bias by using the online network for action selection and the target network for evaluation:
 
 ```kotlin
-// Enable in configuration
-doubleDqn = true
-
-// Or via CLI
-./gradlew :integration:run --args="--train --double-dqn"
+doubleDqn = true          // default in profiles
 ```
 
-### Action Masking Implementation
-Critical for chess to ensure only legal moves are considered:
+### Action Masking
+Ensures only legal moves contribute to policies and TD targets:
 
 ```kotlin
-// During action selection
-val legalActions = environment.getLegalActions()
-val action = dqn.selectAction(state, legalActions, explorationRate)
+val legal = environment.getValidActions(state)
+val action = policy.selectAction(qValues, legal)
 
-// During target computation
-val nextLegalActions = environment.getLegalActions(nextState)
-val maxQValue = nextLegalActions.maxOf { qValues[it] }
+val nextLegal = environment.getValidActions(stepResult.nextState)
+val maskedMax = nextLegal.maxOf { nextQ[it] }
 ```
 
 ### Multi-Process Training
-Automatic parallel self-play with fallback to sequential:
+Self-play games run in worker JVMs when `maxConcurrentGames > 1`, yielding ~3–4× throughput. Use `--worker-heap <size>` to cap per-worker memory usage. The pipeline automatically falls back to sequential play if workers fail to start.
 
-```kotlin
-// Automatically uses multi-process if maxConcurrentGames > 1
-val config = ChessRLConfig(maxConcurrentGames = 8)
+### Prioritized Replay (optional)
+Set `replayType = PRIORITIZED` to bias sampling toward high-error transitions. The `long-train-mixed` profile enables this and mixes in heuristic/minimax opponents to diversify experience.
 
-// Falls back to sequential if multi-process fails
-// Provides 3-4x speedup when working
-```
-
-## Teacher-Guided Bootstrap
-
-For faster learning, the system supports teacher-guided initialization using minimax:
-
-### 1. Generate Teacher Dataset
-```bash
-./gradlew :chess-engine:runTeacherCollector -Dargs="--collect --games 50 --depth 2 --topk 5 --tau 1.0 --out data/teacher.ndjson"
-```
-
-### 2. Imitation Pretraining
-```bash
-./gradlew :chess-engine:runImitationTrainer -Dargs="--train-imitation --data data/teacher.ndjson --epochs 3 --batch 64 --lr 0.001 --out data/imitation_qnet.json"
-```
-
-### 3. DQN Fine-tuning
-```bash
-./gradlew :integration:run --args="--train --load data/imitation_qnet.json --cycles 50"
-```
-
-## Performance Optimization
+## Performance Guidelines
 
 ### Recommended Architectures
 
-**Small Networks** (fast training):
+**Small Networks** (fast iteration):
 ```kotlin
 hiddenLayers = listOf(256, 128)
 learningRate = 0.001
 ```
 
-**Balanced Networks** (good performance):
+**Balanced Networks** (default long-run):
 ```kotlin
 hiddenLayers = listOf(512, 256, 128)
-learningRate = 0.0005
+learningRate = 5e-4
 ```
 
 **Large Networks** (maximum capacity):
@@ -268,10 +240,10 @@ learningRate = 0.0003
 
 **Conservative (Stable)**:
 ```kotlin
-learningRate = 0.0005
+learningRate = 5e-4
 gamma = 0.99
-targetUpdateFrequency = 200
-explorationRate = 0.05
+targetUpdateFrequency = 300
+explorationRate = 0.03
 ```
 
 **Aggressive (Fast Learning)**:
@@ -286,20 +258,20 @@ explorationRate = 0.1
 
 ### Common Issues
 
-**High Draw Rate**: 
-- Reduce `maxStepsPerGame` to 80-100
-- Increase `drawReward` penalty to -0.3
-- Enable position-based reward shaping
+**High Draw Rate**:
+- Lower `maxStepsPerGame` to ~100
+- Apply a small negative `drawReward` (e.g., -0.05)
+- Randomise starting FENs to inject sharper positions
 
 **Slow Learning**:
-- Increase `learningRate` to 0.001
-- Reduce `targetUpdateFrequency` to 50
-- Use teacher-guided bootstrap
+- Raise `learningRate` toward 1e-3
+- Reduce `targetUpdateFrequency` to 100–150
+- Start with higher exploration (0.12) and decay gradually
 
 **Training Instability**:
-- Reduce `learningRate` to 0.0005
-- Increase `targetUpdateFrequency` to 200
-- Enable Double DQN
+- Drop `learningRate` to 5e-4
+- Increase `targetUpdateFrequency` to 200–300
+- Keep Double DQN and gradient clipping (±1.0) enabled
 
 ### Verification Checklist
 
@@ -307,7 +279,7 @@ explorationRate = 0.1
 ✅ **Target Updates**: Verify target network sync messages
 ✅ **Legal Moves**: Ensure `invalid_moves` count is 0 in evaluation
 ✅ **Learning Progress**: Monitor decreasing loss and changing entropy
-✅ **Baseline Performance**: Regular evaluation against minimax
+✅ **Opponent Baseline**: Regular evaluation against heuristic/minimax opponents
 
 ## Implementation Details
 

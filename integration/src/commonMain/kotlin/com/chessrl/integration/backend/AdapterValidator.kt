@@ -285,6 +285,11 @@ object AdapterValidator {
             
             // Outputs should be different initially (different random initialization)
             val initialDifference = computeOutputDifference(sourceOutput1, targetOutput1)
+            if (initialDifference < 1e-12) {
+                warnings.add(
+                    "Weight synchronization pre-check: adapters produced nearly identical outputs before copy (Δ=$initialDifference)"
+                )
+            }
             
             // Copy weights
             adapter.copyWeightsTo(targetAdapter)
@@ -350,6 +355,9 @@ object AdapterValidator {
             }
             BackendType.KOTLINDL -> {
                 throw UnsupportedOperationException("KotlinDL adapter not yet implemented")
+            }
+            BackendType.RL4J -> {
+                throw UnsupportedOperationException("RL4J adapter not yet implemented")
             }
         }
     }

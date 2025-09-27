@@ -208,7 +208,7 @@ class SyntheticTaskComparison(
             
             try {
                 val adapter = createAdapter(backendType, config)
-                val metrics = measureInferencePerformance(adapter, batchSize, numIterations)
+                val metrics = measureInferencePerformance(adapter, numIterations)
                 results[backendType] = metrics
             } catch (e: Exception) {
                 results[backendType] = PerformanceMetrics(
@@ -357,6 +357,18 @@ class SyntheticTaskComparison(
                     throw ClassNotFoundException("KotlinDL not available in test environment")
                 } catch (e: ClassNotFoundException) {
                     println("Warning: KotlinDL backend not available, using manual backend for ${backendType.name}")
+                    ManualNetworkAdapter(config)
+                }
+            }
+            BackendType.RL4J -> {
+                // Try to create RL4J adapter, fall back to manual if not available
+                try {
+                    RL4JAvailability.validateAvailability()
+                    // If RL4J is available, we would create RL4JNetworkAdapter here
+                    // For now, fall back to manual since RL4J might not be available in all test environments
+                    throw ClassNotFoundException("RL4J not available in test environment")
+                } catch (e: Exception) {
+                    println("Warning: RL4J backend not available, using manual backend for ${backendType.name}")
                     ManualNetworkAdapter(config)
                 }
             }
@@ -636,7 +648,7 @@ class SyntheticTaskComparison(
         return correct.toDouble() / inputs.size
     }
     
-    private fun measureInferencePerformance(adapter: NetworkAdapter, batchSize: Int, numIterations: Int): PerformanceMetrics {
+    private fun measureInferencePerformance(adapter: NetworkAdapter, numIterations: Int): PerformanceMetrics {
         val config = adapter.getConfig()
         val testInput = DoubleArray(config.inputSize) { random.nextDouble() }
         
