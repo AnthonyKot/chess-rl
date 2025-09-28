@@ -2,126 +2,102 @@
 
 ## Introduction
 
-This feature implements a comprehensive framework stack migration that allows users to choose between a legacy custom implementation and a mature framework-based implementation using industry-standard tools (RL4J, DL4J, chesslib). The system provides a single `--stack` flag to switch the entire pipeline while maintaining full backward compatibility and allowing granular component overrides for advanced users.
+This feature migrates the RL4J backend from a retrofitted shim-based integration to a first-class backend implementation. The goal is to eliminate reflection-based workarounds and allow RL4J to manage its own training lifecycle, experience replay, and policy management. This creates a cleaner separation between the manual experience pipeline (legacy) and the native RL4J framework pipeline, while maintaining compatibility and providing users with a choice between approaches.
 
 ## Requirements
 
 ### Requirement 1
 
-**User Story:** As a chess RL researcher, I want to choose between legacy and framework stacks via a single command-line flag, so that I can leverage mature frameworks while preserving my existing custom implementation.
+**User Story:** As a chess RL researcher, I want RL4J to operate as a first-class backend without reflection-based workarounds, so that I can leverage the full power of the RL4J framework with proper lifecycle management.
 
 #### Acceptance Criteria
 
-1. WHEN I run the CLI with `--stack legacy` THEN the system SHALL use the current custom engine + manual NN + manual DQN implementation
-2. WHEN I run the CLI with `--stack framework` THEN the system SHALL use chesslib engine + DL4J NN + RL4J DQN implementation
-3. WHEN I run the CLI without the `--stack` flag THEN the system SHALL default to legacy stack
-4. WHEN I run the CLI with `--help` THEN the system SHALL display the `--stack` flag options and descriptions
-5. WHEN I specify an invalid stack option THEN the system SHALL show an error message and exit
+1. WHEN using RL4J backend THEN the system SHALL use real RL4J/DL4J configuration builders instead of reflection
+2. WHEN training with RL4J THEN the system SHALL call public training APIs (learn() or trainer loop) instead of protected trainStep() via reflection
+3. WHEN using RL4J backend THEN the system SHALL honor ChessAgentConfig and map all hyperparameters to native RL4J configuration
+4. WHEN RL4J backend initializes THEN the system SHALL remove all mock policy fallbacks and ensure policy always exposes nextAction
+5. WHEN extracting metrics THEN the system SHALL use actual RL4J info objects instead of manual tracking
 
 ### Requirement 2
 
-**User Story:** As a power user, I want granular component overrides for engine, neural network, and RL backends, so that I can experiment with mixed configurations.
+**User Story:** As a developer, I want RL4J to manage its own experience replay buffer instead of being forced into the manual experience pipeline, so that the framework can optimize memory usage and sampling strategies.
 
 #### Acceptance Criteria
 
-1. WHEN I specify `--engine builtin|chesslib` THEN the system SHALL override the stack default for chess engine
-2. WHEN I specify `--nn manual|dl4j` THEN the system SHALL override the stack default for neural network backend
-3. WHEN I specify `--rl manual|rl4j` THEN the system SHALL override the stack default for RL backend
-4. WHEN I use `--stack framework --engine builtin` THEN the system SHALL use builtin engine with DL4J NN and RL4J RL
-5. WHEN component overrides conflict THEN the system SHALL use the explicit override values
+1. WHEN using RL4J backend THEN the system SHALL route experiences directly to RL4J's ReplayMemory using storeTransition
+2. WHEN training occurs THEN the system SHALL allow RL4J to handle its own experience sampling and batch creation
+3. WHEN replay buffer is full THEN the system SHALL let RL4J manage buffer overflow and replacement strategies
+4. WHEN experiences are stored THEN the system SHALL ensure proper format conversion from chess observations to RL4J expected format
+5. WHEN replay buffer plumbing is complete THEN the system SHALL verify experiences land correctly in RL4J's internal structures
 
 ### Requirement 3
 
-**User Story:** As a developer, I want unified configuration management that maps existing profiles to both legacy and framework stacks, so that I maintain consistent hyperparameters across implementations.
+**User Story:** As a chess RL practitioner, I want robust legal move enforcement that works natively with RL4J's policy selection, so that illegal moves are prevented at the policy level rather than through post-hoc fallbacks.
 
 #### Acceptance Criteria
 
-1. WHEN I use existing profile files THEN the system SHALL automatically translate parameters to the selected stack format
-2. WHEN using framework stack THEN the system SHALL map learning rate, batch size, and RL parameters to RL4J/DL4J configurations
-3. WHEN using legacy stack THEN the system SHALL maintain existing parameter interpretation
-4. WHEN stack selection occurs THEN the system SHALL log the resolved configuration for reproducibility
-5. WHEN invalid parameters are detected THEN the system SHALL provide clear error messages with suggested corrections
+1. WHEN using RL4J backend THEN the system SHALL implement policy-level action masking that sets illegal action Q-values to very negative values
+2. WHEN action masking is applied THEN the system SHALL ensure RL4J's epsilon-greedy selection only considers legal moves
+3. WHEN fallback masking is needed THEN the system SHALL maintain it in ChessMDP.step() as a safety net
+4. WHEN masking statistics are collected THEN the system SHALL instrument and log masking effectiveness to confirm no illegal actions reach engines
+5. WHEN policy wrapper is implemented THEN the system SHALL ensure it integrates seamlessly with RL4J's training loop
 
 ### Requirement 4
 
-**User Story:** As a researcher, I want chess engine abstraction that provides consistent interfaces across builtin and chesslib implementations, so that game logic remains unchanged regardless of engine choice.
+**User Story:** As a developer, I want proper configuration mapping between ChessAgentConfig and RL4J/DL4J native configurations, so that hyperparameters are correctly translated without manual intervention.
 
 #### Acceptance Criteria
 
-1. WHEN using ChessEngineAdapter interface THEN the system SHALL provide immutable FEN state representation
-2. WHEN querying legal moves THEN the system SHALL return consistent move representations across engines
-3. WHEN applying moves THEN the system SHALL update game state identically for both engine implementations
-4. WHEN detecting game outcomes THEN the system SHALL use consistent terminal state detection (checkmate, stalemate, 50-move rule)
-5. WHEN switching engines THEN the system SHALL maintain identical observation and action space encodings
+1. WHEN BackendAwareChessAgentFactory is used THEN the system SHALL ensure RL4J picks up the real config mapper
+2. WHEN configuration values diverge THEN the system SHALL surface validation errors with clear explanations
+3. WHEN hyperparameters are mapped THEN the system SHALL translate learning rate, batch size, epsilon values, and network architecture to RL4J format
+4. WHEN configuration is resolved THEN the system SHALL log the final RL4J configuration for verification
+5. WHEN invalid mappings are detected THEN the system SHALL provide specific guidance on correct parameter ranges
 
 ### Requirement 5
 
-**User Story:** As a chess RL practitioner, I want strict legal move enforcement across all stack configurations, so that agents never attempt illegal moves during training or evaluation.
+**User Story:** As a user, I want optional CLI stack presets that simplify backend selection, so that I can easily choose between legacy and framework approaches without specifying individual components.
 
 #### Acceptance Criteria
 
-1. WHEN any agent selects an illegal action THEN the system SHALL either mask the action or provide a legal fallback
-2. WHEN action masking is enabled THEN the system SHALL set illegal action Q-values to very negative values before selection
-3. WHEN fallback mode is used THEN the system SHALL log the fallback action selection for debugging
-4. WHEN training completes THEN the system SHALL report zero illegal move attempts in the metrics
-5. WHEN using framework stack THEN the system SHALL implement custom policy wrapper for RL4J epsilon-greedy masking
+1. WHEN I use `--stack legacy` flag THEN the system SHALL preset --engine builtin --nn manual --rl manual
+2. WHEN I use `--stack framework` flag THEN the system SHALL preset --engine chesslib --nn dl4j --rl rl4j  
+3. WHEN stack presets are used THEN the system SHALL allow individual component overrides to take precedence
+4. WHEN stack preset is applied THEN the system SHALL log resolved components for transparency
+5. WHEN profile parsing occurs THEN the system SHALL update to handle stack presets if they are introduced
 
 ### Requirement 6
 
-**User Story:** As a user, I want unified checkpoint management that supports models from both stacks, so that I can save, load, and compare models regardless of which stack was used for training.
+**User Story:** As a developer, I want comprehensive RL4J-specific testing that validates the first-class backend implementation, so that I can ensure the migration from reflection-based integration is successful.
 
 #### Acceptance Criteria
 
-1. WHEN I save a model with legacy stack THEN the system SHALL create .json format files with metadata
-2. WHEN I save a model with framework stack THEN the system SHALL create .zip format files with metadata
-3. WHEN I load a model with `--load` or `--load-best` THEN the system SHALL automatically detect and support both formats
-4. WHEN determining best model THEN the system SHALL use consistent promotion logic across stack types
-5. WHEN checkpointing occurs THEN the system SHALL include stack type, component versions, and performance metrics in metadata
+1. WHEN RL4J is available THEN the system SHALL enable RL4J-only tests that cover initialization, training, and save/load round trips
+2. WHEN running tests locally THEN the system SHALL provide clear documentation on JDK requirements and enableRL4J=true flag
+3. WHEN CI is configured THEN the system SHALL include a job that builds with RL4J enabled and runs the gated test suite
+4. WHEN RL4J backend is tested THEN the system SHALL verify proper integration without reflection-based workarounds
+5. WHEN tests are gated THEN the system SHALL ensure they only run when RL4J dependencies are available
 
 ### Requirement 7
 
-**User Story:** As a researcher, I want identical CLI user experience and JSON outputs across stacks, so that I can compare performance and integrate with existing tooling.
+**User Story:** As a user, I want enhanced observability that clearly shows when RL4J is operating as a first-class backend, so that I can verify the migration was successful and debug any issues.
 
 #### Acceptance Criteria
 
-1. WHEN running training with any stack THEN the system SHALL produce identical high-level metrics format
-2. WHEN running evaluation with any stack THEN the system SHALL produce identical JSON output structure
-3. WHEN running head-to-head matches THEN the system SHALL support models from different stacks
-4. WHEN using interactive play mode THEN the system SHALL work identically regardless of stack choice
-5. WHEN generating diagnostics THEN the system SHALL maintain consistent measurement methodology across stacks
+1. WHEN RL4J backend initializes THEN the system SHALL log backend creation details including component versions
+2. WHEN replay buffer is used THEN the system SHALL log replay buffer usage statistics and RL4J integration status
+3. WHEN checkpoints are created THEN the system SHALL log checkpoint format and include stack/component information
+4. WHEN masking occurs THEN the system SHALL expand logging around action masking effectiveness and illegal action attempts
+5. WHEN training progresses THEN the system SHALL include stack/component info in all relevant log messages
 
 ### Requirement 8
 
-**User Story:** As a developer, I want comprehensive observability that clearly indicates which components are active, so that I can debug issues and verify correct stack selection.
+**User Story:** As a developer, I want updated documentation that reflects the first-class RL4J backend approach, so that users understand the migration from reflection-based integration and how to use the new capabilities.
 
 #### Acceptance Criteria
 
-1. WHEN training starts THEN the system SHALL log the selected stack and resolved component choices
-2. WHEN components initialize THEN the system SHALL log backend names and versions for engine, NN, and RL
-3. WHEN action masking occurs THEN the system SHALL log masking statistics and illegal action attempts
-4. WHEN checkpointing occurs THEN the system SHALL log checkpoint format and metadata details
-5. WHEN errors occur THEN the system SHALL provide stack-aware error messages with component context
-
-### Requirement 9
-
-**User Story:** As a researcher, I want framework stack to leverage mature implementations while maintaining performance parity, so that I can benefit from established libraries without sacrificing training efficiency.
-
-#### Acceptance Criteria
-
-1. WHEN using chesslib engine THEN the system SHALL provide legal move generation with performance comparable to builtin engine
-2. WHEN using DL4J neural networks THEN the system SHALL maintain training throughput within 20% of manual implementation
-3. WHEN using RL4J algorithms THEN the system SHALL achieve convergence rates comparable to manual DQN implementation
-4. WHEN running long training sessions THEN the system SHALL maintain memory usage and stability across both stacks
-5. WHEN switching stacks THEN the system SHALL complete identical training scenarios with comparable wall-clock time
-
-### Requirement 10
-
-**User Story:** As a developer, I want comprehensive testing that validates correctness and compatibility across all stack configurations, so that I can ensure reliability of the migration.
-
-#### Acceptance Criteria
-
-1. WHEN running unit tests THEN the system SHALL verify engine adapter correctness for legal moves, outcomes, and FEN handling
-2. WHEN running integration tests THEN the system SHALL verify end-to-end training produces valid metrics for all stack combinations
-3. WHEN running compatibility tests THEN the system SHALL verify checkpoint save/load round-trip for both formats
-4. WHEN running evaluation tests THEN the system SHALL verify JSON output consistency across stacks
-5. WHEN running soak tests THEN the system SHALL verify long-term stability and performance for framework stack components
+1. WHEN documentation is updated THEN the system SHALL describe stack presets and their component mappings
+2. WHEN RL4J enablement is documented THEN the system SHALL provide clear instructions for local development setup
+3. WHEN masking behavior is explained THEN the system SHALL describe both policy-level and fallback masking approaches
+4. WHEN migration is documented THEN the system SHALL explain the benefits of first-class RL4J backend over reflection-based approach
+5. WHEN README is refreshed THEN the system SHALL include examples of using stack presets and component overrides

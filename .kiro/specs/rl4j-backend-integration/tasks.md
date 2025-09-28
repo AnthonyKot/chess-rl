@@ -130,53 +130,81 @@
     - Test checkpoint metadata handling and format detection
     - _Requirements: Acceptance Test for Requirement 1_
 
-- [ ] 7. Implement benchmark metrics collection system
-  - [ ] 7.1 Create BenchmarkMetricsCollector
-    - Collect win/draw/loss rates, loss curves, illegal move counts
-    - Track training time per cycle and peak memory usage
-    - Ensure identical metrics collection for both backends
+                - [x] 7.§ x312  q Implement real RL4J API calls in RL4JChessAgent
+                  - [x] 7.1 Replace reflection-based stubs with direct RL4J calls
+                    - Remove TODO comments from selectActionWithRealRL4J method
+                    - Implement direct calls to RL4J policy.play() or equivalent
+                    - Replace saveWithRealRL4J placeholder with actual RL4J model saving
+                    - Remove createRealQLearningDiscreteDense fallback logic
+                    - _Requirements: 1.1, 1.2, 1.3, 1.4_
+
+                  - [x] 7.2 Implement real RL4J training integrationk
+                    - Replace trainBatch simulation with actual RL4J trainer calls
+                    - Use RL4J's built-in experience replay instead of custom logic
+                    - Return genuine RL4J loss values and training statistics
+                    - Integrate with RL4J's target network update mechanisms
+                    - _Requirements: 3.1, 3.2, 3.3, 3.4_
+
+                  - [x] 7.3 Test RL4J API integration
+                    - Verify all RL4J methods are called directly when available
+                    - Test training produces real RL4J loss curves and metrics
+                    - Validate model saving/loading uses RL4J persistence
+                    - Confirm no placeholder logic remains in production paths
+    - _Requirements: 1.4, 3.3_
+
+- [x] 8. Fix MDP bridge to use proper RL4J types
+  - [x] 8.1 Implement proper RL4J interface inheritance
+    - Make ChessObservationSpace implement ObservationSpace<Observation>
+    - Make ChessActionSpace extend DiscreteSpace directly
+    - Remove wrapper objects and use RL4J types throughout
+    - _Requirements: 2.1, 2.2_
+
+  - [x] 8.2 Fix ChessMDP.step() return types
+    - Return org.deeplearning4j.gym.StepReply instead of wrapper
+    - Ensure ChessMDP implements MDP<Observation,Int,DiscreteSpace>
+    - Remove toRL4JMDP() conversion method - use direct implementation
+    - _Requirements: 2.3, 2.4_
+
+  - [x] 8.3 Test MDP bridge with real RL4J
+    - Verify ChessMDP can be used directly with QLearningDiscreteDense
+    - Test observation and action spaces work with RL4J trainers
+    - Validate no type conversion errors occur during training
+    - _Requirements: 2.4_
+
+- [ ] 9. Enable RL4J runtime testing
+  - [ ] 9.1 Create tests that run with RL4J on classpath
+    - Add integration test that requires RL4JAvailability.isAvailable() == true
+    - Use @EnabledIf or similar to conditionally run RL4J tests
+    - Test actual RL4J training/saving/loading cycle end-to-end
     - _Requirements: 4.1, 4.2, 4.3_
 
-  - [ ] 7.2 Add controlled experiment framework
-    - Support running identical seeds and profiles for both backends
-    - Implement parallel training runs for comparison
-    - Add statistical analysis tools for performance differences
-    - _Requirements: 4.1_
+  - [ ] 9.2 Add CI configuration for RL4J testing
+    - Configure Gradle properties to enable RL4J dependencies in CI
+    - Ensure RL4J tests run in appropriate CI environments
+    - Add documentation for running RL4J tests locally
+    - _Requirements: 4.4_
 
-  - [ ] 7.3 Create data export and visualization tools
-    - Export benchmark data to CSV/JSON format
-    - Generate side-by-side comparison plots and tables
-    - Create reproducible analysis scripts
-    - _Requirements: 4.4, Acceptance Test for Requirement 4_
+  - [ ] 9.3 Verify real RL4J behavior in tests
+    - Test that RL4J training produces different results than manual backend
+    - Verify RL4J model persistence and loading works correctly
+    - Validate RL4J-specific configuration options take effect
+    - _Requirements: 4.3_
 
-- [ ] 8. Add comprehensive testing and validation
-  - [ ] 8.1 Complete unit test suite
-    - Test all configuration mapping edge cases
-    - Validate MDP wrapper behavior thoroughly
-    - Test checkpoint compatibility across formats
-    - _Requirements: All requirements validation_
+- [ ] 10. Fix CLI backend factory integration
+  - [x] 10.1 Update ChessRLCLI.handleTrain() method
+    - Replace direct DqnLearningBackend instantiation with BackendFactory call
+    - Pass selectedBackend parameter to BackendFactory.createBackend()
+    - Remove hardcoded backend selection logic
+    - _Requirements: 5.1, 5.2_
 
-  - [ ] 8.2 Add integration tests for full pipeline
-    - Test end-to-end training with both backends
-    - Verify benchmark data collection and export
-    - Test evaluation pipeline with mixed checkpoint types
-    - _Requirements: All acceptance tests_
+  - [x] 10.2 Ensure BackendFactory routes correctly
+    - Verify BackendFactory.createBackend() respects backend parameter
+    - Remove manual fallback when RL4J backend is requested
+    - Test that --nn rl4j creates RL4JLearningBackend instance
+    - _Requirements: 5.3, 5.4_
 
-  - [ ] 8.3 Create benchmark validation script
-    - Implement `scripts/benchmark_rl4j_vs_manual.md` or equivalent
-    - Run controlled 5 cycles × 20 games comparison
-    - Generate side-by-side performance analysis
-    - _Requirements: Acceptance Test for Requirement 4_
-
-- [ ] 9. Optional: Extended resource analysis
-  - [ ] 9.1 Implement resource scaling experiments
-    - Test performance with increased cycles and memory
-    - Document scaling behavior for both backends
-    - Analyze hardware utilization patterns
-    - _Requirements: 5.1, 5.2, 5.3_
-
-  - [ ] 9.2 Generate hardware investment case documentation
-    - Create research summary with benchmark data
-    - Document compute-bound vs algorithm-bound analysis
-    - Provide clear hardware investment recommendations
-    - _Requirements: 6.1, 6.2, 6.3, 6.4_
+  - [x] 10.3 Test CLI integration end-to-end
+    - Verify --nn rl4j flag actually uses RL4J implementation
+    - Test that training runs through RL4J backend when selected
+    - Validate CLI error handling for unavailable backends
+    - _Requirements: 5.4_

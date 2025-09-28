@@ -2,38 +2,36 @@
 
 ## Overview
 
-This design implements an RL4J backend prototype that enables direct performance comparison with our existing custom DQN implementation. The architecture focuses on delivering functional parity while maintaining identical problem formulations (839-dimensional state encoding, 4096-dimensional action space) to ensure fair benchmarking.
+This design implements real RL4J integration by replacing placeholder stubs with direct RL4J API calls, fixing the MDP bridge to use proper RL4J types, and ensuring the training loop drives actual RL4J trainers. The focus is on making RL4J work authentically rather than simulating it.
 
-The design extends the existing `--nn` CLI flag to support RL4J selection, wraps our chess environment in RL4J's MDP interface, and ensures both backends can be evaluated using the same infrastructure.
+The key technical challenges addressed are:
+1. Converting reflection-based stubs to direct RL4J method calls
+2. Making Chess MDP components properly implement RL4J interfaces
+3. Integrating real RL4J training loops instead of custom simulation
+4. Enabling tests that run with actual RL4J runtime
+5. Fixing CLI routing to use BackendFactory properly
 
 ## Architecture
 
-### High-Level Architecture
+### Current State vs Target State
 
 ```mermaid
 graph TB
-    CLI[Chess RL CLI] --> NNFlag{--nn flag}
-    NNFlag --> |manual| ManualBackend[Custom DQN Backend]
-    NNFlag --> |rl4j| RL4JBackend[RL4J Backend]
+    subgraph "Current (Broken) State"
+        CLI1[CLI] --> |hardcoded| DQN1[DqnLearningBackend]
+        RL4JAgent1[RL4JChessAgent] --> |reflection stubs| TODO1[TODO methods]
+        ChessMDP1[ChessMDP] --> |wrapper objects| RL4JWrapper1[toRL4JMDP()]
+        RL4JBackend1[RL4JLearningBackend] --> |simulation| CustomLoop1[Custom training loop]
+        Tests1[RL4J Tests] --> |short-circuit| Skip1[Skip if !available]
+    end
     
-    ManualBackend --> ChessEnv[Chess Environment]
-    RL4JBackend --> ChessMDP[Chess MDP Wrapper]
-    ChessMDP --> ChessEnv
-    
-    ChessEnv --> StateEncoder[839D State Encoder]
-    ChessEnv --> ActionEncoder[4096D Action Encoder]
-    ChessEnv --> RewardLogic[Reward Logic]
-    
-    ManualBackend --> Checkpoint1[Manual Checkpoint]
-    RL4JBackend --> Checkpoint2[RL4J Checkpoint]
-    
-    Checkpoint1 --> Evaluator[BaselineEvaluator]
-    Checkpoint2 --> Evaluator
-    
-    subgraph "RL4J Components"
-        RL4JBackend --> QLearning[QLearningDiscreteDense]
-        QLearning --> DQNFactory[DQNFactoryStdDense]
-        ChessMDP --> MDPInterface[MDP Interface]
+    subgraph "Target (Working) State"
+        CLI2[CLI] --> BackendFactory[BackendFactory]
+        BackendFactory --> |--nn rl4j| RL4JBackend2[RL4JLearningBackend]
+        RL4JAgent2[RL4JChessAgent] --> |direct calls| RL4JAPI[Real RL4J API]
+        ChessMDP2[ChessMDP] --> |implements| RL4JInterfaces[MDP<Observation,Int,DiscreteSpace>]
+        RL4JBackend2 --> |drives| RL4JTrainer[QLearningDiscreteDense]
+        Tests2[RL4J Tests] --> |when available| RealRL4J[Test with real RL4J]
     end
 ```
 
@@ -63,167 +61,207 @@ flowchart TD
 
 ## Components and Interfaces
 
-### 1. CLI Extension
+### 1. Real RL4J API Integration
 
-**Component**: `ChessRLCLI` enhancement
-- **Purpose**: Extend `--nn` flag to support RL4J backend selection
-- **Interface**: Modify existing neural network backend selection
-- **Implementation**: 
+**Component**: `RL4JChessAgent` refactoring
+- **Purpose**: Replace reflection-based stubs with direct RL4J method calls
+- **Current Problem**: Methods like `selectActionWithRealRL4J` contain TODO comments and fallback logic
+- **Solution**: 
 ```kotlin
-enum class NeuralNetworkBackend {
-    MANUAL, RL4J;
+class RL4JChessAgent(private val dqn: QLearningDiscreteDense<ChessObservation>) : ChessAgent {
+    
+    override fun selectAction(observation: ChessObservation, legalActions: List<Int>): Int {
+        // BEFORE: reflection-based stub with TODO
+        // AFTER: direct RL4J call
+        return dqn.policy.nextAction(observation)
+    }
+    
+    override fun save(path: String) {
+        // BEFORE: saveWithRealRL4J() with placeholder logic
+        // AFTER: direct RL4J model saving
+        dqn.save(path)
+    }
     
     companion object {
-        fun fromString(value: String): NeuralNetworkBackend {
-            return when (value.lowercase()) {
-                "manual" -> MANUAL
-                "rl4j" -> RL4J
-                else -> throw IllegalArgumentException("Unknown NN backend: $value. Use 'manual' or 'rl4j'")
-            }
+        fun create(config: QLearning.QLConfiguration, mdp: ChessMDP): RL4JChessAgent {
+            // BEFORE: createRealQLearningDiscreteDense() fallback
+            // AFTER: direct RL4J instantiation
+            val dqn = QLearningDiscreteDense(mdp, config)
+            return RL4JChessAgent(dqn)
         }
     }
 }
 ```
 
-### 2. Configuration Mapper
+### 2. Proper MDP Bridge Implementation
 
-**Component**: `ConfigurationMapper`
-- **Purpose**: Ensure identical hyperparameters across both backends
-- **Interface**: Translates `ChessRLConfig` to backend-specific configurations
-- **Implementation**:
+**Component**: `ChessMDP` and related classes refactoring
+- **Purpose**: Make Chess MDP components properly implement RL4J interfaces instead of using wrappers
+- **Current Problem**: `ChessMDP.toRL4JMDP()` builds wrappers around wrong RL4J classes
+- **Solution**:
 ```kotlin
-class ConfigurationMapper {
-    fun toManualConfig(config: ChessRLConfig): ManualDQNConfig {
-        return ManualDQNConfig(
-            learningRate = config.learningRate,
-            batchSize = config.batchSize,
-            gamma = config.gamma,
-            targetUpdateFrequency = config.targetUpdateFrequency,
-            maxExperienceBuffer = config.maxExperienceBuffer,
-            hiddenLayers = config.hiddenLayers
-        )
-    }
-    
-    fun toRL4JConfig(config: ChessRLConfig): QLearning.QLConfiguration {
-        validateParameters(config)
-        return QLearning.QLConfiguration.builder()
-            .seed(config.seed ?: Random.nextLong())
-            .learningRate(config.learningRate)
-            .gamma(config.gamma)
-            .epsilonNbStep(1000)
-            .minEpsilon(0.01)
-            .expRepMaxSize(config.maxExperienceBuffer)
-            .batchSize(config.batchSize)
-            .targetDqnUpdateFreq(config.targetUpdateFrequency)
-            .build()
-    }
-    
-    private fun validateParameters(config: ChessRLConfig) {
-        if (config.learningRate <= 0) {
-            throw IllegalArgumentException("Learning rate must be positive, got: ${config.learningRate}")
-        }
-        // Additional validation...
-    }
+// BEFORE: Wrapper approach
+class ChessMDP {
+    fun toRL4JMDP(): SomeWrapperClass { /* wrong approach */ }
 }
-```
 
-### 3. Chess MDP Wrapper
-
-**Component**: `ChessMDP`
-- **Purpose**: Adapt existing chess environment to RL4J's MDP interface
-- **Interface**: Implements `MDP<ChessObservation, Integer, DiscreteSpace>`
-- **Key Methods**:
-```kotlin
-class ChessMDP(private val chessEnvironment: ChessEnvironment) : MDP<ChessObservation, Integer, DiscreteSpace> {
+// AFTER: Direct implementation
+class ChessMDP(private val env: ChessEnvironment) : MDP<ChessObservation, Int, DiscreteSpace> {
     
     override fun reset(): ChessObservation {
-        chessEnvironment.reset()
-        return ChessObservation(chessEnvironment.getStateEncoding()) // 839 features
+        env.reset()
+        return ChessObservation(env.getStateEncoding())
     }
     
-    override fun step(action: Integer): StepReply<ChessObservation> {
-        val legalActions = chessEnvironment.getLegalActions()
-        
-        val actualAction = if (action in legalActions) {
-            action
-        } else {
-            logger.warn("Illegal action $action attempted, falling back to best legal move")
-            legalActions.maxByOrNull { chessEnvironment.getActionValue(it) } ?: legalActions.first()
-        }
-        
-        val stepResult = chessEnvironment.step(actualAction)
+    override fun step(action: Int): StepReply<ChessObservation> {
+        val result = env.step(action)
         return StepReply(
-            ChessObservation(stepResult.nextState),
-            stepResult.reward,
-            stepResult.isDone,
-            JSONObject() // info
+            ChessObservation(result.nextState),
+            result.reward,
+            result.isDone,
+            JSONObject()
         )
     }
     
-    override fun isDone(): Boolean = chessEnvironment.isTerminal()
+    override fun getObservationSpace(): ObservationSpace<ChessObservation> = ChessObservationSpace()
+    override fun getActionSpace(): DiscreteSpace = ChessActionSpace()
+    override fun isDone(): Boolean = env.isTerminal()
+    override fun close() {}
+    override fun newInstance(): MDP<ChessObservation, Int, DiscreteSpace> = ChessMDP(env.clone())
+}
+
+class ChessObservationSpace : ObservationSpace<ChessObservation> {
+    override fun getName(): String = "ChessObservation"
+    override fun getShape(): IntArray = intArrayOf(839)
+    override fun getSampleObservation(): ChessObservation = ChessObservation(DoubleArray(839))
+}
+
+class ChessActionSpace : DiscreteSpace(4096) {
+    // Inherits all DiscreteSpace functionality
+}
+```
+
+### 3. Real RL4J Training Loop Integration
+
+**Component**: `RL4JLearningBackend` refactoring
+- **Purpose**: Drive actual RL4J training loops instead of simulating them
+- **Current Problem**: `trainBatch()` executes custom environment stepping and pretends to compute loss
+- **Solution**:
+```kotlin
+class RL4JLearningBackend(
+    private val config: QLearning.QLConfiguration,
+    private val mdp: ChessMDP
+) : LearningBackend {
     
-    override fun getObservationSpace(): ObservationSpace<ChessObservation> {
-        return ArrayObservationSpace(intArrayOf(839))
+    private val dqn: QLearningDiscreteDense<ChessObservation> = QLearningDiscreteDense(mdp, config)
+    
+    override fun trainBatch(): TrainingResult {
+        // BEFORE: Custom environment stepping simulation
+        // val stepResult = environment.step(action)
+        // val fakeLoss = computeFakeLoss(stepResult)
+        
+        // AFTER: Real RL4J training
+        val trainingResult = dqn.train()  // Uses RL4J's built-in training loop
+        
+        return TrainingResult(
+            loss = trainingResult.loss,
+            episodeReward = trainingResult.episodeReward,
+            stepsThisEpisode = trainingResult.stepsThisEpisode
+        )
     }
     
-    override fun getActionSpace(): DiscreteSpace {
-        return DiscreteSpace(4096)
+    override fun save(path: String) {
+        // BEFORE: Placeholder save logic
+        // AFTER: Real RL4J model persistence
+        dqn.save(path)
+    }
+    
+    override fun load(path: String) {
+        // BEFORE: Placeholder load logic  
+        // AFTER: Real RL4J model loading
+        dqn.load(path)
     }
 }
 ```
 
-### 4. Backend Factory
+### 4. CLI Backend Factory Integration
 
-**Component**: `BackendFactory`
-- **Purpose**: Create appropriate backend based on CLI selection
-- **Interface**: Factory pattern for backend instantiation
-- **Implementation**:
+**Component**: `ChessRLCLI.handleTrain()` refactoring
+- **Purpose**: Route CLI requests through BackendFactory instead of hardcoding DqnLearningBackend
+- **Current Problem**: CLI instantiates DqnLearningBackend directly, bypassing BackendFactory
+- **Solution**:
 ```kotlin
+// BEFORE: Hardcoded backend instantiation
+fun handleTrain(args: TrainArgs) {
+    val backend = DqnLearningBackend(config, environment) // Always manual backend
+    backend.train()
+}
+
+// AFTER: Proper factory routing
+fun handleTrain(args: TrainArgs) {
+    val selectedBackend = NeuralNetworkBackend.fromString(args.neuralNetwork)
+    val backend = BackendFactory.createBackend(selectedBackend, config, environment)
+    backend.train()
+}
+
+// Ensure BackendFactory respects the backend parameter
 class BackendFactory {
     fun createBackend(
         backendType: NeuralNetworkBackend,
         config: ChessRLConfig,
-        chessEnvironment: ChessEnvironment
-    ): TrainingBackend {
+        environment: ChessEnvironment
+    ): LearningBackend {
         return when (backendType) {
-            NeuralNetworkBackend.MANUAL -> {
-                val manualConfig = configMapper.toManualConfig(config)
-                ManualDQNBackend(manualConfig, chessEnvironment)
-            }
+            NeuralNetworkBackend.MANUAL -> ManualDQNBackend(config, environment)
             NeuralNetworkBackend.RL4J -> {
-                val rl4jConfig = configMapper.toRL4JConfig(config)
-                val chessMDP = ChessMDP(chessEnvironment)
-                RL4JBackend(rl4jConfig, chessMDP)
+                if (!RL4JAvailability.isAvailable()) {
+                    throw IllegalStateException("RL4J backend requested but RL4J not available")
+                }
+                RL4JLearningBackend(config, ChessMDP(environment))
             }
         }
     }
 }
 ```
 
-### 5. Checkpoint Compatibility
+### 5. RL4J Runtime Testing
 
-**Component**: `UnifiedCheckpointManager`
-- **Purpose**: Ensure both backends can be evaluated by BaselineEvaluator
-- **Interface**: Common checkpoint format and loading mechanism
-- **Implementation**:
+**Component**: Integration test infrastructure
+- **Purpose**: Enable tests that run with actual RL4J on the classpath
+- **Current Problem**: All RL4J tests short-circuit if `RL4JAvailability.isAvailable()` is false
+- **Solution**:
 ```kotlin
-class UnifiedCheckpointManager {
-    fun saveCheckpoint(backend: TrainingBackend, path: String) {
-        when (backend) {
-            is ManualDQNBackend -> saveManualCheckpoint(backend, path)
-            is RL4JBackend -> saveRL4JCheckpoint(backend, path)
-        }
+// BEFORE: Tests always skip when RL4J not available
+@Test
+fun testRL4JIntegration() {
+    if (!RL4JAvailability.isAvailable()) {
+        return // Skip test
     }
-    
-    fun loadForEvaluation(checkpointPath: String): EvaluationModel {
-        val metadata = loadMetadata(checkpointPath)
-        return when (metadata.backendType) {
-            "manual" -> loadManualModel(checkpointPath)
-            "rl4j" -> loadRL4JModel(checkpointPath)
-            else -> throw IllegalArgumentException("Unknown backend type: ${metadata.backendType}")
-        }
-    }
+    // Test never actually runs in practice
 }
+
+// AFTER: Conditional test execution with real RL4J
+@Test
+@EnabledIf("com.chessrl.integration.backend.RL4JAvailability#isAvailable")
+fun testRL4JIntegration() {
+    // This test only runs when RL4J is actually available
+    val mdp = ChessMDP(chessEnvironment)
+    val config = QLearning.QLConfiguration.builder().build()
+    val dqn = QLearningDiscreteDense(mdp, config)
+    
+    // Test real RL4J training
+    val result = dqn.train()
+    assertThat(result).isNotNull()
+    
+    // Test real RL4J saving/loading
+    dqn.save("test_model.zip")
+    val loaded = QLearningDiscreteDense.load("test_model.zip")
+    assertThat(loaded).isNotNull()
+}
+
+// Gradle configuration to enable RL4J in CI
+// gradle.properties or CI environment:
+// enableRL4J=true
 ```
 
 ### 6. Metrics Collection

@@ -370,7 +370,7 @@ class UnifiedCheckpointManager(
         backendType: BackendType
     ): String {
         val timestamp = System.currentTimeMillis()
-        val baseFilename = "unified_${checkpointId}_${backendType.name.lowercase()}_${timestamp}"
+        val baseFilename = "unified_${checkpointId}_c${metadata.cycle}_${backendType.name.lowercase()}_${timestamp}"
         
         val extension = when (backendType) {
             BackendType.RL4J -> ".zip"

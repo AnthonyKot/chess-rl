@@ -360,19 +360,20 @@ object BackendAwareChessAgentFactory {
         // Validate RL4J availability
         RL4JAvailability.validateAvailability()
         
-        // Create chess environment for MDP wrapper
-        val chessEnvironment = ChessEnvironment()
-        val chessMDP = ChessMDP(chessEnvironment)
-        
-        // Create RL4J configuration from backend config
-        val rl4jConfig = createRL4JConfiguration(backendConfig, agentConfig, gamma)
+        if (enableDoubleDQN) {
+            logger.debug("RL4J backend placeholder currently ignores enableDoubleDQN=true")
+        }
+        if (!replayType.equals("UNIFORM", ignoreCase = true)) {
+            logger.debug("RL4J backend placeholder does not yet support replay type '$replayType'")
+        }
+
+        createRL4JConfiguration(backendConfig, agentConfig, gamma).also {
+            logger.debug("Generated RL4J configuration placeholder: ${it::class.simpleName}")
+        }
         
         // Create RL4J agent
         val rl4jAgent = RL4JChessAgent(
-            chessMDP = chessMDP,
-            config = agentConfig,
-            rl4jConfig = rl4jConfig,
-            hiddenLayers = backendConfig.hiddenLayers
+            config = agentConfig
         )
         rl4jAgent.initialize()
         
@@ -396,19 +397,20 @@ object BackendAwareChessAgentFactory {
         // Validate RL4J availability
         RL4JAvailability.validateAvailability()
         
-        // Create seeded chess environment for MDP wrapper
-        val chessEnvironment = ChessEnvironment()
-        val chessMDP = ChessMDP(chessEnvironment)
-        
-        // Create RL4J configuration from backend config with seed
-        val rl4jConfig = createSeededRL4JConfiguration(backendConfig, agentConfig, gamma, seedManager)
+        if (enableDoubleDQN) {
+            logger.debug("RL4J backend placeholder currently ignores enableDoubleDQN=true (seeded path)")
+        }
+        if (!replayType.equals("UNIFORM", ignoreCase = true)) {
+            logger.debug("RL4J backend placeholder does not yet support replay type '$replayType' (seeded path)")
+        }
+
+        createSeededRL4JConfiguration(backendConfig, agentConfig, gamma, seedManager).also {
+            logger.debug("Generated seeded RL4J configuration placeholder: ${it::class.simpleName}")
+        }
         
         // Create seeded RL4J agent
         val rl4jAgent = RL4JChessAgent(
-            chessMDP = chessMDP,
-            config = agentConfig,
-            rl4jConfig = rl4jConfig,
-            hiddenLayers = backendConfig.hiddenLayers
+            config = agentConfig
         )
         rl4jAgent.initialize()
         

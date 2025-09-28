@@ -2,9 +2,9 @@ package com.chessrl.integration
 
 import com.chessrl.integration.adapter.EngineBackend
 import com.chessrl.integration.backend.BackendSelector
+import com.chessrl.integration.backend.BackendFactory
 import com.chessrl.integration.backend.BackendType
 import com.chessrl.integration.backend.CheckpointCompatibility
-import com.chessrl.integration.backend.DqnLearningBackend
 import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.config.ConfigParser
 import com.chessrl.integration.config.JvmConfigParser
@@ -74,7 +74,7 @@ object ChessRLCLI {
         
         // Determine neural network backend from CLI args
         val backendType = BackendSelector.parseBackendFromArgs(args)
-        val backend = DqnLearningBackend(backendType)
+        val backend = BackendFactory.createBackend(backendType, config)
         
         val pipeline = TrainingPipeline(config, backend)
         

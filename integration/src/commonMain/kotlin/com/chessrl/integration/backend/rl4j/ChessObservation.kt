@@ -27,11 +27,20 @@ class ChessObservation(private val stateVector: DoubleArray) : org.deeplearning4
     }
     
     /**
-     * Get the raw state vector data.
+     * Get the raw state vector data as INDArray for RL4J compatibility.
+     * 
+     * @return INDArray representation of the chess position
+     */
+    override fun getData(): org.nd4j.linalg.api.ndarray.INDArray {
+        return getINDArray() as org.nd4j.linalg.api.ndarray.INDArray
+    }
+    
+    /**
+     * Get the raw state vector as DoubleArray.
      * 
      * @return 839-dimensional double array representing the chess position
      */
-    override fun getData(): DoubleArray = stateVector.copyOf()
+    fun getDataArray(): DoubleArray = stateVector.copyOf()
     
     /**
      * Get the state vector as an INDArray for RL4J compatibility.
@@ -54,9 +63,13 @@ class ChessObservation(private val stateVector: DoubleArray) : org.deeplearning4
      * Create INDArray using real ND4J API when available.
      */
     private fun createINDArrayWithRealND4J(): Any {
-        // This would use real ND4J APIs when RL4J is on the classpath
-        // For now, fall back to reflection
-        return createINDArrayWithReflection()
+        try {
+            // Use real ND4J API to create INDArray
+            return org.nd4j.linalg.factory.Nd4j.create(stateVector)
+        } catch (e: Exception) {
+            logger.warn("Failed to create INDArray with real ND4J API, falling back to reflection: ${e.message}")
+            return createINDArrayWithReflection()
+        }
     }
     
     /**
@@ -131,5 +144,9 @@ class ChessObservation(private val stateVector: DoubleArray) : org.deeplearning4
     
     override fun isSkipped(): Boolean {
         return false // Chess observations are never skipped
+    }
+    
+    override fun dup(): org.deeplearning4j.rl4j.space.Encodable {
+        return ChessObservation(stateVector.copyOf())
     }
 }

@@ -11,10 +11,9 @@ import com.chessrl.integration.logging.ChessRLLogger
  * enabling RL4J algorithms to train on chess while maintaining our existing
  * game logic, state encoding, and reward computation.
  * 
- * When RL4J is available, this implements the actual RL4J MDP interface.
- * When RL4J is not available, it provides a compatible API for testing.
+ * Implements RL4J's MDP interface directly for proper type compatibility.
  */
-class ChessMDP(private val chessEnvironment: ChessEnvironment) {
+class ChessMDP(private val chessEnvironment: ChessEnvironment) : org.deeplearning4j.rl4j.mdp.MDP<ChessObservation, Int, org.deeplearning4j.rl4j.space.DiscreteSpace> {
     
     companion object {
         private val logger = ChessRLLogger.forComponent("ChessMDP")
@@ -34,7 +33,7 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
      * 
      * @return Initial chess observation (standard starting position)
      */
-    fun reset(): ChessObservation {
+    override fun reset(): ChessObservation {
         logger.debug("Resetting chess environment")
         
         try {
@@ -56,18 +55,22 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
      * Execute an action in the environment.
      * 
      * @param action The action to execute (0-4095)
-     * @return StepReply containing next observation, reward, done flag, and info
+     * @return RL4J StepReply containing next observation, reward, done flag, and info
      */
-    fun step(action: Int): StepReply {
+    override fun step(action: Int): org.deeplearning4j.gym.StepReply<ChessObservation> {
         logger.debug("Executing action: $action")
         
         if (isDoneFlag) {
             logger.warn("Attempted to step in terminal state")
-            return StepReply(
-                observation = currentObservation ?: reset(),
-                reward = 0.0,
-                isDone = true,
-                info = mapOf("error" to "Environment is already terminal")
+            return org.deeplearning4j.gym.StepReply(
+                currentObservation ?: reset(),
+                0.0,
+                true,
+                createInfoObject(mapOf(
+                    "error" to "Environment is already terminal",
+                    "legal" to 0,
+                    "illegal" to true
+                ))
             )
         }
         
@@ -79,7 +82,7 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
             }
             
             // Get legal actions before attempting the move
-            val legalActions = chessEnvironment.getValidActions(currentObservation?.getData() ?: DoubleArray(839))
+            val legalActions = chessEnvironment.getValidActions(currentObservation?.getDataArray() ?: DoubleArray(839))
             
             val actualAction = if (action in legalActions) {
                 action
@@ -97,27 +100,32 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
             
             logger.debug("Step completed: reward=${stepResult.reward}, done=${stepResult.done}")
             
-            return StepReply(
-                observation = currentObservation!!,
-                reward = stepResult.reward,
-                isDone = stepResult.done,
-                info = mapOf(
+            return org.deeplearning4j.gym.StepReply(
+                currentObservation!!,
+                stepResult.reward,
+                stepResult.done,
+                createInfoObject(mapOf(
                     "originalAction" to action,
                     "actualAction" to actualAction,
-                    "legalActions" to legalActions.size,
-                    "wasIllegal" to (action != actualAction)
-                )
+                    "legal" to legalActions.size,
+                    "illegal" to (action != actualAction)
+                ))
             )
             
         } catch (e: Exception) {
             logger.error("Failed to execute step: ${e.message}")
             
             // Return safe fallback state
-            return StepReply(
-                observation = currentObservation ?: reset(),
-                reward = -1.0, // Penalty for error
-                isDone = true,
-                info = mapOf("error" to (e.message ?: "Unknown error"))
+            return org.deeplearning4j.gym.StepReply(
+                currentObservation ?: reset(),
+                -1.0, // Penalty for error
+                true,
+                createInfoObject(mapOf(
+                    "error" to (e.message ?: "Unknown error"),
+                    "originalAction" to action,
+                    "legal" to 0,
+                    "illegal" to true
+                ))
             )
         }
     }
@@ -125,23 +133,23 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
     /**
      * Handle illegal action by selecting a fallback legal move.
      */
-    private fun handleIllegalAction(action: Int): StepReply {
-        val legalActions = chessEnvironment.getValidActions(currentObservation?.getData() ?: DoubleArray(839))
+    private fun handleIllegalAction(action: Int): org.deeplearning4j.gym.StepReply<ChessObservation> {
+        val legalActions = chessEnvironment.getValidActions(currentObservation?.getDataArray() ?: DoubleArray(839))
         
         if (legalActions.isEmpty()) {
             // Game is over
             isDoneFlag = true
-            return StepReply(
-                observation = currentObservation ?: reset(),
-                reward = 0.0,
-                isDone = true,
-                info = mapOf(
+            return org.deeplearning4j.gym.StepReply(
+                currentObservation ?: reset(),
+                0.0,
+                true,
+                createInfoObject(mapOf(
                     "error" to "No legal actions available",
                     "originalAction" to action,
                     "actualAction" to action,
-                    "legalActions" to 0,
-                    "wasIllegal" to true
-                )
+                    "legal" to 0,
+                    "illegal" to true
+                ))
             )
         }
         
@@ -155,7 +163,7 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
     /**
      * Execute a step with fallback action, preserving original action information.
      */
-    private fun stepWithFallback(originalAction: Int, fallbackAction: Int, legalActions: List<Int>): StepReply {
+    private fun stepWithFallback(originalAction: Int, fallbackAction: Int, legalActions: List<Int>): org.deeplearning4j.gym.StepReply<ChessObservation> {
         try {
             // Execute the fallback action
             val stepResult = chessEnvironment.step(fallbackAction)
@@ -166,33 +174,33 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
             
             logger.debug("Fallback step completed: reward=${stepResult.reward}, done=${stepResult.done}")
             
-            return StepReply(
-                observation = currentObservation!!,
-                reward = stepResult.reward,
-                isDone = stepResult.done,
-                info = mapOf(
+            return org.deeplearning4j.gym.StepReply(
+                currentObservation!!,
+                stepResult.reward,
+                stepResult.done,
+                createInfoObject(mapOf(
                     "originalAction" to originalAction,
                     "actualAction" to fallbackAction,
-                    "legalActions" to legalActions.size,
-                    "wasIllegal" to true
-                )
+                    "legal" to legalActions.size,
+                    "illegal" to true
+                ))
             )
             
         } catch (e: Exception) {
             logger.error("Failed to execute fallback step: ${e.message}")
             
             // Return safe fallback state
-            return StepReply(
-                observation = currentObservation ?: reset(),
-                reward = -1.0, // Penalty for error
-                isDone = true,
-                info = mapOf(
+            return org.deeplearning4j.gym.StepReply(
+                currentObservation ?: reset(),
+                -1.0, // Penalty for error
+                true,
+                createInfoObject(mapOf(
                     "error" to (e.message ?: "Unknown error"),
                     "originalAction" to originalAction,
                     "actualAction" to fallbackAction,
-                    "legalActions" to legalActions.size,
-                    "wasIllegal" to true
-                )
+                    "legal" to legalActions.size,
+                    "illegal" to true
+                ))
             )
         }
     }
@@ -216,26 +224,26 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
      * 
      * @return true if game is over, false otherwise
      */
-    fun isDone(): Boolean = isDoneFlag
+    override fun isDone(): Boolean = isDoneFlag
     
     /**
      * Get the observation space for this MDP.
      * 
      * @return ChessObservationSpace instance
      */
-    fun getObservationSpace(): ChessObservationSpace = observationSpace
+    override fun getObservationSpace(): ChessObservationSpace = observationSpace
     
     /**
      * Get the action space for this MDP.
      * 
      * @return ChessActionSpace instance
      */
-    fun getActionSpace(): ChessActionSpace = actionSpace
+    override fun getActionSpace(): ChessActionSpace = actionSpace
     
     /**
      * Close the environment and clean up resources.
      */
-    fun close() {
+    override fun close() {
         logger.debug("Closing chess MDP")
         // Chess environment doesn't require explicit cleanup
     }
@@ -245,7 +253,7 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
      * 
      * @return New ChessMDP instance with fresh chess environment
      */
-    fun newInstance(): ChessMDP {
+    override fun newInstance(): ChessMDP {
         logger.debug("Creating new ChessMDP instance")
         
         // Create a new chess environment instance
@@ -274,28 +282,20 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
      */
     fun getChessEnvironment(): ChessEnvironment = chessEnvironment
     
+
+    
     /**
-     * Create an RL4J-compatible MDP instance.
+     * Create an info object for RL4J StepReply info field.
      * 
-     * This method creates an actual RL4J MDP implementation that can be used
-     * with RL4J algorithms when RL4J is available.
+     * RL4J StepReply constructor accepts Object for info, so we can pass a Map.
+     * This provides useful debugging information without requiring JSONObject.
      * 
-     * @return RL4J MDP instance or compatible wrapper
-     * @throws IllegalStateException if RL4J classes are not available when needed
+     * @param data Map of key-value pairs to include in the info object
+     * @return Info object for RL4J compatibility
      */
-    fun toRL4JMDP(): Any {
-        return if (RL4JAvailability.isAvailable()) {
-            try {
-                logger.info("Creating actual RL4J MDP implementation")
-                RL4JMDPImpl(this)
-            } catch (e: Exception) {
-                logger.error("Failed to create RL4J MDP implementation: ${e.message}")
-                throw IllegalStateException("Failed to create RL4J MDP implementation", e)
-            }
-        } else {
-            logger.info("RL4J not available, creating compatible wrapper for testing")
-            RL4JMDPWrapper(this)
-        }
+    private fun createInfoObject(data: Map<String, Any>): Any {
+        // Return a HashMap which RL4J should be able to handle
+        return HashMap(data)
     }
     
     override fun toString(): String {
@@ -303,122 +303,3 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) {
     }
 }
 
-/**
- * Step reply containing the result of an MDP step.
- */
-data class StepReply(
-    val observation: ChessObservation,
-    val reward: Double,
-    val isDone: Boolean,
-    val info: Map<String, Any> = emptyMap()
-)
-
-/**
- * Actual RL4J MDP implementation when RL4J is available.
- * 
- * This class implements the real RL4J MDP interface using proper RL4J classes.
- */
-private class RL4JMDPImpl(private val chessMDP: ChessMDP) : org.deeplearning4j.rl4j.mdp.MDP<ChessObservation, Int, org.deeplearning4j.rl4j.space.DiscreteSpace> {
-    
-    companion object {
-        private val logger = ChessRLLogger.forComponent("RL4JMDPImpl")
-    }
-    
-    private val observationSpace = org.deeplearning4j.rl4j.space.ArrayObservationSpace<ChessObservation>(intArrayOf(ChessObservationSpace.DIMENSIONS))
-    private val actionSpace = org.deeplearning4j.rl4j.space.DiscreteSpace(ChessActionSpace.ACTION_COUNT)
-    
-    init {
-        logger.debug("Created actual RL4J MDP implementation")
-    }
-    
-    override fun reset(): ChessObservation {
-        logger.debug("RL4J MDP reset called")
-        return chessMDP.reset()
-    }
-    
-    override fun step(action: Int): org.deeplearning4j.rl4j.mdp.MDP.StepReply<ChessObservation> {
-        logger.debug("RL4J MDP step called with action: $action")
-        val stepReply = chessMDP.step(action)
-        
-        return object : org.deeplearning4j.rl4j.mdp.MDP.StepReply<ChessObservation> {
-            override fun getObservation(): ChessObservation = stepReply.observation
-            override fun getReward(): Double = stepReply.reward
-            override fun isDone(): Boolean = stepReply.isDone
-            override fun getInfo(): Any = stepReply.info
-        }
-    }
-    
-    override fun isDone(): Boolean {
-        return chessMDP.isDone()
-    }
-    
-    override fun getObservationSpace(): org.deeplearning4j.rl4j.space.ObservationSpace<ChessObservation> {
-        return observationSpace
-    }
-    
-    override fun getActionSpace(): org.deeplearning4j.rl4j.space.DiscreteSpace {
-        return actionSpace
-    }
-    
-    override fun close() {
-        logger.debug("RL4J MDP close called")
-        // Chess environment doesn't need explicit cleanup
-    }
-    
-    override fun newInstance(): org.deeplearning4j.rl4j.mdp.MDP<ChessObservation, Int, org.deeplearning4j.rl4j.space.DiscreteSpace> {
-        logger.debug("RL4J MDP newInstance called")
-        // Create a new chess environment for parallel training
-        val newChessEnv = ChessEnvironment()
-        val newChessMDP = ChessMDP(newChessEnv)
-        return RL4JMDPImpl(newChessMDP)
-    }
-}
-
-/**
- * Wrapper class for testing when RL4J is not available.
- * 
- * This provides a compatible API for testing without RL4J dependencies.
- */
-private class RL4JMDPWrapper(private val chessMDP: ChessMDP) {
-    
-    companion object {
-        private val logger = ChessRLLogger.forComponent("RL4JMDPWrapper")
-    }
-    
-    init {
-        logger.debug("Created RL4J MDP wrapper for testing")
-    }
-    
-    fun reset(): Any {
-        val observation = chessMDP.reset()
-        return observation.getINDArray()
-    }
-    
-    fun step(action: Int): Any {
-        val stepReply = chessMDP.step(action)
-        
-        // Return a simple map for testing
-        return mapOf(
-            "observation" to stepReply.observation.getINDArray(),
-            "reward" to stepReply.reward,
-            "done" to stepReply.isDone,
-            "info" to stepReply.info
-        )
-    }
-    
-    fun isDone(): Boolean = chessMDP.isDone()
-    
-    fun getObservationSpace(): Any = mapOf(
-        "shape" to intArrayOf(ChessObservationSpace.DIMENSIONS),
-        "type" to "ArrayObservationSpace"
-    )
-    
-    fun getActionSpace(): Any = mapOf(
-        "size" to ChessActionSpace.ACTION_COUNT,
-        "type" to "DiscreteSpace"
-    )
-    
-    fun close() = chessMDP.close()
-    
-    fun newInstance(): Any = chessMDP.newInstance().toRL4JMDP()
-}

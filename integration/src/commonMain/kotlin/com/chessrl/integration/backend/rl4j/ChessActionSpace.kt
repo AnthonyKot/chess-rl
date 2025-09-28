@@ -6,9 +6,10 @@ import com.chessrl.integration.logging.ChessRLLogger
  * Chess action space for RL4J integration.
  * 
  * Defines the action space for chess moves as a discrete space with 4096 possible actions.
- * This extends RL4J's DiscreteSpace interface to provide chess-specific action space information.
+ * This extends RL4J's DiscreteSpace class directly to provide proper type compatibility
+ * with RL4J trainers.
  */
-class ChessActionSpace {
+class ChessActionSpace : org.deeplearning4j.rl4j.space.DiscreteSpace(ACTION_COUNT) {
     
     companion object {
         private val logger = ChessRLLogger.forComponent("ChessActionSpace")
@@ -24,7 +25,7 @@ class ChessActionSpace {
      * 
      * @return 4096 (total number of possible chess moves in our encoding)
      */
-    fun getSize(): Int = ACTION_COUNT
+    override fun getSize(): Int = ACTION_COUNT
     
     /**
      * Get the name of this action space.
@@ -81,27 +82,7 @@ class ChessActionSpace {
         return kotlin.random.Random.Default.nextInt(ACTION_COUNT)
     }
     
-    /**
-     * Create an action space compatible with RL4J's DiscreteSpace interface.
-     * 
-     * This method uses reflection to create an RL4J-compatible discrete space
-     * without compile-time dependency on RL4J classes.
-     * 
-     * @return RL4J DiscreteSpace instance
-     * @throws IllegalStateException if RL4J classes are not available
-     */
-    fun toRL4JDiscreteSpace(): Any {
-        try {
-            // Try to create DiscreteSpace using reflection
-            val discreteSpaceClass = Class.forName("org.deeplearning4j.rl4j.space.DiscreteSpace")
-            val constructor = discreteSpaceClass.getConstructor(Int::class.java)
-            return constructor.newInstance(ACTION_COUNT)
-        } catch (e: ClassNotFoundException) {
-            throw IllegalStateException("RL4J classes not found. Ensure RL4J dependencies are available.", e)
-        } catch (e: Exception) {
-            throw IllegalStateException("Failed to create RL4J discrete space", e)
-        }
-    }
+
     
     /**
      * Get the minimum action value.

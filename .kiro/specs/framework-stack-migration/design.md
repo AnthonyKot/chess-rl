@@ -1,496 +1,243 @@
 # Design Document
 
-## Overview
-
-This design implements a comprehensive framework stack migration that provides users with a choice between a legacy custom implementation and a mature framework-based implementation. The system introduces a `--stack legacy|framework` flag that switches the entire pipeline while maintaining full backward compatibility and allowing granular component overrides.
-
-The design follows a pluggable architecture where each component (chess engine, neural network, RL algorithm) can be independently selected and configured. The framework stack leverages chesslib for chess logic, DL4J for neural networks, and RL4J for reinforcement learning, while the legacy stack preserves the existing custom implementations.
-
-## Architecture
-
-### High-Level Stack Architecture
-
-```mermaid
-graph TB
-    CLI[Chess RL CLI] --> StackSelector[Stack Selector]
-    StackSelector --> |--stack legacy| LegacyStack[Legacy Stack]
-    StackSelector --> |--stack framework| FrameworkStack[Framework Stack]
-    
-    subgraph "Legacy Stack"
-        LegacyEngine[Builtin Chess Engine]
-        LegacyNN[Manual Neural Network]
-        LegacyRL[Manual DQN]
-        LegacyEngine --> LegacyNN
-        LegacyNN --> LegacyRL
-    end
-    
-    subgraph "Framework Stack"
-        ChessLib[Chesslib Engine]
-        DL4J[DL4J Neural Network]
-        RL4J[RL4J Algorithms]
-        ChessLib --> DL4J
-        DL4J --> RL4J
-    end
-    
-    subgraph "Component Overrides"
-        EngineOverride[--engine builtin|chesslib]
-        NNOverride[--nn manual|dl4j]
-        RLOverride[--rl manual|rl4j]
-    end
-    
-    EngineOverride -.-> LegacyEngine
-    EngineOverride -.-> ChessLib
-    NNOverride -.-> LegacyNN
-    NNOverride -.-> DL4J
-    RLOverride -.-> LegacyRL
-    RLOverride -.-> RL4J
-```
-
-### Configuration Resolution Flow
-
-```mermaid
-flowchart TD
-    Start([CLI Execution]) --> ParseStack[Parse --stack flag]
-    ParseStack --> ParseOverrides[Parse component overrides]
-    ParseOverrides --> ResolveConfig[Resolve final configuration]
-    
-    ResolveConfig --> CheckStack{Stack type?}
-    CheckStack --> |legacy| LegacyDefaults[engine=builtin, nn=manual, rl=manual]
-    CheckStack --> |framework| FrameworkDefaults[engine=chesslib, nn=dl4j, rl=rl4j]
-    
-    LegacyDefaults --> ApplyOverrides[Apply component overrides]
-    FrameworkDefaults --> ApplyOverrides
-    
-    ApplyOverrides --> ValidateConfig[Validate configuration]
-    ValidateConfig --> CreateFactories[Create component factories]
-    CreateFactories --> InitializeComponents[Initialize components]
-```
-
-### Component Factory Architecture
-
-```mermaid
-graph TB
-    IntegrationConfig[Integration Config] --> BackendFactory[Backend Factory]
-    BackendFactory --> |stack=legacy| LegacyFactory[Legacy Backend Factory]
-    BackendFactory --> |stack=framework| FrameworkFactory[Framework Backend Factory]
-    
-    LegacyFactory --> LegacyTrainer[Legacy Trainer]
-    LegacyFactory --> LegacyEvaluator[Legacy Evaluator]
-    
-    FrameworkFactory --> FrameworkTrainer[Framework Trainer]
-    FrameworkFactory --> FrameworkEvaluator[Framework Evaluator]
-    
-    subgraph "Unified Interfaces"
-        TrainerInterface[Trainer Interface]
-        EvaluatorInterface[Evaluator Interface]
-    end
-    
-    LegacyTrainer --> TrainerInterface
-    FrameworkTrainer --> TrainerInterface
-    LegacyEvaluator --> EvaluatorInterface
-    FrameworkEvaluator --> EvaluatorInterface
-```
-
-## Components and Interfaces
-
-### 1. Stack Selection and Configuration
-
-**Component**: `StackSelector` and `IntegrationConfig`
-- **Purpose**: Parse CLI flags and resolve final component configuration
-- **Interface**: 
-```kotlin
-data class IntegrationConfig(
-    val stack: StackType,
-    val engine: EngineType,
-    val neuralNetwork: NeuralNetworkType,
-    val reinforcementLearning: RLType,
-    val profileConfig: ChessRLConfig,
-    // ... other configuration fields
-)
-
-enum class StackType { LEGACY, FRAMEWORK }
-enum class EngineType { BUILTIN, CHESSLIB }
-enum class NeuralNetworkType { MANUAL, DL4J }
-enum class RLType { MANUAL, RL4J }
-```
-
-**Resolution Logic**:
-1. Parse `--stack` flag (default: LEGACY)
-2. Set component defaults based on stack type
-3. Apply explicit component overrides (`--engine`, `--nn`, `--rl`)
-4. Validate configuration compatibility
-5. Merge with profile configuration
-
-### 2. Chess Engine Abstraction
-
-**Component**: `ChessEngineAdapter` interface with implementations
-- **Purpose**: Provide unified chess engine interface across builtin and chesslib
-- **Interface**:
-```kotlin
-interface ChessEngineAdapter {
-    fun getLegalMoves(fen: String): List<ChessMove>
-    fun applyMove(fen: String, move: ChessMove): String
-    fun getGameOutcome(fen: String): GameOutcome?
-    fun isValidMove(fen: String, move: ChessMove): Boolean
-}
-
-data class ChessMove(
-    val from: Square,
-    val to: Square,
-    val promotion: PieceType? = null
-)
-
-sealed class GameOutcome {
-    object WhiteWins : GameOutcome()
-    object BlackWins : GameOutcome()
-    object Draw : GameOutcome()
-}
-```
-
-**Implementations**:
-- `BuiltinEngineAdapter`: Wraps existing chess engine implementation
-- `ChesslibEngineAdapter`: Integrates with chesslib for move generation and validation
-
-### 3. Observation and Action Encoding
-
-**Component**: `ObservationEncoder` and `ActionAdapter`
-- **Purpose**: Maintain consistent 839-dimensional observations and 4096-dimensional actions
-- **Interface**:
-```kotlin
-interface ObservationEncoder {
-    fun encode(fen: String): DoubleArray // Size 839
-}
-
-interface ActionAdapter {
-    fun moveToActionId(move: ChessMove): Int // 0-4095
-    fun actionIdToMove(actionId: Int): ChessMove
-    fun getLegalActionIds(fen: String, engine: ChessEngineAdapter): List<Int>
-}
-```
-
-**Implementation**: Reuse existing encoding logic with adapter pattern for framework compatibility
-
-### 4. Backend Factory System
-
-**Component**: `BackendFactory` with stack-specific implementations
-- **Purpose**: Create trainers and evaluators based on resolved configuration
-- **Interface**:
-```kotlin
-interface BackendFactory {
-    fun createTrainer(config: IntegrationConfig): Trainer
-    fun createEvaluator(config: IntegrationConfig): Evaluator
-}
-
-class LegacyBackendFactory : BackendFactory {
-    override fun createTrainer(config: IntegrationConfig): Trainer {
-        // Create trainer using existing DQN/NN implementation
-    }
-}
-
-class FrameworkBackendFactory : BackendFactory {
-    override fun createTrainer(config: IntegrationConfig): Trainer {
-        // Create trainer using RL4J/DL4J implementation
-    }
-}
-```
-
-### 5. Framework Stack Components
-
-#### 5.1 DL4J Neural Network Integration
-
-**Component**: `DL4JNeuralNetwork`
-- **Purpose**: Wrap DL4J MultiLayerNetwork for chess RL
-- **Architecture**: 839 → hidden layers → 4096 output
-- **Configuration**: Map from existing NN parameters to DL4J configuration
-- **Interface**: Compatible with existing neural network interface
-
-#### 5.2 RL4J Integration
-
-**Component**: `ChessMDP` and `RL4JTrainer`
-- **Purpose**: Adapt chess environment to RL4J MDP interface
-- **Key Features**:
-  - Custom MDP implementation for chess
-  - QLearningDiscreteDense with DQN factory
-  - Action masking for legal move enforcement
-  - Configuration mapping from existing RL parameters
-
-#### 5.3 Chesslib Engine Integration
-
-**Component**: `ChesslibEngineAdapter`
-- **Purpose**: Leverage chesslib for robust chess logic
-- **Features**:
-  - Legal move generation
-  - Position evaluation
-  - Game outcome detection
-  - FEN parsing and generation
-
-### 6. Action Masking System
-
-**Component**: Two-phase masking implementation
-- **Phase 1 (Fallback)**: Detect illegal actions and select legal fallback
-- **Phase 2 (Policy Masking)**: Mask illegal actions before policy selection
-- **Implementation**:
-```kotlin
-class MaskedPolicy(
-    private val basePolicy: Policy,
-    private val actionAdapter: ActionAdapter,
-    private val engine: ChessEngineAdapter
-) : Policy {
-    override fun selectAction(observation: Observation, qValues: INDArray): Int {
-        val legalActions = actionAdapter.getLegalActionIds(observation.fen, engine)
-        val maskedQValues = qValues.dup()
-        
-        // Mask illegal actions
-        for (i in 0 until qValues.length()) {
-            if (i !in legalActions) {
-                maskedQValues.putScalar(i, Double.NEGATIVE_INFINITY)
-            }
-        }
-        
-        return basePolicy.selectAction(observation, maskedQValues)
-    }
-}
-```
-
-### 7. Unified Checkpoint Management
-
-**Component**: `CheckpointManagerAdapter`
-- **Purpose**: Handle both .json (legacy) and .zip (framework) model formats
-- **Features**:
-  - Automatic format detection
-  - Metadata generation with stack information
-  - Best model promotion logic
-  - Cross-stack model loading validation
-
-**Implementation**:
-```kotlin
-class CheckpointManagerAdapter(
-    private val config: IntegrationConfig
-) {
-    fun saveCheckpoint(model: Any, metadata: CheckpointMetadata): String {
-        return when (config.neuralNetwork) {
-            NeuralNetworkType.MANUAL -> saveJsonCheckpoint(model, metadata)
-            NeuralNetworkType.DL4J -> saveZipCheckpoint(model, metadata)
-        }
-    }
-    
-    fun loadCheckpoint(path: String): Pair<Any, CheckpointMetadata> {
-        return when {
-            path.endsWith(".json") -> loadJsonCheckpoint(path)
-            path.endsWith(".zip") -> loadZipCheckpoint(path)
-            else -> throw IllegalArgumentException("Unknown checkpoint format")
-        }
-    }
-}
-```
-
-## Data Models
-
-### Configuration Data Models
-
-```kotlin
-data class IntegrationConfig(
-    val stack: StackType,
-    val engine: EngineType,
-    val neuralNetwork: NeuralNetworkType,
-    val reinforcementLearning: RLType,
-    val profileConfig: ChessRLConfig,
-    val overrides: ComponentOverrides
-) {
-    companion object {
-        fun resolve(
-            stackFlag: String?,
-            engineFlag: String?,
-            nnFlag: String?,
-            rlFlag: String?,
-            profileConfig: ChessRLConfig
-        ): IntegrationConfig {
-            val stack = StackType.valueOf(stackFlag?.uppercase() ?: "LEGACY")
-            
-            // Set defaults based on stack
-            val (defaultEngine, defaultNN, defaultRL) = when (stack) {
-                StackType.LEGACY -> Triple(EngineType.BUILTIN, NeuralNetworkType.MANUAL, RLType.MANUAL)
-                StackType.FRAMEWORK -> Triple(EngineType.CHESSLIB, NeuralNetworkType.DL4J, RLType.RL4J)
-            }
-            
-            // Apply overrides
-            val engine = engineFlag?.let { EngineType.valueOf(it.uppercase()) } ?: defaultEngine
-            val nn = nnFlag?.let { NeuralNetworkType.valueOf(it.uppercase()) } ?: defaultNN
-            val rl = rlFlag?.let { RLType.valueOf(it.uppercase()) } ?: defaultRL
-            
-            return IntegrationConfig(stack, engine, nn, rl, profileConfig, ComponentOverrides())
-        }
-    }
-}
-```
-
-### Checkpoint Metadata
-
-```kotlin
-data class CheckpointMetadata(
-    val stackType: StackType,
-    val engineType: EngineType,
-    val neuralNetworkType: NeuralNetworkType,
-    val reinforcementLearningType: RLType,
-    val version: String,
-    val timestamp: Long,
-    val performanceMetrics: Map<String, Double>,
-    val configurationHash: String
-)
-```
-
-### Training and Evaluation Interfaces
-
-```kotlin
-interface Trainer {
-    fun train(cycles: Int): TrainingReport
-    fun saveCheckpoint(path: String): CheckpointMetadata
-    fun loadCheckpoint(path: String): CheckpointMetadata
-}
-
-interface Evaluator {
-    fun evaluateBaseline(config: EvaluationConfig): EvaluationReport
-    fun evaluateHeadToHead(config: H2HConfig): H2HReport
-}
-
-data class TrainingReport(
-    val cyclesCompleted: Int,
-    val bestModelPath: String?,
-    val metrics: Map<String, Double>,
-    val checkpoints: List<String>
-)
-```
-
-## Error Handling
-
-### Configuration Validation
-
-1. **Stack Compatibility**: Validate that component overrides are compatible
-2. **Dependency Checking**: Verify framework dependencies are available
-3. **Parameter Validation**: Ensure configuration parameters are within valid ranges
-4. **Graceful Degradation**: Fall back to legacy stack if framework initialization fails
-
-### Runtime Error Handling
-
-1. **Illegal Action Detection**: Monitor and handle illegal actions across all stacks
-2. **Model Loading Errors**: Provide clear error messages for incompatible model formats
-3. **Training Interruption**: Handle graceful shutdown and checkpoint saving
-4. **Memory Management**: Monitor and handle out-of-memory conditions
-
-### Cross-Stack Compatibility
-
-1. **Model Format Validation**: Prevent loading incompatible models
-2. **Configuration Migration**: Assist users in migrating configurations between stacks
-3. **Performance Monitoring**: Alert users to significant performance differences
-
-## Testing Strategy
-
-### Unit Tests
-
-1. **Configuration Resolution**:
-   - Stack flag parsing and default resolution
-   - Component override application
-   - Configuration validation and error handling
-
-2. **Engine Adapters**:
-   - Legal move generation consistency
-   - FEN parsing and game state management
-   - Outcome detection accuracy
-
-3. **Action Masking**:
-   - Illegal action detection and masking
-   - Policy wrapper correctness
-   - Performance impact measurement
-
-### Integration Tests
-
-1. **End-to-End Training**:
-   - Complete training cycles for both stacks
-   - Checkpoint saving and loading
-   - Metrics collection and reporting
-
-2. **Cross-Stack Compatibility**:
-   - Model evaluation across different stacks
-   - Configuration migration testing
-   - Performance parity validation
-
-3. **CLI Integration**:
-   - Flag parsing and routing
-   - Error message clarity
-   - Help text accuracy
-
-### Performance Tests
-
-1. **Training Throughput**:
-   - Games per second comparison
-   - Memory usage analysis
-   - Convergence rate measurement
-
-2. **Action Selection Latency**:
-   - Masked vs unmasked action selection
-   - Engine adapter performance
-   - Neural network inference speed
-
-### Soak Tests
-
-1. **Long-Running Training**:
-   - Multi-hour training stability
-   - Memory leak detection
-   - Checkpoint integrity over time
-
-2. **Stress Testing**:
-   - High concurrency scenarios
-   - Resource exhaustion handling
-   - Error recovery validation
-
-## Implementation Phases
-
-### Phase 1: Foundation (CLI and Configuration)
-- Implement stack selection CLI flags
-- Create configuration resolution system
-- Add component override handling
-- Implement basic validation and error handling
-
-### Phase 2: Engine Abstraction
-- Define ChessEngineAdapter interface
-- Implement BuiltinEngineAdapter wrapper
-- Implement ChesslibEngineAdapter
-- Add comprehensive engine testing
-
-### Phase 3: Framework Integration
-- Add DL4J and RL4J dependencies
-- Implement DL4J neural network wrapper
-- Create RL4J MDP and trainer implementation
-- Add basic framework stack functionality
-
-### Phase 4: Action Masking and Legal Move Enforcement
-- Implement Phase 1 fallback masking
-- Develop Phase 2 policy-level masking
-- Add performance optimization
-- Comprehensive legal move testing
-
-### Phase 5: Checkpoint System Unification
-- Implement unified checkpoint manager
-- Add support for both .json and .zip formats
-- Maintain backward compatibility
-- Integrate with best model selection
-
-### Phase 6: CLI and Profile Integration
-- Complete CLI flag integration
-- Map profile parameters to framework configurations
-- Ensure configuration parity
-- Add comprehensive documentation
-
-### Phase 7: Testing and Validation
-- Complete unit test suite
-- Integration testing across all configurations
-- Performance benchmarking
-- Soak testing for stability
-
-### Phase 8: Observability and Diagnostics
-- Add comprehensive logging
-- Implement performance monitoring
-- Create debugging tools
-- Add configuration validation helpers
-
-Each phase includes acceptance criteria validation and iterative refinement based on testing results and user feedback.
+  ## Overview
+
+  We are upgrading the RL4J backend from a reflection-heavy shim to a first-class integration. The manual (“legacy”) pipeline keeps its bespoke replay buffer and DQN updates; the RL4J pipeline will instead rely on RL4J’s native builders, lifecycle, and
+  metrics. No reflection, no mock policies, no hand-built experience plumbing.
+
+  Key focus areas:
+
+  1. Instantiate RL4J/DL4J with their public builders.
+  2. Let RL4J control experience replay and training loops.
+  3. Keep legality guarantees via the environment (optional policy masking later).
+  4. Harmonize configuration via a dedicated mapper.
+  5. Surface metrics/logging straight from RL4J handlers.
+
+  ———
+
+  ## Architecture
+
+  ### RL4J First-Class Backend
+
+  graph TB
+      CLI[Chess RL CLI] --> ConfigMapper[Config Resolver]
+      ConfigMapper --> BackendFactory[Backend Factory]
+
+      subgraph LegacyPipeline
+          LegacyTrainer[Manual DQN Trainer]
+          LegacyReplay[Manual Replay Buffer]
+          LegacyPolicy[Manual Policy]
+          LegacyTrainer --> LegacyReplay --> LegacyPolicy
+      end
+
+      subgraph RL4JPipeline
+          RL4JConfig[RL4J + DL4J Builders]
+          RL4JTrainer[QLearningDiscreteDense]
+          RL4JReplay[RL4J ReplayMemory]
+          RL4JPolicy[DQNPolicy]
+          RL4JConfig --> RL4JTrainer --> RL4JReplay --> RL4JPolicy
+      end
+
+      BackendFactory -->|--nn manual| LegacyTrainer
+      BackendFactory -->|--nn rl4j| RL4JConfig
+
+      subgraph Improvements
+          NativeBuilders[Native builders only]
+          NativeLifecycle[Native training loop]
+          NoReflection[No reflection/mocks]
+      end
+
+  ### Native Initialization Flow
+
+  flowchart TD
+      start([--nn rl4j]) --> resolve[Resolve ChessAgentConfig]
+      resolve --> mapConfig[Map to RL4J + DL4J builders]
+      mapConfig --> buildDQN[Build IDQN via DQNFactoryStdDense]
+      buildDQN --> createMDP[Instantiate ChessMDP]
+      createMDP --> createTrainer[Create QLearningDiscreteDense]
+      createTrainer --> attachListeners[Attach RL4J TrainingListeners]
+      attachListeners --> runTraining[Call qLearning.learn()]
+
+  ### Training Lifecycle & Replay
+
+  graph LR
+      ChessMDP -.step().-> QLearning
+      QLearning -->|collect| RL4JReplay[ReplayMemory]
+      RL4JReplay -->|sample| QLearning
+      subgraph ManagedByRL4J
+          RL4JReplay
+          QLearning
+      end
+      ManualReplay -.bypassed.-> X
+
+  The environment remains responsible for legal-move fallbacks: if RL4J selects an illegal action, ChessMDP.step() picks a legal substitute, logs it, and proceeds.
+
+  ———
+
+  ## Components
+
+  ### 1. RL4JConfigurationMapper
+
+  Maps ChessAgentConfig fields to RL4J and DL4J configuration builders.
+
+  class RL4JConfigurationMapper {
+      fun qLearningConfig(config: ChessAgentConfig): QLearningConfiguration =
+          QLearningConfiguration.builder()
+              .seed(config.seed?.toInt() ?: System.currentTimeMillis().toInt())
+              .maxEpochStep(config.maxStepsPerEpisode ?: DEFAULT_MAX_EPOCH)
+              .maxStep(config.totalTrainingSteps ?: DEFAULT_MAX_STEP)
+              .expRepMaxSize(config.maxBufferSize)
+              .batchSize(config.batchSize)
+              .targetDqnUpdateFreq(config.targetUpdateFrequency)
+              .updateStart(config.warmupSteps ?: DEFAULT_WARMUP)
+              .rewardFactor(1.0)
+              .gamma(config.gamma)
+              .errorClamp(config.errorClamp ?: DEFAULT_ERROR_CLAMP)
+              .minEpsilon(config.explorationRate.toFloat())
+              .epsilonNbStep(config.epsilonDecaySteps ?: DEFAULT_EPSILON_DECAY)
+              .doubleDQN(config.doubleDqn)
+              .build()
+
+      fun dqnFactoryConfig(config: ChessAgentConfig): DQNFactoryStdDense.Configuration =
+          DQNFactoryStdDense.Configuration.builder()
+              .l2(config.l2Regularization ?: DEFAULT_L2)
+              .learningRate(config.learningRate)
+              .numHiddenNodes(config.hiddenLayers.firstOrNull() ?: DEFAULT_HIDDEN_NODES)
+              .numLayers(config.hiddenLayers.size)
+              .build()
+  }
+
+  Note: If ChessAgentConfig lacks a field (e.g., warmupSteps), we either add it or fall back to a documented default.
+
+  ### 2. First-Class RL4J Backend Factory
+
+  class RL4JBackendFactory(
+      private val mapper: RL4JConfigurationMapper,
+      private val observationEncoder: ObservationEncoder,
+      private val actionAdapter: ActionAdapter,
+      private val engine: ChessEngineAdapter
+  ) : BackendFactory {
+
+      override fun createTrainer(config: IntegrationConfig): Trainer {
+          val agentCfg = config.profileConfig
+          RL4JAvailability.validate()
+
+          val qlConfig = mapper.qLearningConfig(agentCfg)
+          val dqnConfig = mapper.dqnFactoryConfig(agentCfg)
+
+          val dqnFactory = DQNFactoryStdDense(dqnConfig)
+          val mdp = ChessMDP(engine, actionAdapter, observationEncoder)
+
+          val qLearning = QLearningDiscreteDense(mdp, dqnFactory.buildDQN(mdp.observationSpace.shape(), mdp.actionSpace.shape()[0]), qlConfig)
+
+          return RL4JTrainer(qLearning)
+      }
+  }
+
+  No reflection, no Any. The trainer exposes save/load via qLearning.policy.
+
+  ### 3. ChessMDP Enhancements
+
+  ChessMDP already implements MDP<ChessObservation, Int, DiscreteSpace>. We reinforce:
+
+  - Illegal action fallback inside step().
+  - Rich StepReply metadata for observability.
+  - Optionally surface legal-move masks as part of the observation if future policy masking is desired.
+
+  ### 4. Observability
+
+  Use RL4J’s TrainingListener to capture metrics:
+
+  class RL4JMetricsListener(
+      private val observer: MetricsSink
+  ) : TrainingListener {
+      override fun onNewEpoch(training: Training, episodeNum: Int) = ListenerResponse.CONTINUE
+
+      override fun onTrainingResult(training: Training, result: StepResult): ListenerResponse {
+          observer.record(
+              episode = result.epoch counter,
+              steps = result.stepCounter,
+              epsilon = result.epislon,
+              reward = result.reward
+          )
+          return ListenerResponse.CONTINUE
+      }
+  }
+
+  We wire this listener into QLearningDiscreteDense so metrics flow directly from RL4J.
+
+  ### 5. Optional Policy Masking
+
+  Phase 1 relies on ChessMDP fallbacks. If we need policy-level masking later, we can wrap RL4J’s Policy:
+
+  - Duplicate Q-values (INDArray) and mask illegal indices with NEGATIVE_INFINITY.
+  - Delegate to the original policy’s nextAction(Observation).
+
+  This will be treated as an enhancement after the first-class integration lands.
+
+  ———
+
+  ## Data Models
+
+  - ChessObservation: implements Encodable, holds the 839-feature vector (and optionally a legal-mask array for future use).
+  - ComponentConfiguration: (engine, nn, rl) structure used by CLI stack presets.
+  - RL4JBackendMetadata: recorded in checkpoints; includes RL4J/DL4J versions, config hash, flag that reflection is disabled.
+
+  ———
+
+  ## Error Handling
+
+  1. Availability: if RL4J classes aren’t on the classpath, BackendFactory refuses to build (instructions: set enableRL4J=true).
+  2. Configuration mismatches: mapper validates numeric ranges and across-field consistency (e.g., buffer size ≥ batch size). Fail fast with descriptive messages.
+  3. Illegal actions: ChessMDP.step() catches them, chooses a legal fallback, logs metrics, and keeps training stable.
+  4. Metrics source: ensure we only read RL4J’s info objects; no leftover manual counters.
+
+  ———
+
+  ## Testing Strategy
+
+  ### Unit Tests
+
+  - Configuration mapper creates the correct RL4J builder objects with expected values.
+  - Backend factory returns a QLearningDiscreteDense wired to ChessMDP, preserving type safety.
+  - ChessMDP.step() handles legal/illegal moves, returns StepReply<ChessObservation>.
+
+  ### Integration Tests (Gated by RL4J Availability)
+
+  - Train for a few epochs with QLearningDiscreteDense.learn(); assert we get non-empty metrics, ReplayMemory grows, and checkpoints save/load.
+  - Compare policy action selection before/after training to ensure we’re using real RL4J output.
+  - CLI --nn rl4j path constructs RL4JLearningBackend and runs without reflection.
+
+  ### Manual/Performance Tests
+
+  - Run short training sessions (e.g., 100 episodes) to validate throughput and confirm the training loop is native RL4J.
+  - Inspect logs for “mock policy” or “reflection” to ensure they no longer appear.
+
+  ———
+
+  ## Implementation Phases
+
+  1. Native Configuration & Trainer
+      - Replace reflection builders with native RL4J/DL4J configuration.
+      - Instantiate QLearningDiscreteDense directly.
+      - Remove mock policy fallback; rely on real DQNPolicy.
+  2. Experience Handling & Training Loop
+      - Ensure the manual replay buffer code path is disabled for RL4J.
+      - Call qLearning.learn() (or trainEpoch) to let RL4J drive sampling.
+  3. Legal Action Handling
+      - Verify ChessMDP fallback handles illegal actions
+      - Instrument counts for debugging.
+      - Optionally, add policy-level masking after the core integration is stable.
+  4. CLI & Config Harmonization
+      - Use BackendFactory everywhere (already done—verify).
+
+  - Introduce --stack presets if helpful, but not required for core backend work.
+
+  5. Testing & Observability
+      - Add RL4J-gated integration tests.
+      - Document the build flag (enableRL4J=true, JDK requirement).
+      - Hook up training listeners to capture RL4J metrics directly.
+  6. Docs & Cleanup
+      - Update README/DQN docs to describe the RL4J backend and how to run it.
+      - Remove remaining reflection code and deprecated helper classes.
+      - Add release notes summarizing the first-class RL4J support.

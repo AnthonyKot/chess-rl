@@ -23,7 +23,9 @@ object BackendFactory {
      * @throws IllegalStateException if the backend is not available
      */
     fun createBackend(backendType: BackendType, config: ChessRLConfig): LearningBackend {
-        logger.info("Creating learning backend: ${backendType.name}")
+        logger.info(
+            "Creating learning backend: ${backendType.name} (hiddenLayers=${config.hiddenLayers.joinToString("x")}, batchSize=${config.batchSize})"
+        )
         
         // Validate backend availability
         val validation = BackendSelector.validateBackendAvailability(backendType)

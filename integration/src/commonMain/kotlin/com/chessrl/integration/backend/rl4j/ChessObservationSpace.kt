@@ -6,10 +6,10 @@ import com.chessrl.integration.logging.ChessRLLogger
  * Chess observation space for RL4J integration.
  * 
  * Defines the observation space for chess positions as a 839-dimensional
- * continuous space. This extends RL4J's ObservationSpace interface to provide
- * chess-specific observation space information.
+ * continuous space. This implements RL4J's ObservationSpace interface directly
+ * to provide proper type compatibility with RL4J trainers.
  */
-class ChessObservationSpace {
+class ChessObservationSpace : org.deeplearning4j.rl4j.space.ObservationSpace<ChessObservation> {
     
     companion object {
         private val logger = ChessRLLogger.forComponent("ChessObservationSpace")
@@ -25,14 +25,14 @@ class ChessObservationSpace {
      * 
      * @return "ChessObservationSpace"
      */
-    fun getName(): String = "ChessObservationSpace"
+    override fun getName(): String = "ChessObservationSpace"
     
     /**
      * Get the shape of observations in this space.
      * 
      * @return Array containing the dimensions [839]
      */
-    fun getShape(): IntArray = intArrayOf(DIMENSIONS)
+    override fun getShape(): IntArray = intArrayOf(DIMENSIONS)
     
     /**
      * Get the low bounds for observations in this space.
@@ -40,16 +40,34 @@ class ChessObservationSpace {
      * Chess features are typically normalized to [0,1] or [-1,1] range,
      * but we use conservative bounds to handle various encoding schemes.
      * 
-     * @return Array of minimum values for each dimension
+     * @return INDArray of minimum values for each dimension
      */
-    fun getLow(): DoubleArray = DoubleArray(DIMENSIONS) { -10.0 }
+    override fun getLow(): org.nd4j.linalg.api.ndarray.INDArray {
+        return org.nd4j.linalg.factory.Nd4j.create(DoubleArray(DIMENSIONS) { -10.0 })
+    }
     
     /**
      * Get the high bounds for observations in this space.
      * 
+     * @return INDArray of maximum values for each dimension
+     */
+    override fun getHigh(): org.nd4j.linalg.api.ndarray.INDArray {
+        return org.nd4j.linalg.factory.Nd4j.create(DoubleArray(DIMENSIONS) { 10.0 })
+    }
+    
+    /**
+     * Get the low bounds as a DoubleArray for convenience.
+     * 
+     * @return Array of minimum values for each dimension
+     */
+    fun getLowArray(): DoubleArray = DoubleArray(DIMENSIONS) { -10.0 }
+    
+    /**
+     * Get the high bounds as a DoubleArray for convenience.
+     * 
      * @return Array of maximum values for each dimension
      */
-    fun getHigh(): DoubleArray = DoubleArray(DIMENSIONS) { 10.0 }
+    fun getHighArray(): DoubleArray = DoubleArray(DIMENSIONS) { 10.0 }
     
     /**
      * Check if an observation is valid for this space.
@@ -63,14 +81,14 @@ class ChessObservationSpace {
             return false
         }
         
-        val data = observation.getData()
+        val data = observation.getDataArray()
         if (data.size != DIMENSIONS) {
             logger.warn("Observation has wrong dimensions: ${data.size}, expected $DIMENSIONS")
             return false
         }
         
-        val low = getLow()
-        val high = getHigh()
+        val low = getLowArray()
+        val high = getHighArray()
         
         for (i in data.indices) {
             if (data[i] < low[i] || data[i] > high[i]) {
@@ -92,37 +110,21 @@ class ChessObservationSpace {
      */
     fun sample(): ChessObservation {
         val random = kotlin.random.Random.Default
+        val low = getLowArray()
+        val high = getHighArray()
         val data = DoubleArray(DIMENSIONS) { 
-            random.nextDouble(getLow()[it], getHigh()[it])
+            random.nextDouble(low[it], high[it])
         }
         return ChessObservation(data)
     }
     
-    /**
-     * Create an observation space compatible with RL4J's ObservationSpace interface.
-     * 
-     * This method uses reflection to create an RL4J-compatible observation space
-     * without compile-time dependency on RL4J classes.
-     * 
-     * @return RL4J ObservationSpace instance
-     * @throws IllegalStateException if RL4J classes are not available
-     */
-    fun toRL4JObservationSpace(): Any {
-        try {
-            // Try to create ArrayObservationSpace using reflection
-            val arrayObservationSpaceClass = Class.forName("org.deeplearning4j.rl4j.space.ArrayObservationSpace")
-            val constructor = arrayObservationSpaceClass.getConstructor(IntArray::class.java)
-            return constructor.newInstance(getShape())
-        } catch (e: ClassNotFoundException) {
-            throw IllegalStateException("RL4J classes not found. Ensure RL4J dependencies are available.", e)
-        } catch (e: Exception) {
-            throw IllegalStateException("Failed to create RL4J observation space", e)
-        }
-    }
+
     
 
     
     override fun toString(): String {
-        return "ChessObservationSpace(dimensions=$DIMENSIONS, bounds=[${getLow()[0]}, ${getHigh()[0]}])"
+        val low = getLowArray()
+        val high = getHighArray()
+        return "ChessObservationSpace(dimensions=$DIMENSIONS, bounds=[${low[0]}, ${high[0]}])"
     }
 }
