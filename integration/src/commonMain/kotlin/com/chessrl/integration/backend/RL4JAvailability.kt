@@ -10,21 +10,13 @@ import com.chessrl.integration.logging.ChessRLLogger
  */
 object RL4JAvailability {
     private val logger = ChessRLLogger.forComponent("RL4JAvailability")
-    
-    /**
-     * Check if RL4J classes are available on the classpath.
-     * 
-     * @return true if RL4J is available, false otherwise
-     */
-    fun isAvailable(): Boolean {
-        return try {
-            // Try to load core RL4J classes
+
+    private val availability: Boolean by lazy {
+        val result = try {
             Class.forName("org.deeplearning4j.rl4j.learning.sync.qlearning.QLearning")
             Class.forName("org.deeplearning4j.rl4j.mdp.MDP")
             Class.forName("org.deeplearning4j.rl4j.space.DiscreteSpace")
             Class.forName("org.deeplearning4j.rl4j.observation.Observation")
-            
-            logger.info("RL4J classes are available")
             true
         } catch (e: ClassNotFoundException) {
             logger.warn("RL4J classes not found: ${e.message}")
@@ -33,7 +25,17 @@ object RL4JAvailability {
             logger.warn("RL4J class definition error: ${e.message}")
             false
         }
+
+        if (result) {
+            logger.info("RL4J classes are available")
+        }
+        result
     }
+
+    /**
+     * Check if RL4J classes are available on the classpath.
+     */
+    fun isAvailable(): Boolean = availability
     
     /**
      * Validate that RL4J is available when trying to use RL4J backend.
@@ -53,7 +55,7 @@ object RL4JAvailability {
      * Get a descriptive message about RL4J availability status.
      */
     fun getAvailabilityMessage(): String {
-        return if (isAvailable()) {
+        return if (availability) {
             "RL4J backend is available and ready to use"
         } else {
             "RL4J backend is not available. To enable it:\n" +

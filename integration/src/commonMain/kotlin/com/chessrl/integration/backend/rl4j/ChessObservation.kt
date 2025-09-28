@@ -2,151 +2,94 @@ package com.chessrl.integration.backend.rl4j
 
 import com.chessrl.integration.backend.RL4JAvailability
 import com.chessrl.integration.logging.ChessRLLogger
+import org.deeplearning4j.rl4j.observation.Observation
+import org.nd4j.linalg.api.ndarray.INDArray
+import org.nd4j.linalg.factory.Nd4j
 
 /**
  * Chess observation wrapper for RL4J integration.
- * 
- * Wraps the 839-dimensional chess state vector in RL4J's Observation interface.
- * This ensures compatibility with RL4J's MDP framework while maintaining
- * our existing state encoding.
- * 
- * Implements RL4J's Encodable interface when RL4J is available.
+ *
+ * Wraps the 839-dimensional chess state vector in RL4J's Observation class so the
+ * native RL4J policies can consume our encoding without any reflection-based plumbing.
  */
-class ChessObservation(private val stateVector: DoubleArray) : org.deeplearning4j.rl4j.space.Encodable {
-    
+class ChessObservation(stateVector: DoubleArray) : Observation(createIndArray(stateVector)) {
+
+    private val stateVector: DoubleArray = stateVector.copyOf()
+    private var legalActionMask: BooleanArray? = null
+
     companion object {
         private val logger = ChessRLLogger.forComponent("ChessObservation")
         const val EXPECTED_DIMENSIONS = 839
-    }
-    
-    init {
-        require(stateVector.size == EXPECTED_DIMENSIONS) {
-            "Chess observation must have exactly $EXPECTED_DIMENSIONS features, got: ${stateVector.size}"
+
+        private fun createIndArray(source: DoubleArray): INDArray {
+            RL4JAvailability.validateAvailability()
+            require(source.size == EXPECTED_DIMENSIONS) {
+                "Chess observation must have exactly $EXPECTED_DIMENSIONS features, got: ${source.size}"
+            }
+            val array = Nd4j.create(source.copyOf())
+            return array.reshape(1L, EXPECTED_DIMENSIONS.toLong())
         }
+    }
+
+    init {
         logger.debug("Created chess observation with ${stateVector.size} features")
     }
-    
-    /**
-     * Get the raw state vector data as INDArray for RL4J compatibility.
-     * 
-     * @return INDArray representation of the chess position
-     */
-    override fun getData(): org.nd4j.linalg.api.ndarray.INDArray {
-        return getINDArray() as org.nd4j.linalg.api.ndarray.INDArray
-    }
-    
+
     /**
      * Get the raw state vector as DoubleArray.
-     * 
-     * @return 839-dimensional double array representing the chess position
      */
     fun getDataArray(): DoubleArray = stateVector.copyOf()
-    
+
     /**
-     * Get the state vector as an INDArray for RL4J compatibility.
-     * 
-     * This method uses reflection to create an INDArray without compile-time
-     * dependency on ND4J, allowing the code to work even when RL4J is not available.
-     * 
-     * @return INDArray representation of the state vector
-     * @throws IllegalStateException if ND4J classes are not available
+     * Provide access to the underlying INDArray used by RL4J.
      */
-    fun getINDArray(): Any {
-        return if (RL4JAvailability.isAvailable()) {
-            createINDArrayWithRealND4J()
-        } else {
-            createINDArrayWithReflection()
+    fun getINDArray(): INDArray = data
+
+    fun withLegalActions(legalActions: Collection<Int>): ChessObservation {
+        val mask = BooleanArray(ChessActionSpace.ACTION_COUNT)
+        legalActions.forEach { action ->
+            if (action in 0 until ChessActionSpace.ACTION_COUNT) {
+                mask[action] = true
+            }
         }
+        legalActionMask = mask
+        return this
     }
-    
-    /**
-     * Create INDArray using real ND4J API when available.
-     */
-    private fun createINDArrayWithRealND4J(): Any {
-        try {
-            // Use real ND4J API to create INDArray
-            return org.nd4j.linalg.factory.Nd4j.create(stateVector)
-        } catch (e: Exception) {
-            logger.warn("Failed to create INDArray with real ND4J API, falling back to reflection: ${e.message}")
-            return createINDArrayWithReflection()
-        }
+
+    fun getLegalActionMask(): BooleanArray? = legalActionMask?.copyOf()
+
+    fun duplicate(): ChessObservation = ChessObservation(stateVector.copyOf()).also { clone ->
+        clone.legalActionMask = legalActionMask?.copyOf()
     }
-    
-    /**
-     * Create INDArray using reflection for compatibility.
-     */
-    private fun createINDArrayWithReflection(): Any {
-        try {
-            val nd4jClass = Class.forName("org.nd4j.linalg.factory.Nd4j")
-            val createMethod = nd4jClass.getMethod("create", DoubleArray::class.java)
-            return createMethod.invoke(null, stateVector)
-        } catch (e: ClassNotFoundException) {
-            throw IllegalStateException("ND4J classes not found. Ensure RL4J dependencies are available.", e)
-        } catch (e: Exception) {
-            throw IllegalStateException("Failed to create INDArray from state vector", e)
-        }
-    }
-    
-    /**
-     * Create a duplicate of this observation.
-     * 
-     * @return New ChessObservation with copied state vector
-     */
-    fun duplicate(): ChessObservation {
-        return ChessObservation(stateVector.copyOf())
-    }
-    
-    /**
-     * Get the number of dimensions in this observation.
-     * 
-     * @return Always returns 839 for chess observations
-     */
+
     fun getDimensions(): Int = EXPECTED_DIMENSIONS
-    
-    /**
-     * Check if this observation is valid (has correct dimensions and no NaN values).
-     * 
-     * @return true if observation is valid, false otherwise
-     */
+
     fun isValid(): Boolean {
-        if (stateVector.size != EXPECTED_DIMENSIONS) {
-            logger.warn("Invalid observation: wrong dimensions ${stateVector.size}, expected $EXPECTED_DIMENSIONS")
-            return false
-        }
-        
         if (stateVector.any { it.isNaN() || it.isInfinite() }) {
             logger.warn("Invalid observation: contains NaN or infinite values")
             return false
         }
-        
         return true
     }
-    
+
+    override fun toArray(): DoubleArray = stateVector.copyOf()
+
+    override fun isSkipped(): Boolean = false
+
+    override fun dup(): ChessObservation = ChessObservation(stateVector.copyOf()).also { clone ->
+        clone.legalActionMask = legalActionMask?.copyOf()
+    }
+
     override fun toString(): String {
         val preview = stateVector.take(5).joinToString(", ", "[", ", ...]")
         return "ChessObservation(dimensions=$EXPECTED_DIMENSIONS, preview=$preview)"
     }
-    
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is ChessObservation) return false
         return stateVector.contentEquals(other.stateVector)
     }
-    
-    override fun hashCode(): Int {
-        return stateVector.contentHashCode()
-    }
-    
-    // Implement Encodable interface for RL4J compatibility
-    override fun toArray(): DoubleArray {
-        return stateVector.copyOf()
-    }
-    
-    override fun isSkipped(): Boolean {
-        return false // Chess observations are never skipped
-    }
-    
-    override fun dup(): org.deeplearning4j.rl4j.space.Encodable {
-        return ChessObservation(stateVector.copyOf())
-    }
+
+    override fun hashCode(): Int = stateVector.contentHashCode()
 }

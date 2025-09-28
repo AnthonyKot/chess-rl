@@ -1,32 +1,60 @@
-# Repository Context (Chess RL Project)
+# RL4J Backend Refactor — Status (2025-03-10)
 
-## High-Level Goals
-- Reinforcement-learning chess system with plug-and-play engines (builtin and chesslib) and multiple NN backends.
-- Recent focus: integrating RL4J as an alternative training backend alongside manual/DL4J/KotlinDL implementations.
+## What’s Done
+- **RL4JChessAgent** now uses native builders:
+  - Builds `QLearningDiscreteDense` with `ChessMDP`, `DQNFactoryStdDense`, `RL4JConfigurationMapper`.
+  - Keeps typed references (`QLearningDiscreteDense<ChessObservation>`, `DQNPolicy<ChessObservation>`, `IDQN`).
+  - Training is triggered via `train()` once; manual replay plumbing removed.
+  - `trainBatch()` simply ensures initialization, runs `train()` once (cached), and surfaces RL4J metrics via a custom `TrainingListener`.
+  - `learn(experience)` is a no-op; RL4J handles experience internally.
+  - `getQValues` uses `neuralNet.output(..)` to produce logits; helper to convert `INDArray` to double array.
+  - Mock/random policy fallback removed; agent fails fast if RL4J classes are unavailable.
 
-## Current State of RL4J Integration
-- CLI now routes `--nn rl4j` through `BackendFactory`, creating `RL4JLearningBackend`.
-- Observation (`ChessObservation`), action (`ChessActionSpace`), and MDP (`ChessMDP`) wrappers directly implement RL4J interfaces.
-- `RL4JChessAgent` still relies extensively on reflection: configuration builders, replay buffer writes, and training loops all fall back to reflective access.
-- Reflection path creates mock policy artifacts and uses protected methods (e.g., `trainStep`) because the real RL4J APIs are not wired end-to-end.
-- Experience replay integration is fragile: code attempts `replay.store(Encodable, Int, Double, Encodable, Boolean)` but RL4J 1.0.0-beta7 expects `storeTransition(Transition)`; the current call throws and is silently ignored.
-- Configuration mapping currently ignores many values from `ChessAgentConfig` (hard-coded learning rate, gamma, etc.), so parity with other backends is not yet guaranteed.
-- Tests referencing real RL4J behavior exist, but builds fail locally without a JDK and the reflection fallbacks mean “success” does not imply true RL4J usage.
+- **RL4JConfigurationMapper**:
+  - Maps `ChessAgentConfig` + optional `BackendConfig` to `QLearning.QLConfiguration` and `DQNDenseNetworkConfiguration` (uses Adam updater).
+  - Adds parameter validation (batchSize, bufferSize, gamma range, epsilon clamping) and warning list.
+  - Marked with `@Suppress("DEPRECATION")` (pending migration to newer RL4J configs).
 
-## Known Issues / Warnings
-- Compiler warnings in `RL4JChessAgent.kt` about unused locals (`stepCounter`, `currentEpsilon`) and generic type inference.
-- Recent attempt to swap in direct builder APIs caused compilation errors (`seed` expects Int, `learningRate` method undefined, constructor wants `IDQN`).
-- Need to ensure RL4J dependencies are gated by `enableRL4J` flag in `gradle.properties` and resolve missing JDK for tests.
+- **BackendAwareChessAgentFactory**:
+  - RL4J path now instantiates `RL4JChessAgent(config, backendConfig)` directly (no reflection).
+  - `@Suppress("UNUSED_PARAMETER")` kept for unused knobs (double DQN/replayType). Manual/DL4J paths untouched (use `gamma`, `seedManager`).
 
-## Next Steps (High Priority)
-1. Replace reflection scaffolding with real RL4J builder usage, honoring `ChessAgentConfig` values.
-2. Fix replay buffer interaction using the correct RL4J `Transition` API; ensure experiences actually feed into RL4J training.
-3. Invoke RL4J training through public entry points (e.g., `learn()`), avoiding protected-method reflection.
-4. Remove or rework mock policy fallback so the agent always returns a valid RL4J policy.
-5. Once real integration is solid, add gated tests/CI jobs that run with RL4J on the classpath and verify checksum vs. manual backend.
+- **RL4JLearningBackend**:
+  - Simplified session: first `trainOnBatch()` call triggers RL4J training via `trainBatch(emptyList())`; subsequent calls reuse cached result.
+  - Opponent synced by exploration rate; save checkpoints delegate to agent.
+- **Integration Tests & Docs**:
+  - RL4J tests now run only when `enableRL4J=true`, covering initialization, native training, and checkpoint round-trips while asserting real RL4J policies are used.
+  - README documents JDK requirements and Gradle flag for running the RL4J suite.
 
-## Miscellaneous Notes
-- Builtin vs chesslib engine parity still under investigation—builtin engine reports many invalid moves during heuristic evaluations.
-- `SEARCH.md` created to capture future search-based enhancements (e.g., MCTS assistance with limited compute).
-- Documentation cleanup ongoing (`README.md`, `DQN.md` updated; other docs removed per earlier request).
+- **Cleanups**:
+  - Removed unused locals in agent, redundant safe-calls, reflection utilities (`trainStep`, `store`, etc.).
+  - Added `@Suppress("DEPRECATION")` to agent/mapper.
+  - Logging trimmed to reflect new flow; ChessMDP now tracks per-episode illegal-action metrics and enriches `StepReply` info while exposing a legal-action mask via `ChessObservation`.
 
+## Outstanding Questions / Gaps
+- `RL4JChessAgent.trainBatch` currently ignores provided experiences and does a single `learn()` call (offline training). Need to confirm desired behaviour: repeated calls? multi-epoch support? ability to resume training with additional data?
+- Metrics reporting is placeholder (`loss=0.0`, etc.). Need to hook RL4J `TrainingListener` to gather real training info (episode reward, epsilon, loss).
+- `RL4JLearningBackend` still constructs two agents via factory (main/opponent). Opponent currently identical to main; consider whether opponent needs separate policy (for evaluation) or can reuse main policy.
+- ChessMDP fallback remains, but policy-level masking now has a hook via `ChessObservation` masks (still unused by RL policy).
+- RL4J metrics now come from listener snapshots; still need richer stats (loss gradients, TD error) when RL4J exposes them.
+- Need to ensure `ChessAgentConfig` fields (learningRate, gamma, etc.) are populated consistently wherever RL4J backend is requested.
+
+## Next Steps (Tomorrow)
+1. **Metrics & Listeners**
+   - Attach an RL4J `TrainingListener` to collect loss, score, epsilon from `QLearningDiscreteDense`.
+   - Update `RL4JChessAgent.trainBatch` to return meaningful `PolicyUpdateResult` and update `ChessAgentMetrics`.
+
+2. **Training Control**
+   - Decide on training cadence: should `trainBatch` kick off a fresh RL4J training run each time, or only once? Document behaviour, possibly add guard for re-training.
+   - Provide a way to resume/continue training (e.g., call `reset()` to retrain from scratch?).
+
+3. **Testing**
+   - Update / create RL4J integration tests to reflect the new flow (no manual experience injection).
+   - Ensure CLI `--nn rl4j` path works end-to-end with an RL4J-enabled build.
+
+4. **Cleanup**
+   - Consider removing mock policy fallback; fail fast when RL4J classes unavailable (or keep purely for tests?).
+   - Review logging now that progress counters are gone.
+
+5. **Docs & README (later)**
+   - Document the new behaviour: RL4J backend trains via `learn()`, what configuration knobs are honoured, how to run RL4J tests.

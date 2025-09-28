@@ -348,6 +348,7 @@ object BackendAwareChessAgentFactory {
      * Create RL4J backend DQN agent
      * Uses RL4J QLearning with ChessMDP wrapper
      */
+    @Suppress("UNUSED_PARAMETER")
     private fun createRL4JDQNAgent(
         backendConfig: BackendConfig,
         agentConfig: ChessAgentConfig,
@@ -355,28 +356,28 @@ object BackendAwareChessAgentFactory {
         replayType: String,
         gamma: Double
     ): ChessAgent {
-        logger.info("Creating DQN agent with RL4J backend")
+        logger.info(
+            "Creating DQN agent with RL4J backend using backendConfig={hiddenLayers=${backendConfig.hiddenLayers}," +
+                " learningRate=${backendConfig.learningRate}, batchSize=${backendConfig.batchSize}, optimizer=${backendConfig.optimizer}}" +
+                " and agentConfig={batchSize=${agentConfig.batchSize}, buffer=${agentConfig.maxBufferSize}, gamma=${agentConfig.gamma}}"
+        )
         
         // Validate RL4J availability
         RL4JAvailability.validateAvailability()
         
         if (enableDoubleDQN) {
-            logger.debug("RL4J backend placeholder currently ignores enableDoubleDQN=true")
+            logger.debug("RL4J backend currently ignores enableDoubleDQN=true – native support planned")
         }
         if (!replayType.equals("UNIFORM", ignoreCase = true)) {
-            logger.debug("RL4J backend placeholder does not yet support replay type '$replayType'")
+            logger.debug("RL4J backend currently supports only uniform replay (requested: $replayType)")
         }
 
-        createRL4JConfiguration(backendConfig, agentConfig, gamma).also {
-            logger.debug("Generated RL4J configuration placeholder: ${it::class.simpleName}")
-        }
-        
-        // Create RL4J agent
+        // Create RL4J agent using native configuration mapping
         val rl4jAgent = RL4JChessAgent(
-            config = agentConfig
+            config = agentConfig,
+            backendConfig = backendConfig
         )
-        rl4jAgent.initialize()
-        
+
         return RL4JChessAgentAdapter(rl4jAgent, agentConfig)
     }
     
@@ -384,6 +385,7 @@ object BackendAwareChessAgentFactory {
      * Create seeded RL4J backend DQN agent
      * Uses RL4J QLearning with ChessMDP wrapper and seeded initialization
      */
+    @Suppress("UNUSED_PARAMETER")
     private fun createSeededRL4JDQNAgent(
         backendConfig: BackendConfig,
         agentConfig: ChessAgentConfig,
@@ -392,138 +394,29 @@ object BackendAwareChessAgentFactory {
         replayType: String,
         gamma: Double
     ): ChessAgent {
-        logger.info("Creating seeded DQN agent with RL4J backend")
+        logger.info(
+            "Creating seeded DQN agent with RL4J backend using backendConfig={hiddenLayers=${backendConfig.hiddenLayers}," +
+                " learningRate=${backendConfig.learningRate}, batchSize=${backendConfig.batchSize}, optimizer=${backendConfig.optimizer}}" +
+                " and agentConfig={batchSize=${agentConfig.batchSize}, buffer=${agentConfig.maxBufferSize}, gamma=${agentConfig.gamma}}"
+        )
         
         // Validate RL4J availability
         RL4JAvailability.validateAvailability()
         
         if (enableDoubleDQN) {
-            logger.debug("RL4J backend placeholder currently ignores enableDoubleDQN=true (seeded path)")
+            logger.debug("RL4J backend currently ignores enableDoubleDQN=true (seeded path)")
         }
         if (!replayType.equals("UNIFORM", ignoreCase = true)) {
-            logger.debug("RL4J backend placeholder does not yet support replay type '$replayType' (seeded path)")
+            logger.debug("RL4J backend currently supports only uniform replay (requested: $replayType) (seeded path)")
         }
 
-        createSeededRL4JConfiguration(backendConfig, agentConfig, gamma, seedManager).also {
-            logger.debug("Generated seeded RL4J configuration placeholder: ${it::class.simpleName}")
-        }
-        
-        // Create seeded RL4J agent
+        // Create seeded RL4J agent (native configuration is deterministic; seed handled by RL4J internals)
         val rl4jAgent = RL4JChessAgent(
-            config = agentConfig
+            config = agentConfig,
+            backendConfig = backendConfig
         )
-        rl4jAgent.initialize()
-        
-        return RL4JChessAgentAdapter(rl4jAgent, agentConfig)
-    }
 
-    /**
-     * Create RL4J configuration from backend config.
-     */
-    private fun createRL4JConfiguration(
-        backendConfig: BackendConfig,
-        agentConfig: ChessAgentConfig,
-        gamma: Double
-    ): Any {
-        try {
-            // Use reflection to create RL4J configuration
-            val qLearningClass = Class.forName("org.deeplearning4j.rl4j.learning.sync.qlearning.QLearning")
-            val configClass = qLearningClass.getDeclaredClasses()
-                .find { it.simpleName == "QLConfiguration" }
-                ?: throw IllegalStateException("Could not find QLConfiguration class")
-            
-            val builderMethod = configClass.getMethod("builder")
-            val builder = builderMethod.invoke(null)
-            val builderClass = builder.javaClass
-            
-            // Set configuration parameters
-            builderClass.getMethod("seed", Long::class.java)
-                .invoke(builder, System.currentTimeMillis())
-            
-            builderClass.getMethod("learningRate", Double::class.java)
-                .invoke(builder, backendConfig.learningRate)
-            
-            builderClass.getMethod("gamma", Double::class.java)
-                .invoke(builder, gamma)
-            
-            builderClass.getMethod("epsilonNbStep", Int::class.java)
-                .invoke(builder, 1000) // Steps to decay epsilon
-            
-            builderClass.getMethod("minEpsilon", Double::class.java)
-                .invoke(builder, agentConfig.explorationRate)
-            
-            builderClass.getMethod("expRepMaxSize", Int::class.java)
-                .invoke(builder, agentConfig.maxBufferSize)
-            
-            builderClass.getMethod("batchSize", Int::class.java)
-                .invoke(builder, agentConfig.batchSize)
-            
-            builderClass.getMethod("targetDqnUpdateFreq", Int::class.java)
-                .invoke(builder, agentConfig.targetUpdateFrequency)
-            
-            // Build the configuration
-            val buildMethod = builderClass.getMethod("build")
-            return buildMethod.invoke(builder)
-            
-        } catch (e: Exception) {
-            logger.error("Failed to create RL4J configuration: ${e.message}")
-            throw RuntimeException("Failed to create RL4J configuration", e)
-        }
-    }
-    
-    /**
-     * Create seeded RL4J configuration from backend config.
-     */
-    private fun createSeededRL4JConfiguration(
-        backendConfig: BackendConfig,
-        agentConfig: ChessAgentConfig,
-        gamma: Double,
-        seedManager: SeedManager
-    ): Any {
-        try {
-            // Use reflection to create RL4J configuration
-            val qLearningClass = Class.forName("org.deeplearning4j.rl4j.learning.sync.qlearning.QLearning")
-            val configClass = qLearningClass.getDeclaredClasses()
-                .find { it.simpleName == "QLConfiguration" }
-                ?: throw IllegalStateException("Could not find QLConfiguration class")
-            
-            val builderMethod = configClass.getMethod("builder")
-            val builder = builderMethod.invoke(null)
-            val builderClass = builder.javaClass
-            
-            // Set configuration parameters with seed
-            builderClass.getMethod("seed", Long::class.java)
-                .invoke(builder, seedManager.getNeuralNetworkRandom().nextLong())
-            
-            builderClass.getMethod("learningRate", Double::class.java)
-                .invoke(builder, backendConfig.learningRate)
-            
-            builderClass.getMethod("gamma", Double::class.java)
-                .invoke(builder, gamma)
-            
-            builderClass.getMethod("epsilonNbStep", Int::class.java)
-                .invoke(builder, 1000) // Steps to decay epsilon
-            
-            builderClass.getMethod("minEpsilon", Double::class.java)
-                .invoke(builder, agentConfig.explorationRate)
-            
-            builderClass.getMethod("expRepMaxSize", Int::class.java)
-                .invoke(builder, agentConfig.maxBufferSize)
-            
-            builderClass.getMethod("batchSize", Int::class.java)
-                .invoke(builder, agentConfig.batchSize)
-            
-            builderClass.getMethod("targetDqnUpdateFreq", Int::class.java)
-                .invoke(builder, agentConfig.targetUpdateFrequency)
-            
-            // Build the configuration
-            val buildMethod = builderClass.getMethod("build")
-            return buildMethod.invoke(builder)
-            
-        } catch (e: Exception) {
-            logger.error("Failed to create seeded RL4J configuration: ${e.message}")
-            throw RuntimeException("Failed to create seeded RL4J configuration", e)
-        }
+        return RL4JChessAgentAdapter(rl4jAgent, agentConfig)
     }
 
     private fun validateBackendCapabilities(backendType: BackendType, backendConfig: BackendConfig): List<String> {

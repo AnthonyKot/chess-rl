@@ -156,6 +156,9 @@ Use the `eval-only` profile or set a master seed with single-threaded play:
 ./gradlew :nn-package:test
 ./gradlew :rl-framework:test
 ./gradlew :integration:test
+
+# Run RL4J-gated tests (requires RL4J enabled)
+./gradlew :integration:test -PenableRL4J=true
 ```
 
 ### Essential Test Coverage
@@ -163,6 +166,20 @@ Use the `eval-only` profile or set a master seed with single-threaded play:
 - **Neural Network**: XOR learning, gradient updates, model serialization
 - **RL Framework**: Q-value updates, experience replay, action selection
 - **Integration**: End-to-end training cycles, evaluation workflows
+
+### RL4J Backend (Optional)
+
+RL4J support requires additional dependencies. To enable it locally:
+
+1. Install a JDK (11 or newer) and ensure `JAVA_HOME` is configured.
+2. Run Gradle tasks with the `enableRL4J` flag, for example:
+   ```bash
+   ./gradlew :integration:compileKotlin -PenableRL4J=true
+   ./gradlew :integration:test -PenableRL4J=true
+   ```
+3. The RL4J test suite (smoke training, checkpoint round-trip, policy exposure) runs only when the flag is set; otherwise those tests skip automatically.
+
+You can also persist the flag by adding `enableRL4J=true` to `gradle.properties` when working with the RL4J backend regularly.
 
 ## Package Details
 

@@ -10,7 +10,8 @@ import com.chessrl.integration.logging.ChessRLLogger
  * with RL4J trainers.
  */
 class ChessActionSpace : org.deeplearning4j.rl4j.space.DiscreteSpace(ACTION_COUNT) {
-    
+    private var currentLegalActions: IntArray? = null
+
     companion object {
         private val logger = ChessRLLogger.forComponent("ChessActionSpace")
         const val ACTION_COUNT = 4096
@@ -40,14 +41,7 @@ class ChessActionSpace : org.deeplearning4j.rl4j.space.DiscreteSpace(ACTION_COUN
      * @param action The action to validate
      * @return true if action is in range [0, 4095], false otherwise
      */
-    fun contains(action: Int): Boolean {
-        val isValid = action in 0 until ACTION_COUNT
-        if (!isValid) {
-            logger.warn("Invalid action $action, must be in range [0, ${ACTION_COUNT - 1}]")
-        }
-        return isValid
-    }
-    
+    fun contains(action: Int): Boolean = action in 0 until ACTION_COUNT
 
     
     /**
@@ -78,8 +72,19 @@ class ChessActionSpace : org.deeplearning4j.rl4j.space.DiscreteSpace(ACTION_COUN
      * 
      * @return Random action in range [0, 4095]
      */
-    fun sample(): Int {
-        return kotlin.random.Random.Default.nextInt(ACTION_COUNT)
+    override fun randomAction(): Int {
+        val legal = currentLegalActions
+        return if (legal != null && legal.isNotEmpty()) {
+            val idx = kotlin.random.Random.Default.nextInt(legal.size)
+            legal[idx]
+        } else {
+            kotlin.random.Random.Default.nextInt(ACTION_COUNT)
+        }
+    }
+
+    fun updateLegalActions(legalActions: Collection<Int>) {
+        val filtered = legalActions.filter { contains(it) }
+        currentLegalActions = if (filtered.isEmpty()) null else filtered.toIntArray()
     }
     
 

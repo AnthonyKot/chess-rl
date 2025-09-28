@@ -465,7 +465,11 @@ class TrainingPipeline(
     }
     
     private fun runSelfPlayGames(session: LearningSession): List<SelfPlayGameResult> {
-        return if (config.maxConcurrentGames > 1) {
+        val allowMultiProcess = config.maxConcurrentGames > 1 && config.nnBackend != com.chessrl.integration.backend.BackendType.RL4J
+        if (!allowMultiProcess && config.maxConcurrentGames > 1 && config.nnBackend == com.chessrl.integration.backend.BackendType.RL4J) {
+            logger.info("RL4J backend detected; forcing sequential self-play to avoid multi-process issues")
+        }
+        return if (allowMultiProcess) {
             runMultiProcessSelfPlay(session)
         } else {
             runSequentialSelfPlay(session)

@@ -3,6 +3,7 @@ package com.chessrl.integration.backend.rl4j
 import com.chessrl.integration.ChessEnvironment
 import com.chessrl.integration.backend.RL4JAvailability
 import com.chessrl.integration.logging.ChessRLLogger
+import java.util.LinkedHashMap
 
 /**
  * Chess MDP (Markov Decision Process) wrapper for RL4J integration.
@@ -23,6 +24,12 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) : org.deeplearnin
     private val actionSpace = ChessActionSpace()
     private var isDoneFlag = false
     private var currentObservation: ChessObservation? = null
+
+    private var episodeIndex: Int = 0
+    private var episodeStepCount: Int = 0
+    private var episodeIllegalAttempts: Int = 0
+    private var episodeFallbackActions: Int = 0
+    private var episodeIllegalLogged: Boolean = false
     
     init {
         logger.debug("Created ChessMDP wrapper for chess environment")
@@ -37,11 +44,17 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) : org.deeplearnin
         logger.debug("Resetting chess environment")
         
         try {
+            reportEpisodeMetrics("reset")
+            resetEpisodeCounters()
+            episodeIndex += 1
+
             val stateVector = chessEnvironment.reset()
             isDoneFlag = false
-            
-            currentObservation = ChessObservation(stateVector)
-            
+
+            val legalActions = chessEnvironment.getValidActions(stateVector)
+            actionSpace.updateLegalActions(legalActions)
+            currentObservation = ChessObservation(stateVector).withLegalActions(legalActions)
+
             logger.debug("Environment reset successfully, observation dimensions: ${stateVector.size}")
             return currentObservation!!
             
@@ -59,73 +72,99 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) : org.deeplearnin
      */
     override fun step(action: Int): org.deeplearning4j.gym.StepReply<ChessObservation> {
         logger.debug("Executing action: $action")
-        
+
         if (isDoneFlag) {
             logger.warn("Attempted to step in terminal state")
+            val info = enrichInfo(
+                mapOf(
+                    "error" to "Environment is already terminal",
+                    "originalAction" to action,
+                    "actualAction" to action,
+                    "legal" to 0,
+                    "legalCount" to 0,
+                    "illegal" to true,
+                    "illegalAttempt" to true,
+                    "fallbackUsed" to false,
+                    "reason" to "terminal-state"
+                )
+            )
             return org.deeplearning4j.gym.StepReply(
                 currentObservation ?: reset(),
                 0.0,
                 true,
-                createInfoObject(mapOf(
-                    "error" to "Environment is already terminal",
-                    "legal" to 0,
-                    "illegal" to true
-                ))
+                createInfoObject(info)
             )
         }
-        
-        try {
-            // Validate action
+
+        return try {
             if (!actionSpace.contains(action)) {
                 logger.warn("Invalid action $action, falling back to legal move")
                 return handleIllegalAction(action)
             }
-            
-            // Get legal actions before attempting the move
-            val legalActions = chessEnvironment.getValidActions(currentObservation?.getDataArray() ?: DoubleArray(839))
-            
-            val actualAction = if (action in legalActions) {
+
+            val currentState = currentObservation?.getDataArray() ?: DoubleArray(ChessObservation.EXPECTED_DIMENSIONS)
+            val legalActions = chessEnvironment.getValidActions(currentState)
+            actionSpace.updateLegalActions(legalActions)
+
+            if (legalActions.isEmpty()) {
+            logIllegalAttempt(action, fallbackUsed = false, legalActions = 0)
+            recordIllegalAttempt(fallbackUsed = false)
+            isDoneFlag = true
+            currentObservation = currentObservation?.withLegalActions(emptyList())
+                actionSpace.updateLegalActions(emptyList())
+                val info = enrichInfo(
+                    mapOf(
+                        "originalAction" to action,
+                        "actualAction" to action,
+                        "legal" to 0,
+                        "legalCount" to 0,
+                        "illegal" to true,
+                        "illegalAttempt" to true,
+                        "fallbackUsed" to false,
+                        "reason" to "no-legal-actions"
+                    )
+                )
+                reportEpisodeMetrics("no-legal-actions")
+                resetEpisodeCounters()
+                return org.deeplearning4j.gym.StepReply(
+                    currentObservation ?: ChessObservation(currentState),
+                    0.0,
+                    true,
+                    createInfoObject(info)
+                )
+            }
+
+            val illegalAttempt = action !in legalActions
+            val actualAction = if (!illegalAttempt) {
                 action
             } else {
-                logger.warn("Illegal action $action attempted, falling back to best legal move")
+                logIllegalAttempt(action, fallbackUsed = true, legalActions = legalActions.size)
+                recordIllegalAttempt(fallbackUsed = true)
                 selectFallbackAction(legalActions)
             }
-            
-            // Execute the action
-            val stepResult = chessEnvironment.step(actualAction)
-            
-            // Update state
-            currentObservation = ChessObservation(stepResult.nextState)
-            isDoneFlag = stepResult.done
-            
-            logger.debug("Step completed: reward=${stepResult.reward}, done=${stepResult.done}")
-            
-            return org.deeplearning4j.gym.StepReply(
-                currentObservation!!,
-                stepResult.reward,
-                stepResult.done,
-                createInfoObject(mapOf(
-                    "originalAction" to action,
-                    "actualAction" to actualAction,
-                    "legal" to legalActions.size,
-                    "illegal" to (action != actualAction)
-                ))
-            )
-            
+
+            executeAction(action, actualAction, legalActions, illegalAttempt)
         } catch (e: Exception) {
             logger.error("Failed to execute step: ${e.message}")
-            
-            // Return safe fallback state
-            return org.deeplearning4j.gym.StepReply(
-                currentObservation ?: reset(),
-                -1.0, // Penalty for error
-                true,
-                createInfoObject(mapOf(
+            val info = enrichInfo(
+                mapOf(
                     "error" to (e.message ?: "Unknown error"),
                     "originalAction" to action,
+                    "actualAction" to action,
                     "legal" to 0,
-                    "illegal" to true
-                ))
+                    "legalCount" to 0,
+                    "illegal" to true,
+                    "illegalAttempt" to true,
+                    "fallbackUsed" to false,
+                    "reason" to "exception"
+                )
+            )
+
+            org.deeplearning4j.gym.StepReply(
+                currentObservation ?: reset(),
+                -1.0,
+                true,
+                createInfoObject(info)
             )
         }
     }
@@ -134,75 +173,43 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) : org.deeplearnin
      * Handle illegal action by selecting a fallback legal move.
      */
     private fun handleIllegalAction(action: Int): org.deeplearning4j.gym.StepReply<ChessObservation> {
-        val legalActions = chessEnvironment.getValidActions(currentObservation?.getDataArray() ?: DoubleArray(839))
-        
+        val legalActions = chessEnvironment.getValidActions(currentObservation?.getDataArray() ?: DoubleArray(ChessObservation.EXPECTED_DIMENSIONS))
+
         if (legalActions.isEmpty()) {
-            // Game is over
+            actionSpace.updateLegalActions(emptyList())
+            logIllegalAttempt(action, fallbackUsed = false, legalActions = 0)
+            recordIllegalAttempt(fallbackUsed = false)
             isDoneFlag = true
-            return org.deeplearning4j.gym.StepReply(
-                currentObservation ?: reset(),
-                0.0,
-                true,
-                createInfoObject(mapOf(
+            currentObservation = currentObservation?.withLegalActions(emptyList())
+            val info = enrichInfo(
+                mapOf(
                     "error" to "No legal actions available",
                     "originalAction" to action,
                     "actualAction" to action,
                     "legal" to 0,
-                    "illegal" to true
-                ))
+                    "legalCount" to 0,
+                    "illegal" to true,
+                    "illegalAttempt" to true,
+                    "fallbackUsed" to false,
+                    "reason" to "illegal-no-legal"
+                )
             )
-        }
-        
-        val fallbackAction = selectFallbackAction(legalActions)
-        logger.info("Using fallback action $fallbackAction for illegal action $action")
-        
-        // Execute the fallback action but preserve the illegal action information
-        return stepWithFallback(action, fallbackAction, legalActions)
-    }
-    
-    /**
-     * Execute a step with fallback action, preserving original action information.
-     */
-    private fun stepWithFallback(originalAction: Int, fallbackAction: Int, legalActions: List<Int>): org.deeplearning4j.gym.StepReply<ChessObservation> {
-        try {
-            // Execute the fallback action
-            val stepResult = chessEnvironment.step(fallbackAction)
-            
-            // Update state
-            currentObservation = ChessObservation(stepResult.nextState)
-            isDoneFlag = stepResult.done
-            
-            logger.debug("Fallback step completed: reward=${stepResult.reward}, done=${stepResult.done}")
-            
+            reportEpisodeMetrics("illegal-without-fallback")
+            resetEpisodeCounters()
             return org.deeplearning4j.gym.StepReply(
-                currentObservation!!,
-                stepResult.reward,
-                stepResult.done,
-                createInfoObject(mapOf(
-                    "originalAction" to originalAction,
-                    "actualAction" to fallbackAction,
-                    "legal" to legalActions.size,
-                    "illegal" to true
-                ))
-            )
-            
-        } catch (e: Exception) {
-            logger.error("Failed to execute fallback step: ${e.message}")
-            
-            // Return safe fallback state
-            return org.deeplearning4j.gym.StepReply(
-                currentObservation ?: reset(),
-                -1.0, // Penalty for error
+                currentObservation ?: ChessObservation(DoubleArray(ChessObservation.EXPECTED_DIMENSIONS)),
+                0.0,
                 true,
-                createInfoObject(mapOf(
-                    "error" to (e.message ?: "Unknown error"),
-                    "originalAction" to originalAction,
-                    "actualAction" to fallbackAction,
-                    "legal" to legalActions.size,
-                    "illegal" to true
-                ))
+                createInfoObject(info)
             )
         }
+
+        logIllegalAttempt(action, fallbackUsed = true, legalActions = legalActions.size)
+        recordIllegalAttempt(fallbackUsed = true)
+        val fallbackAction = selectFallbackAction(legalActions)
+        logger.debug("Using fallback action $fallbackAction for illegal action $action")
+
+        return executeAction(action, fallbackAction, legalActions, illegalAttempt = true)
     }
     
     /**
@@ -216,6 +223,102 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) : org.deeplearnin
             legalActions.first()
         } else {
             throw IllegalStateException("No legal actions available for fallback")
+        }
+    }
+
+    private fun executeAction(
+        originalAction: Int,
+        actualAction: Int,
+        legalActionsBefore: List<Int>,
+        illegalAttempt: Boolean
+    ): org.deeplearning4j.gym.StepReply<ChessObservation> {
+        val stepResult = chessEnvironment.step(actualAction)
+        episodeStepCount += 1
+
+        val nextLegalActions = if (stepResult.done) {
+            emptyList()
+        } else {
+            chessEnvironment.getValidActions(stepResult.nextState)
+        }
+
+        actionSpace.updateLegalActions(nextLegalActions)
+        val nextObservation = ChessObservation(stepResult.nextState).withLegalActions(nextLegalActions)
+        currentObservation = nextObservation
+        isDoneFlag = stepResult.done
+
+        logger.debug(
+            "Step completed: reward=${stepResult.reward}, done=${stepResult.done}, illegal=$illegalAttempt, fallback=${illegalAttempt && legalActionsBefore.isNotEmpty()}"
+        )
+
+        val info = enrichInfo(
+            mapOf(
+                "originalAction" to originalAction,
+                "actualAction" to actualAction,
+                "legal" to legalActionsBefore.size,
+                "legalCount" to legalActionsBefore.size,
+                "illegal" to illegalAttempt,
+                "illegalAttempt" to illegalAttempt,
+                "fallbackUsed" to (illegalAttempt && legalActionsBefore.isNotEmpty()),
+                "nextLegalCount" to nextLegalActions.size
+            )
+        )
+
+        if (stepResult.done) {
+            reportEpisodeMetrics("terminal-step")
+            resetEpisodeCounters()
+        }
+
+        return org.deeplearning4j.gym.StepReply(
+            nextObservation,
+            stepResult.reward,
+            stepResult.done,
+            createInfoObject(info)
+        )
+    }
+
+    private fun recordIllegalAttempt(fallbackUsed: Boolean) {
+        episodeIllegalAttempts += 1
+        if (fallbackUsed) {
+            episodeFallbackActions += 1
+        }
+    }
+
+    private fun resetEpisodeCounters() {
+        episodeStepCount = 0
+        episodeIllegalAttempts = 0
+        episodeFallbackActions = 0
+        episodeIllegalLogged = false
+    }
+
+    private fun reportEpisodeMetrics(reason: String) {
+        if (episodeStepCount == 0 && episodeIllegalAttempts == 0 && episodeFallbackActions == 0) {
+            return
+        }
+        logger.info(
+            "Episode summary [$reason] idx=$episodeIndex steps=$episodeStepCount illegalAttempts=$episodeIllegalAttempts fallbackActions=$episodeFallbackActions"
+        )
+    }
+
+    private fun enrichInfo(base: Map<String, Any?>): Map<String, Any?> {
+        val enriched = LinkedHashMap<String, Any?>(base.size + 5)
+        enriched.putAll(base)
+        enriched["episodeIndex"] = episodeIndex
+        enriched["episodeStep"] = episodeStepCount
+        enriched["episodeIllegalAttempts"] = episodeIllegalAttempts
+        enriched["episodeFallbacks"] = episodeFallbackActions
+        currentObservation?.getLegalActionMask()?.let { mask ->
+            enriched["legalMaskCount"] = mask.count { it }
+        }
+        return enriched
+    }
+
+    private fun logIllegalAttempt(action: Int, fallbackUsed: Boolean, legalActions: Int) {
+        val message = "Illegal action $action attempted (legalCount=$legalActions, fallbackUsed=$fallbackUsed)"
+        if (!episodeIllegalLogged) {
+            logger.warn(message)
+            episodeIllegalLogged = true
+        } else {
+            logger.debug(message)
         }
     }
     
@@ -293,13 +396,12 @@ class ChessMDP(private val chessEnvironment: ChessEnvironment) : org.deeplearnin
      * @param data Map of key-value pairs to include in the info object
      * @return Info object for RL4J compatibility
      */
-    private fun createInfoObject(data: Map<String, Any>): Any {
-        // Return a HashMap which RL4J should be able to handle
-        return HashMap(data)
+    private fun createInfoObject(data: Map<String, Any?>): Any {
+        val filtered = data.filterValues { it != null }
+        return HashMap(filtered)
     }
     
     override fun toString(): String {
         return "ChessMDP(done=$isDoneFlag, hasObservation=${currentObservation != null})"
     }
 }
-
