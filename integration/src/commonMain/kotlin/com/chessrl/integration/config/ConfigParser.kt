@@ -174,6 +174,8 @@ object ConfigParser {
             "optimizer" -> config.copy(optimizer = value.lowercase())
             "batchSize" -> config.copy(batchSize = value.toIntOrThrow(key))
             "explorationRate" -> config.copy(explorationRate = value.toDoubleOrThrow(key))
+            "initialExplorationRate" -> config.copy(initialExplorationRate = value.toDoubleOrThrow(key))
+            "explorationDecaySteps" -> config.copy(explorationDecaySteps = value.toIntOrThrow(key))
             "targetUpdateFrequency" -> config.copy(targetUpdateFrequency = value.toIntOrThrow(key))
             "doubleDqn" -> config.copy(doubleDqn = value.equals("true", true))
             "gamma" -> config.copy(gamma = value.toDoubleOrThrow(key))
@@ -201,6 +203,7 @@ object ConfigParser {
             "logInterval" -> config.copy(logInterval = value.toIntOrThrow(key))
             "summaryOnly" -> config.copy(summaryOnly = value.equals("true", true))
             "metricsFile" -> config.copy(metricsFile = value.trim('"'))
+            "trainOpponentSoftmaxTemperature" -> config.copy(trainOpponentSoftmaxTemperature = value.toDoubleOrThrow(key))
             "workerHeap" -> config.copy(workerHeap = value.trim('"'))
             else -> config
         }

@@ -3,6 +3,7 @@ package com.chessrl.integration
 import com.chessrl.rl.*
 import com.chessrl.nn.*
 import com.chessrl.integration.backend.*
+import com.chessrl.integration.config.ChessRLConfig
 
 /**
  * Factory for creating chess agents with proper integration between
@@ -127,7 +128,8 @@ object ChessAgentFactory {
         seedManager: SeedManager = SeedManager.getInstance(),
         replayType: String = "UNIFORM",
         gamma: Double = 0.99,
-        enableDoubleDQN: Boolean = false
+        enableDoubleDQN: Boolean = false,
+        trainingConfig: ChessRLConfig? = null
     ): ChessAgent {
         val agentConfig = config.copy(explorationRate = explorationRate)
         val backendConfig = BackendAwareChessAgentFactory.createBackendConfig(
@@ -137,6 +139,7 @@ object ChessAgentFactory {
             optimizer = optimizer
         )
         
+        val actualTrainingConfig = trainingConfig ?: (config as? ChessRLConfig)
         return BackendAwareChessAgentFactory.createSeededDQNAgent(
             backendType = backendType,
             backendConfig = backendConfig,
@@ -144,7 +147,8 @@ object ChessAgentFactory {
             seedManager = seedManager,
             enableDoubleDQN = enableDoubleDQN,
             replayType = replayType,
-            gamma = gamma
+            gamma = gamma,
+            trainingConfig = actualTrainingConfig
         )
     }
     

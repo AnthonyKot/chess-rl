@@ -103,8 +103,11 @@ class MultiProcessSelfPlay @JvmOverloads constructor(
                     addAll(listOf("--opponent", opt))
                 }
                 val normalizedOpponent = config.trainOpponentType?.lowercase()
-                if (normalizedOpponent == "minimax" || normalizedOpponent in setOf("random", "mixed", "hybrid")) {
+                if (normalizedOpponent == "minimax" || normalizedOpponent == "minimax-softmax" || normalizedOpponent in setOf("random", "mixed", "hybrid")) {
                     addAll(listOf("--opponent-depth", config.trainOpponentDepth.toString()))
+                }
+                if (normalizedOpponent == "minimax-softmax" || normalizedOpponent == "softmax" || normalizedOpponent in setOf("random", "mixed", "hybrid")) {
+                    addAll(listOf("--opponent-temperature", config.trainOpponentSoftmaxTemperature.toString()))
                 }
                 // Training environment flags for parity with parent process
                 addAll(listOf(

@@ -11,6 +11,8 @@ import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.logging.ChessRLLogger
 import com.chessrl.rl.Experience
 import com.chessrl.rl.PolicyUpdateResult
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * Learning backend that delegates the entire training loop to RL4J. The manual
@@ -50,7 +52,8 @@ class RL4JLearningBackend : LearningBackend {
             agentConfig = agentConfig,
             enableDoubleDQN = config.doubleDqn,
             replayType = config.replayType,
-            gamma = config.gamma
+            gamma = config.gamma,
+            trainingConfig = config
         )
 
         val opponentAgent = BackendAwareChessAgentFactory.createSeededDQNAgent(
@@ -59,7 +62,8 @@ class RL4JLearningBackend : LearningBackend {
             agentConfig = agentConfig,
             enableDoubleDQN = config.doubleDqn,
             replayType = config.replayType,
-            gamma = config.gamma
+            gamma = config.gamma,
+            trainingConfig = config
         )
 
         return RL4JLearningSession(config, mainAgent, opponentAgent)
@@ -95,10 +99,21 @@ private class RL4JLearningSession(
     }
 
     override fun saveCheckpoint(path: String) {
+        ensureParentDirectory(path)
         mainAgent.save(path)
     }
 
     override fun saveBest(path: String) {
+        ensureParentDirectory(path)
         mainAgent.save(path)
+    }
+
+    private fun ensureParentDirectory(path: String) {
+        runCatching {
+            val parent = Path.of(path).parent ?: return
+            Files.createDirectories(parent)
+        }.onFailure {
+            logger.warn("Failed to prepare checkpoint directory for $path: ${it.message}")
+        }
     }
 }

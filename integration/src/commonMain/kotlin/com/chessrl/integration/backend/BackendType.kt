@@ -20,6 +20,6 @@ enum class BackendType {
         /**
          * Get default backend type
          */
-        fun getDefault(): BackendType = DL4J
+        fun getDefault(): BackendType = RL4J
     }
 }

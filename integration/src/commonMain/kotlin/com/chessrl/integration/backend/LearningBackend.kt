@@ -76,7 +76,8 @@ class DqnLearningBackend(
                 config = agentConfig,
                 replayType = config.replayType,
                 gamma = config.gamma,
-                enableDoubleDQN = config.doubleDqn
+                enableDoubleDQN = config.doubleDqn,
+                trainingConfig = config
             )
         } else {
             // Use existing method for manual backend (backward compatibility)
@@ -91,7 +92,7 @@ class DqnLearningBackend(
                 enableDoubleDQN = config.doubleDqn
             )
         }
-        
+
         val opponentAgent = if (nnBackendType != BackendType.MANUAL) {
             ChessAgentFactory.createSeededDQNAgent(
                 backendType = nnBackendType,
@@ -102,7 +103,8 @@ class DqnLearningBackend(
                 config = agentConfig,
                 replayType = config.replayType,
                 gamma = config.gamma,
-                enableDoubleDQN = config.doubleDqn
+                enableDoubleDQN = config.doubleDqn,
+                trainingConfig = config
             )
         } else {
             // Use existing method for manual backend (backward compatibility)

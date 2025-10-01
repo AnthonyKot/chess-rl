@@ -23,8 +23,8 @@
   - Simplified session: first `trainOnBatch()` call triggers RL4J training via `trainBatch(emptyList())`; subsequent calls reuse cached result.
   - Opponent synced by exploration rate; save checkpoints delegate to agent.
 - **Integration Tests & Docs**:
-  - RL4J tests now run only when `enableRL4J=true`, covering initialization, native training, and checkpoint round-trips while asserting real RL4J policies are used.
-  - README documents JDK requirements and Gradle flag for running the RL4J suite.
+  - RL4J tests run automatically when the backend is enabled (default) and skip themselves otherwise.
+  - README documents JDK requirements and how to disable/enable the RL4J suite.
 
 - **Cleanups**:
   - Removed unused locals in agent, redundant safe-calls, reflection utilities (`trainStep`, `store`, etc.).

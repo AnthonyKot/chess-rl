@@ -62,4 +62,3 @@ class RL4JRealImplementationTest {
         assertTrue(info["fallbackUsed"] == true || info["reason"] == "illegal-no-legal", "Fallback usage should be captured")
     }
 }
-}

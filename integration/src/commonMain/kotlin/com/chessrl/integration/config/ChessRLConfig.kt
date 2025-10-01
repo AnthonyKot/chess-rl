@@ -52,6 +52,18 @@ data class ChessRLConfig(
      * Recommended: 0.05 for balanced, 0.02 for exploitation, 0.1 for exploration.
      */
     val explorationRate: Double = 0.05,
+
+    /**
+     * Optional initial exploration rate. When null the backend picks a sensible default (usually 0.4).
+     * Must be ≥ explorationRate and ≤ 1.0 when specified.
+     */
+    val initialExplorationRate: Double? = null,
+
+    /**
+     * Optional explicit epsilon decay horizon (in environment steps). When null the backend derives a
+     * value from maxStepsPerGame × gamesPerCycle so exploration decays within a few cycles.
+     */
+    val explorationDecaySteps: Int? = null,
     
     /** 
      * Frequency of target network updates in DQN algorithm.
@@ -144,6 +156,8 @@ data class ChessRLConfig(
     val trainOpponentType: String? = null,
     /** Depth for minimax opponent during training */
     val trainOpponentDepth: Int = 2,
+    /** Temperature parameter used when sampling from the minimax softmax opponent */
+    val trainOpponentSoftmaxTemperature: Double = 1.0,
     
     // Training environment controls (optional)
     /** Enable early adjudication during training to reduce long/stalled games */
@@ -210,6 +224,20 @@ data class ChessRLConfig(
         if (explorationRate < 0.0 || explorationRate > 1.0) {
             errors.add("Exploration rate must be between 0 and 1, got: $explorationRate")
         }
+        initialExplorationRate?.let { initRate ->
+            when {
+                initRate < 0.0 || initRate > 1.0 ->
+                    errors.add("Initial exploration rate must be between 0 and 1, got: $initRate")
+                initRate < explorationRate ->
+                    warnings.add("Initial exploration rate ($initRate) is lower than exploration floor ($explorationRate); using floor instead")
+                else -> Unit
+            }
+        }
+        explorationDecaySteps?.let { decaySteps ->
+            if (decaySteps <= 0) {
+                errors.add("Exploration decay steps must be positive, got: $decaySteps")
+            }
+        }
         if (targetUpdateFrequency <= 0) {
             errors.add("Target update frequency must be positive, got: $targetUpdateFrequency")
         }
@@ -264,6 +292,9 @@ data class ChessRLConfig(
         // System validation
         if (checkpointInterval <= 0) {
             errors.add("Checkpoint interval must be positive, got: $checkpointInterval")
+        }
+        if (trainOpponentSoftmaxTemperature <= 0.0) {
+            errors.add("Softmax temperature must be positive, got: $trainOpponentSoftmaxTemperature")
         }
         if (evaluationGames <= 0) {
             errors.add("Evaluation games must be positive, got: $evaluationGames")
@@ -347,13 +378,22 @@ data class ChessRLConfig(
             appendLine("  Engine: ${engine.name.lowercase()}")
             appendLine("  Backend: ${nnBackend.name.lowercase()}")
             appendLine("  Network: ${hiddenLayers.joinToString("x")} layers, lr=$learningRate, optimizer=${optimizer.lowercase()}, batch=$batchSize")
-            appendLine("  RL: exploration=$explorationRate, target_update=$targetUpdateFrequency, doubleDQN=$doubleDqn, gamma=$gamma, buffer=$maxExperienceBuffer")
+            val initExplorationLabel = initialExplorationRate?.let { "%.3f".format(it) } ?: "auto"
+            val decayStepsLabel = explorationDecaySteps?.toString() ?: "auto"
+            appendLine("  RL: exploration=$explorationRate (init=$initExplorationLabel, decay_steps=$decayStepsLabel), target_update=$targetUpdateFrequency, doubleDQN=$doubleDqn, gamma=$gamma, buffer=$maxExperienceBuffer")
             appendLine("      replay=$replayType")
             appendLine("  Self-play: $gamesPerCycle games/cycle, $maxConcurrentGames concurrent, $maxStepsPerGame max_steps")
             appendLine("  Rewards: win=$winReward, loss=$lossReward, draw=$drawReward, step_limit_penalty=$stepLimitPenalty")
             appendLine("  System: $seedLabel, checkpoints every $checkpointInterval cycles")
             appendLine("  Training: max_batches_per_cycle=$maxBatchesPerCycle, log_interval=$logInterval")
-            appendLine("  TrainOpponent: ${trainOpponentType ?: "self"}${if (trainOpponentType?.equals("minimax", true) == true) "(d=$trainOpponentDepth)" else ""}")
+            val opponentDescriptor = when (trainOpponentType?.lowercase()) {
+                "minimax" -> "minimax(d=$trainOpponentDepth)"
+                "minimax-softmax", "softmax" -> "minimax-softmax(d=$trainOpponentDepth, tau=${"%.2f".format(trainOpponentSoftmaxTemperature)})"
+                "heuristic" -> "heuristic"
+                null -> "self"
+                else -> trainOpponentType!!
+            }
+            appendLine("  TrainOpponent: $opponentDescriptor")
             appendLine("  TrainEnv: early_adjudication=$trainEarlyAdjudication, resign_threshold=$trainResignMaterialThreshold, no_progress_plies=$trainNoProgressPlies")
             appendLine("  Eval: early_adjudication=$evalEarlyAdjudication, resign_threshold=$evalResignMaterialThreshold, no_progress_plies=$evalNoProgressPlies")
         }

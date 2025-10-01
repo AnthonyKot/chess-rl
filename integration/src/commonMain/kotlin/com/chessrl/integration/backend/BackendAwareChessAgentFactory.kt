@@ -2,6 +2,7 @@ package com.chessrl.integration.backend
 
 import com.chessrl.integration.*
 import com.chessrl.integration.backend.rl4j.*
+import com.chessrl.integration.config.ChessRLConfig
 import com.chessrl.integration.logging.ChessRLLogger
 import com.chessrl.rl.*
 
@@ -29,7 +30,8 @@ object BackendAwareChessAgentFactory {
         agentConfig: ChessAgentConfig,
         enableDoubleDQN: Boolean = false,
         replayType: String = "UNIFORM",
-        gamma: Double = 0.99
+        gamma: Double = 0.99,
+        trainingConfig: ChessRLConfig? = null
     ): ChessAgent {
         // Validate and select backend with fallback
         val (selectedBackend, warnings) = BackendSelector.selectBackendWithFallback(backendType)
@@ -49,7 +51,7 @@ object BackendAwareChessAgentFactory {
             BackendType.MANUAL -> createManualDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma)
             BackendType.DL4J -> createDl4jDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma)
             BackendType.KOTLINDL -> createKotlinDlDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma)
-            BackendType.RL4J -> createRL4JDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma)
+            BackendType.RL4J -> createRL4JDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma, trainingConfig)
         }
     }
     
@@ -63,7 +65,8 @@ object BackendAwareChessAgentFactory {
         seedManager: SeedManager = SeedManager.getInstance(),
         enableDoubleDQN: Boolean = false,
         replayType: String = "UNIFORM",
-        gamma: Double = 0.99
+        gamma: Double = 0.99,
+        trainingConfig: ChessRLConfig? = null
     ): ChessAgent {
         // Validate and select backend with fallback
         val (selectedBackend, warnings) = BackendSelector.selectBackendWithFallback(backendType)
@@ -83,7 +86,7 @@ object BackendAwareChessAgentFactory {
             BackendType.MANUAL -> createSeededManualDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma)
             BackendType.DL4J -> createSeededDl4jDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma)
             BackendType.KOTLINDL -> createSeededKotlinDlDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma)
-            BackendType.RL4J -> createSeededRL4JDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma)
+            BackendType.RL4J -> createSeededRL4JDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma, trainingConfig)
         }
     }
     
@@ -354,7 +357,8 @@ object BackendAwareChessAgentFactory {
         agentConfig: ChessAgentConfig,
         enableDoubleDQN: Boolean,
         replayType: String,
-        gamma: Double
+        gamma: Double,
+        trainingConfig: ChessRLConfig?
     ): ChessAgent {
         logger.info(
             "Creating DQN agent with RL4J backend using backendConfig={hiddenLayers=${backendConfig.hiddenLayers}," +
@@ -375,7 +379,8 @@ object BackendAwareChessAgentFactory {
         // Create RL4J agent using native configuration mapping
         val rl4jAgent = RL4JChessAgent(
             config = agentConfig,
-            backendConfig = backendConfig
+            backendConfig = backendConfig,
+            trainingConfig = trainingConfig
         )
 
         return RL4JChessAgentAdapter(rl4jAgent, agentConfig)
@@ -392,7 +397,8 @@ object BackendAwareChessAgentFactory {
         seedManager: SeedManager,
         enableDoubleDQN: Boolean,
         replayType: String,
-        gamma: Double
+        gamma: Double,
+        trainingConfig: ChessRLConfig?
     ): ChessAgent {
         logger.info(
             "Creating seeded DQN agent with RL4J backend using backendConfig={hiddenLayers=${backendConfig.hiddenLayers}," +
@@ -413,7 +419,8 @@ object BackendAwareChessAgentFactory {
         // Create seeded RL4J agent (native configuration is deterministic; seed handled by RL4J internals)
         val rl4jAgent = RL4JChessAgent(
             config = agentConfig,
-            backendConfig = backendConfig
+            backendConfig = backendConfig,
+            trainingConfig = trainingConfig
         )
 
         return RL4JChessAgentAdapter(rl4jAgent, agentConfig)

@@ -372,6 +372,8 @@ object ChessRLCLI {
         getStringArg(args, "--hidden-layers")?.let { config = config.copy(hiddenLayers = parseHiddenLayers(it)) }
         getIntArg(args, "--max-concurrent-games")?.let { config = config.copy(maxConcurrentGames = it) }
         getDoubleArg(args, "--exploration-rate")?.let { config = config.copy(explorationRate = it) }
+        getDoubleArg(args, "--initial-exploration-rate")?.let { config = config.copy(initialExplorationRate = it) }
+        getIntArg(args, "--exploration-decay-steps")?.let { config = config.copy(explorationDecaySteps = it) }
         getIntArg(args, "--target-update-frequency")?.let { config = config.copy(targetUpdateFrequency = it) }
         getIntArg(args, "--max-experience-buffer")?.let { config = config.copy(maxExperienceBuffer = it) }
         getIntArg(args, "--checkpoint-interval")?.let { config = config.copy(checkpointInterval = it) }
@@ -393,6 +395,7 @@ object ChessRLCLI {
         // Training opponent controls
         getStringArg(args, "--train-opponent")?.let { config = config.copy(trainOpponentType = it) }
         getIntArg(args, "--train-opponent-depth")?.let { config = config.copy(trainOpponentDepth = it) }
+        getDoubleArg(args, "--train-opponent-temperature")?.let { config = config.copy(trainOpponentSoftmaxTemperature = it) }
 
         // Checkpoint manager controls
         getIntArg(args, "--checkpoint-max-versions")?.let { config = config.copy(checkpointMaxVersions = it) }
@@ -462,7 +465,8 @@ object ChessRLCLI {
             ),
             replayType = config.replayType,
             gamma = config.gamma,
-            enableDoubleDQN = config.doubleDqn
+            enableDoubleDQN = config.doubleDqn,
+            trainingConfig = config
         )
         
         try {
@@ -733,7 +737,9 @@ object ChessRLCLI {
         println("    --hidden-layers <list>   Hidden layers (e.g., 512,256,128)")
         println("    --max-concurrent-games n Concurrency for self-play")
         println("    --worker-heap <size>     Max heap for worker JVMs (e.g., 4g or 4096m)")
-        println("    --exploration-rate <x>   Exploration epsilon")
+        println("    --exploration-rate <x>   Exploration epsilon floor")
+        println("    --initial-exploration-rate <x>  Initial epsilon (default: auto 0.4)")
+        println("    --exploration-decay-steps n     Epsilon decay horizon in env steps")
         println("    --target-update-frequency n  Target net update frequency")
         println("    --max-experience-buffer n    Replay buffer size")
         println("    --max-batches-per-cycle n    Upper cap on training batches per cycle")
@@ -743,8 +749,9 @@ object ChessRLCLI {
         println("    --train-early-adjudication <true|false>  Enable early adjudication in training")
         println("    --train-resign-threshold <n>            Material threshold (training)")
         println("    --train-no-progress-plies <n>           No-progress plies (training)")
-        println("    --train-opponent <type>  Training opponent: self|minimax|heuristic|random")
+        println("    --train-opponent <type>  Training opponent: self|minimax|minimax-softmax|heuristic|random")
         println("    --train-opponent-depth n Minimax depth during training (default: 2)")
+        println("    --train-opponent-temperature <x> Softmax temperature for minimax-softmax opponent")
         println("    --resume                 Resume training by auto-loading best_model.json from checkpoint dir")
         println("    --load <path>            Resume training from an explicit model file path")
         println("    --checkpoint-interval n  Save frequency (cycles)")
@@ -761,7 +768,7 @@ object ChessRLCLI {
         println("    --draw-reward <x>        Reward shaping (draw)")
         println("    --step-limit-penalty <x> Penalty at step limit")
         println("    --engine <backend>       Engine backend: builtin, chesslib")
-        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl, rl4j (default: dl4j)")
+        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl, rl4j (default: rl4j)")
         println()
         println("EVALUATION:")
         println("  --evaluate --baseline [OPTIONS]")
@@ -777,14 +784,14 @@ object ChessRLCLI {
         println("    --profile <spec>         Optional: legacy or composed profiles for evaluation")
         println("    --config <name|path>     Optional: root config for evaluation")
         println("    --override k=v           Optional: overrides for evaluation config")
-        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl, rl4j (default: dl4j)")
+        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl, rl4j (default: rl4j)")
         println()
         println("  --evaluate --compare [OPTIONS]")
         println("    --modelA <path|dir>      First model file or directory (auto-selects best inside dir)")
         println("    --modelB <path|dir>      Second model file or directory (auto-selects best inside dir)")
         println("    --games <n>              Number of comparison games (default: 100)")
         println("    --seed <n>               Random seed for reproducibility")
-        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl, rl4j (default: dl4j)")
+        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl, rl4j (default: rl4j)")
         println()
         println("PLAY:")
         println("  --play [OPTIONS]")
@@ -794,7 +801,7 @@ object ChessRLCLI {
         println("    --override k=v           Optional overrides for play settings")
         println("    --as <color>             Human player color: white, black (default: white)")
         println("    --verbose                Show detailed engine analysis and diagnostics")
-        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl, rl4j (default: dl4j)")
+        println("    --nn <backend>           Neural network backend: manual, dl4j, kotlindl, rl4j (default: rl4j)")
         println()
         println("PROFILES:")
         println("  Legacy: fast-debug, long-train, long-train-mixed, eval-only")

@@ -12,8 +12,7 @@ class RL4JAvailabilityTest {
         // Test that availability check doesn't throw exceptions
         val isAvailable = RL4JAvailability.isAvailable()
         
-        // Since RL4J is not enabled by default (enableRL4J=false), it should not be available
-        assertFalse(isAvailable, "RL4J should not be available when enableRL4J=false")
+        assertTrue(isAvailable, "RL4J should be available when enableRL4J=true")
     }
     
     @Test
@@ -24,15 +23,21 @@ class RL4JAvailabilityTest {
         assertNotNull(message)
         assertTrue(message.isNotEmpty(), "Availability message should not be empty")
         
-        // Should contain instructions for enabling RL4J
-        assertTrue(message.contains("enableRL4J=true"), "Message should contain enableRL4J instructions")
+        if (RL4JAvailability.isAvailable()) {
+            assertEquals("RL4J backend is available and ready to use", message)
+        } else {
+            assertTrue(message.contains("enableRL4J=true"), "Message should contain enableRL4J instructions")
+        }
     }
     
     @Test
     fun testRL4JValidationThrowsWhenNotAvailable() {
-        // Since RL4J is not available by default, validation should throw
-        assertFailsWith<IllegalStateException> {
-            RL4JAvailability.validateAvailability()
+        if (RL4JAvailability.isAvailable()) {
+            RL4JAvailability.validateAvailability() // should not throw
+        } else {
+            assertFailsWith<IllegalStateException> {
+                RL4JAvailability.validateAvailability()
+            }
         }
     }
     
@@ -62,8 +67,11 @@ class RL4JAvailabilityTest {
         assertNotNull(result)
         assertEquals("RL4J", result.backend)
         
-        // Since RL4J is not available by default, validation should fail
-        assertFalse(result.isValid, "RL4J validation should fail when not available")
-        assertTrue(result.issues.isNotEmpty(), "Should have issues when RL4J not available")
+        if (RL4JAvailability.isAvailable()) {
+            assertTrue(result.isValid, "RL4J validation should pass when available")
+        } else {
+            assertFalse(result.isValid, "RL4J validation should fail when not available")
+            assertTrue(result.issues.isNotEmpty(), "Should have issues when RL4J not available")
+        }
     }
 }

@@ -8,7 +8,8 @@ import kotlin.random.Random
 enum class OpponentKind {
     SELF,
     HEURISTIC,
-    MINIMAX
+    MINIMAX,
+    MINIMAX_SOFTMAX
 }
 
 data class OpponentSelection(
@@ -37,10 +38,16 @@ object OpponentSelector {
                 OpponentSelection(OpponentKind.MINIMAX, depth)
             }
 
+            normalized == "minimax-softmax" || normalized == "softmax" -> {
+                val depth = if (baseDepth <= 0) 2 else baseDepth
+                OpponentSelection(OpponentKind.MINIMAX_SOFTMAX, depth)
+            }
+
             normalized in randomKeywords -> {
                 val options = listOf(
                     OpponentSelection(OpponentKind.HEURISTIC),
                     OpponentSelection(OpponentKind.MINIMAX, 1),
+                    OpponentSelection(OpponentKind.MINIMAX_SOFTMAX, 1),
                     OpponentSelection(OpponentKind.MINIMAX, 2)
                 )
                 options[random.nextInt(options.size)]

@@ -1,5 +1,6 @@
 package com.chessrl.integration
 
+import com.chessrl.chess.Move
 import com.chessrl.integration.adapter.ChessEngineFactory
 import com.chessrl.integration.backend.BackendFactory
 import com.chessrl.integration.backend.BackendType
@@ -194,6 +195,19 @@ class TrainingPipeline(
             logger.error("Initialization failed", e)
             false
         }
+    }
+
+    private fun sampleMoveFromPolicy(policy: Map<Move, Double>, random: Random): Move? {
+        if (policy.isEmpty()) return null
+        val total = policy.values.sum().takeIf { it.isFinite() && it > 0.0 } ?: return policy.entries.maxByOrNull { it.value }?.key
+        var r = random.nextDouble(total)
+        for ((move, weight) in policy) {
+            r -= weight
+            if (r <= 0.0) {
+                return move
+            }
+        }
+        return policy.entries.maxByOrNull { it.value }?.key
     }
 
     /**
@@ -664,11 +678,12 @@ class TrainingPipeline(
                     OpponentKind.SELF -> "self"
                     OpponentKind.HEURISTIC -> "heuristic"
                     OpponentKind.MINIMAX -> "minimax(d=${opponentSelection.minimaxDepth ?: config.trainOpponentDepth})"
+                    OpponentKind.MINIMAX_SOFTMAX -> "minimax-softmax(d=${opponentSelection.minimaxDepth ?: config.trainOpponentDepth}, tau=${"%.2f".format(config.trainOpponentSoftmaxTemperature)})"
                 }
                 logger.debug("Game $gameId opponent selection: $opponentLabel")
             }
             val actionEncoder = ChessActionEncoder()
-            val minimaxTeacher = if (opponentSelection.kind == OpponentKind.MINIMAX) {
+            val minimaxTeacher = if (opponentSelection.kind == OpponentKind.MINIMAX || opponentSelection.kind == OpponentKind.MINIMAX_SOFTMAX) {
                 val depth = opponentSelection.minimaxDepth ?: config.trainOpponentDepth
                 val teacherDepth = if (depth <= 0) 2 else depth
                 val rnd = runCatching { SeedManager.getInstance().createSeededRandom("minimaxTeacher-$gameId") }.getOrNull()
@@ -700,6 +715,16 @@ class TrainingPipeline(
                         OpponentKind.MINIMAX -> {
                             val move = minimaxTeacher!!.act(environment.getCurrentBoard()).bestMove
                             val idx = actionEncoder.encodeMove(move)
+                            if (idx in validActions) idx else validActions.first()
+                        }
+                        OpponentKind.MINIMAX_SOFTMAX -> {
+                            val output = minimaxTeacher!!.act(
+                                board = environment.getCurrentBoard(),
+                                topK = SOFTMAX_TOP_K,
+                                tau = config.trainOpponentSoftmaxTemperature
+                            )
+                            val sampledMove = sampleMoveFromPolicy(output.policy, selectionRandom) ?: output.bestMove
+                            val idx = actionEncoder.encodeMove(sampledMove)
                             if (idx in validActions) idx else validActions.first()
                         }
                         OpponentKind.HEURISTIC -> {
@@ -1160,6 +1185,10 @@ class TrainingPipeline(
             errorBreakdown = errorStats,
             recommendations = recommendations
         )
+    }
+
+    private companion object {
+        private const val SOFTMAX_TOP_K = 8
     }
 }
 

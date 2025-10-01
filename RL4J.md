@@ -16,7 +16,8 @@ for running and troubleshooting RL4J training.
 | Policy implementation | Optional mock policy when RL4J unavailable | Always a real `DQNPolicy<ChessObservation>` (no mock fallback) |
 | Illegal move handling | Environment fallback with minimal logging | Environment fallback + per-episode metrics/masking hook |
 | Metrics/logging | Custom counters, limited insight | RL4J `TrainingListener` exposes reward/epsilon/steps, backend logs version/hyperparameters |
-| Tests | Sparse, reflection heavy | Gated RL4J integration tests (init/train/save-load, legality checks) |
+| Exploration schedule | Hard-coded epsilon start at 1.0 with slow decay | Profiles expose `initialExplorationRate` & `explorationDecaySteps`, CLI overrides via `--initial-exploration-rate` / `--exploration-decay-steps` |
+| Tests | Sparse, reflection heavy | Gated RL4J integration tests (init/train/save-load, legality checks) run automatically when RL4J is on |
 | Dependencies | Mixed versions, reflection resilience | All DL4J/ND4J/RL4J on matching release (`1.0.0-beta7`) |
 | Multi-process self-play | Could use existing harness | Disabled by default (stability), sequential fallback |
 
@@ -75,7 +76,7 @@ for running and troubleshooting RL4J training.
   avoid worker launch issues). RL4J training can be slower than the manual path.
 - *Illegal Actions Still Possible*: While masked earlier, RL4J may still propose
   illegal moves at high epsilon; the environment falls back but logs them.
-- *Increased Setup Requirements*: Must enable RL4J dependencies (`-PenableRL4J=true`) and ensure JDK 11+ is available locally.
+- *Increased Setup Requirements*: Ensure JDK 11+ is available locally; disable RL4J (`enableRL4J=false`) only if you need a leaner build.
 - *Version Sensitivity*: All DL4J/RL4J bundles must stay on the same release to
   avoid `NoSuchMethodError`s.
 
@@ -84,34 +85,38 @@ for running and troubleshooting RL4J training.
 ## Running RL4J Training
 
 ```bash
-# Enable RL4J dependencies and run the fast-debug profile
-./gradlew :integration:run -PenableRL4J=true --args="--train --nn rl4j --profile fast-debug"
+# RL4J is enabled by default; just run training
+./gradlew :integration:run --args="--train --profile fast-debug"
 
-# Run RL4J integration tests (skipped if the flag is absent)
-./gradlew :integration:test -PenableRL4J=true
+# Run RL4J integration tests
+./gradlew :integration:test
 ```
 
 Tips:
 1. Ensure a JDK (11+) is installed and `JAVA_HOME` is set.
 2. Consider lowering `maxConcurrentGames` (or keep the default sequential mode) to
    avoid worker launcher errors.
-3. Watch for the `RL4J training completed: ...` log each cycle—it includes reward,
+3. Tune exploration directly from the CLI: `--initial-exploration-rate 0.35 --exploration-decay-steps 7500` mirrors the long-train profile.
+4. Watch for the `RL4J training completed: ...` log each cycle—it includes reward,
    epsilon, step counts, and loss.
 
 ---
 
 ## Tuning & Troubleshooting
 
-- **Illegal action spam**: Early training uses high epsilon; you can lower
-  `explorationRate` in your config or adjust epsilon decay. The environment still
-  guards legality and logs a single warning per episode.
+- **Illegal action spam**: Early training uses high epsilon; lower
+  `initialExplorationRate`, tighten `explorationDecaySteps`, or tweak `explorationRate`.
+  The environment still guards legality and logs a single warning per episode.
 - **Slow cycles**: Reduce `maxStepsPerGame` or map `maxEpochStep`/`maxStep` to
   smaller values via `ChessRLConfig` → `RL4JConfigurationMapper`. Multi-process
   support can be re-enabled once RL4J worker boot is stable.
 - **Version conflicts**: Keep `deeplearning4j-core`, `nd4j-native-platform`, and
   `rl4j-*` on the same release (`1.0.0-beta7` currently).
-- **Missing RL4J classes**: If the availability warning appears, double-check the
-  Gradle flag or add `enableRL4J=true` to `gradle.properties`.
+- **Missing RL4J classes**: If you disable the backend (`enableRL4J=false`) and
+  forget to re-enable it, the availability warning reminds you how to turn it on.
+- **Smarter sparring partners**: Set `trainOpponentType=minimax-softmax` with
+  `trainOpponentDepth=1` to play against a depth-1 minimax that samples from a
+  temperature-controlled softmax (tune with `trainOpponentSoftmaxTemperature`).
 
 ---
 
@@ -120,7 +125,7 @@ Tips:
 The first-class RL4J backend removes the reflection shim, aligns configuration
 and metrics with RL4J’s public APIs, and adds observability hooks (legal-action
 masking, per-episode summaries, training listeners). It trades some of the legacy
-pipeline’s speed and simplicity for correctness and maintainability. Use the
-Gradle flag to opt in, rely on the new logs/tests for visibility, and adjust your
-config (episode length, epsilon schedule) to fit the RL4J lifecycle.
-
+pipeline’s speed and simplicity for correctness and maintainability. RL4J is now
+the default backend—rely on the new logs/tests for visibility, and adjust your
+config (episode length, epsilon schedule, softmax training opponents) to fit the
+RL4J lifecycle.

@@ -111,9 +111,12 @@ class ChessMDPBridgeTest {
         assertFalse(actionSpace.contains(-1))
         assertFalse(actionSpace.contains(4096))
         
-        // And should be able to sample actions
-        val sample = actionSpace.sample()
-        assertTrue(sample in 0 until 4096)
+        // And should be able to sample actions from provided legal set
+        actionSpace.updateLegalActions(listOf(5, 42, 128))
+        repeat(5) {
+            val sample = actionSpace.randomAction()
+            assertTrue(sample in listOf(5, 42, 128))
+        }
     }
     
     @Test

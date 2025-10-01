@@ -31,10 +31,13 @@ chess-rl-bot/
 ./gradlew :integration:run --args="--train --profile fast-debug"
 
 # Production training (longer, more thorough)
+./gradlew :integration:run --args="--train --profile long-train --cycles 200"
+
+# Training with the legacy DL4J backend instead of RL4J
 ./gradlew :integration:run --args="--train --profile long-train --nn dl4j --cycles 200"
 
 # Custom training with specific parameters
-./gradlew :integration:run --args="--train --nn dl4j --cycles 50 --games-per-cycle 60 --seed 12345"
+./gradlew :integration:run --args="--train --cycles 50 --games-per-cycle 60 --seed 12345"
 ```
 
 ### Evaluating Performance
@@ -71,8 +74,8 @@ The system uses a centralized configuration (`ChessRLConfig`) that exposes only 
 
 | Group | Parameters (defaults) |
 |-------|-----------------------|
-| **Neural network** | `hiddenLayers = [512,256,128]`, `learningRate = 5e-4`, `optimizer = adam`, `batchSize = 64`, `nnBackend = dl4j` |
-| **RL training** | `explorationRate = 0.05`, `targetUpdateFrequency = 200`, `doubleDqn = true`, `gamma = 0.99`, `maxExperienceBuffer = 50_000`, `replayType = UNIFORM` |
+| **Neural network** | `hiddenLayers = [512,256,128]`, `learningRate = 5e-4`, `optimizer = adam`, `batchSize = 64`, `nnBackend = rl4j` |
+| **RL training** | `explorationRate = 0.05` (floor), `initialExplorationRate = 0.35`, `explorationDecaySteps = auto`, `targetUpdateFrequency = 200`, `doubleDqn = true`, `gamma = 0.99`, `maxExperienceBuffer = 50_000`, `replayType = UNIFORM` |
 | **Self-play** | `gamesPerCycle = 30`, `maxConcurrentGames = 4`, `maxStepsPerGame = 120`, `maxCycles = 100` |
 | **Rewards** | `winReward = 1.0`, `lossReward = -1.0`, `drawReward = 0.0`, `stepLimitPenalty = -0.5` |
 | **System** | `engine = chesslib`, `seed = null`, `checkpointInterval = 5`, `checkpointDirectory = checkpoints`, `evaluationGames = 20`, `workerHeap = null` |
@@ -83,10 +86,28 @@ Optional controls (minimax opponents, adjudication thresholds, logging cadence, 
 
 Profiles live in `integration/profiles.yaml`:
 
-- **fast-debug** – quick iteration (10 games × 10 cycles, smaller network, epsilon 0.08).
-- **long-train** – production self-play (50 games × 200 cycles, hidden layers 768-512-256, epsilon 0.03, prioritized checkpoints).
+- **fast-debug** – quick iteration (10 games × 10 cycles, smaller network, epsilon floor 0.08 with 0.35 start and short decay).
+- **long-train** – production self-play (50 games × 200 cycles, hidden layers 768-512-256, epsilon floor 0.03 with 0.40 start + 7.5k decay, minimax-softmax sparring at depth 1, prioritized checkpoints).
 - **long-train-mixed** – same as long-train but mixes heuristic/minimax opponents and uses prioritized replay.
 - **eval-only** – deterministic evaluation (seeded, exploration 0, 500 evaluation games).
+
+For RL4J these profile values are mapped directly into the RL4J builders. A typical
+`long-train` configuration shows up at runtime as:
+
+```
+ChessRLConfig(
+  hiddenLayers=[768, 512, 256], learningRate=3e-4, optimizer=adam, batchSize=64,
+  nnBackend=RL4J, explorationRate=0.03, targetUpdateFrequency=300, gamma=0.99,
+  maxExperienceBuffer=100000, gamesPerCycle=50, maxConcurrentGames=8,
+  maxStepsPerGame=150, drawReward=-0.05, stepLimitPenalty=-0.6,
+  checkpointInterval=5, checkpointDirectory=checkpoints/long-train, ...)
+```
+
+`RL4JConfigurationMapper` in turn maps those fields to `QLConfiguration` (batch
+size, replay size, epsilon start/floor/decay, target-update frequency, `maxEpochStep = maxStepsPerGame`)
+and to the dense network factory (hidden layer sizes, learning rate). Checkpoints
+land in the profile’s `checkpointDirectory` as `model_cycle_XXX.json` every
+`checkpointInterval` cycles.
 
 ### Command Line Options
 
@@ -102,8 +123,10 @@ Profiles live in `integration/profiles.yaml`:
 - `--nn <backend>` – choose neural-network backend (`dl4j`, `manual`)
 - `--engine <backend>` – choose chess engine (`chesslib`, `builtin`)
 - `--cycles`, `--games-per-cycle`, `--max-concurrent-games`, `--max-steps` – override self-play settings
-- `--learning-rate`, `--batch-size`, `--exploration-rate`, `--target-update-frequency` – tweak training hyperparameters
+- `--learning-rate`, `--batch-size`, `--exploration-rate`, `--initial-exploration-rate`, `--exploration-decay-steps`, `--target-update-frequency` – tweak training hyperparameters
 - `--checkpoint-dir`, `--worker-heap`, `--seed`, `--model`, `--modelA`, `--modelB`
+- `--train-opponent`, `--train-opponent-depth`, `--train-opponent-temperature` – configure sparring opponents (`self|minimax|minimax-softmax|heuristic|random`)
+- `--train-opponent`, `--train-opponent-depth`, `--train-opponent-temperature` – configure sparring opponents (`self|minimax|minimax-softmax|heuristic|random`)
 
 ## Performance Characteristics
 
@@ -157,8 +180,7 @@ Use the `eval-only` profile or set a master seed with single-threaded play:
 ./gradlew :rl-framework:test
 ./gradlew :integration:test
 
-# Run RL4J-gated tests (requires RL4J enabled)
-./gradlew :integration:test -PenableRL4J=true
+# RL4J-specific tests live under :integration:test and run automatically when the backend is enabled
 ```
 
 ### Essential Test Coverage
@@ -167,19 +189,23 @@ Use the `eval-only` profile or set a master seed with single-threaded play:
 - **RL Framework**: Q-value updates, experience replay, action selection
 - **Integration**: End-to-end training cycles, evaluation workflows
 
-### RL4J Backend (Optional)
+### RL4J Backend (default)
 
-RL4J support requires additional dependencies. To enable it locally:
+RL4J dependencies are bundled by default (see `gradle.properties`). To slim down
+the dependency footprint you can set `enableRL4J=false` before building. With
+RL4J enabled:
 
 1. Install a JDK (11 or newer) and ensure `JAVA_HOME` is configured.
-2. Run Gradle tasks with the `enableRL4J` flag, for example:
+2. Run training as usual – RL4J will be selected automatically unless you pass
+   `--nn manual` or `--nn dl4j`:
    ```bash
-   ./gradlew :integration:compileKotlin -PenableRL4J=true
-   ./gradlew :integration:test -PenableRL4J=true
+   ./gradlew :integration:run --args="--train --profile long-train"
    ```
-3. The RL4J test suite (smoke training, checkpoint round-trip, policy exposure) runs only when the flag is set; otherwise those tests skip automatically.
-
-You can also persist the flag by adding `enableRL4J=true` to `gradle.properties` when working with the RL4J backend regularly.
+   Checkpoints land in the profile's `checkpointDirectory`
+   (e.g. `checkpoints/long-train/model_cycle_050.json`).
+3. The RL4J test suite (smoke training, checkpoint round-trip, policy exposure)
+   runs whenever the RL4J classes are on the classpath; the tests skip
+   themselves automatically if you disable the backend.
 
 ## Package Details
 

@@ -143,7 +143,7 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         
         repeat(games) { gameIndex ->
             val agentIsWhite = gameIndex % 2 == 0 // Alternate colors
-            val result = playGameAgainstMinimax(environment, agent, teacher, agentIsWhite)
+            val result = playGameAgainstMinimax(environment, agent, teacher, agentIsWhite, rng = random)
             
             if (agentIsWhite) {
                 whiteGames++
@@ -234,6 +234,7 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         var heuristicGames = 0
         var minimaxDepth1Games = 0
         var minimaxDepth2Games = 0
+        var minimaxSoftmaxGames = 0
 
         repeat(games) { gameIndex ->
             val agentIsWhite = gameIndex % 2 == 0
@@ -247,11 +248,25 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
                     val depth = selection.minimaxDepth ?: 2
                     if (depth <= 1) {
                         minimaxDepth1Games++
-                        playGameAgainstMinimax(environment, agent, teacherDepth1, agentIsWhite)
+                        playGameAgainstMinimax(environment, agent, teacherDepth1, agentIsWhite, rng = selectionRandom)
                     } else {
                         minimaxDepth2Games++
-                        playGameAgainstMinimax(environment, agent, teacherDepth2, agentIsWhite)
+                        playGameAgainstMinimax(environment, agent, teacherDepth2, agentIsWhite, rng = selectionRandom)
                     }
+                }
+                OpponentKind.MINIMAX_SOFTMAX -> {
+                    minimaxSoftmaxGames++
+                    val depth = selection.minimaxDepth ?: 1
+                    val teacher = if (depth <= 1) teacherDepth1 else teacherDepth2
+                    playGameAgainstMinimax(
+                        environment = environment,
+                        agent = agent,
+                        teacher = teacher,
+                        agentIsWhite = agentIsWhite,
+                        useSoftmax = true,
+                        softmaxTemperature = config.trainOpponentSoftmaxTemperature,
+                        rng = selectionRandom
+                    )
                 }
                 else -> playGameAgainstHeuristic(environment, agent, agentIsWhite)
             }
@@ -295,8 +310,8 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         )
 
         logger.info(
-            "Mixed opponent breakdown: heuristic=$heuristicGames, " +
-                "minimax(d=1)=$minimaxDepth1Games, minimax(d=2)=$minimaxDepth2Games"
+            "Mixed opponent breakdown: heuristic=$heuristicGames, minimax(d=1)=$minimaxDepth1Games, " +
+                "minimax-softmax=$minimaxSoftmaxGames, minimax(d=2)=$minimaxDepth2Games"
         )
         logger.info("Mixed evaluation complete: ${String.format("%.1f%%", winRate * 100)} win rate over $games games")
         confidenceInterval?.let {
@@ -644,7 +659,10 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         environment: ChessEnvironment,
         agent: ChessAgent,
         teacher: MinimaxTeacher,
-        agentIsWhite: Boolean
+        agentIsWhite: Boolean,
+        useSoftmax: Boolean = false,
+        softmaxTemperature: Double = 1.0,
+        rng: Random = Random.Default
     ): GameResult {
         var state = environment.reset()
         var steps = 0
@@ -659,8 +677,14 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
             val action = if (agentTurn) {
                 agent.selectAction(state, validActions)
             } else {
-                // Use minimax opponent
-                val move = teacher.act(environment.getCurrentBoard()).bestMove
+                val teacherOutput = if (useSoftmax) {
+                    teacher.act(environment.getCurrentBoard(), topK = SOFTMAX_TOP_K, tau = softmaxTemperature)
+                } else {
+                    teacher.act(environment.getCurrentBoard())
+                }
+                val move = if (useSoftmax) {
+                    sampleMoveFromPolicy(teacherOutput.policy, rng) ?: teacherOutput.bestMove
+                } else teacherOutput.bestMove
                 val encoded = actionEncoder.encodeMove(move)
                 if (encoded in validActions) encoded else {
                     // Robust fallback: try to match by from->to among valid actions
@@ -682,7 +706,20 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
         
         return GameResult(outcome, steps)
     }
-    
+
+    private fun sampleMoveFromPolicy(policy: Map<Move, Double>, random: Random): Move? {
+        if (policy.isEmpty()) return null
+        val total = policy.values.sum().takeIf { it.isFinite() && it > 0.0 } ?: return policy.entries.maxByOrNull { it.value }?.key
+        var r = random.nextDouble(total)
+        for ((move, weight) in policy) {
+            r -= weight
+            if (r <= 0.0) {
+                return move
+            }
+        }
+        return policy.entries.maxByOrNull { it.value }?.key
+    }
+
     /**
      * Play a single game between two agents.
      */
@@ -786,6 +823,10 @@ class BaselineEvaluator(private val config: ChessRLConfig) {
      * Get unified checkpoint manager for advanced operations.
      */
     fun getUnifiedCheckpointManager(): UnifiedCheckpointManager = unifiedCheckpointManager
+
+    private companion object {
+        private const val SOFTMAX_TOP_K = 8
+    }
 
     /**
      * Result from a single game.

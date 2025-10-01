@@ -38,32 +38,35 @@ class RL4JCLIIntegrationTest {
     
     @Test
     fun testRL4JBackendValidationFailsWhenNotAvailable() {
-        // Test that RL4J backend validation fails when dependencies are not available
+        // Ensure validation reflects actual availability state
         val validation = BackendSelector.validateBackendAvailability(BackendType.RL4J)
-        
-        assertFalse(validation.isValid, "RL4J validation should fail when dependencies not available")
-        assertEquals("RL4J", validation.backend)
-        assertTrue(validation.issues.isNotEmpty(), "Should have validation issues when RL4J not available")
-        
-        // Check that the error message mentions the gradle property
-        val issueText = validation.issues.joinToString(" ")
-        assertTrue(issueText.contains("enableRL4J=true"), "Error should mention enableRL4J property")
+        if (RL4JAvailability.isAvailable()) {
+            assertTrue(validation.isValid, "RL4J validation should succeed when dependencies are present")
+        } else {
+            assertFalse(validation.isValid, "RL4J validation should fail when dependencies not available")
+            assertEquals("RL4J", validation.backend)
+            assertTrue(validation.issues.isNotEmpty(), "Should have validation issues when RL4J not available")
+            val issueText = validation.issues.joinToString(" ")
+            assertTrue(issueText.contains("enableRL4J=true"), "Error should mention enableRL4J property")
+        }
     }
     
     @Test
     fun testRL4JBackendFallbackBehavior() {
-        // Test that RL4J backend falls back gracefully when not available
+        // Test that RL4J backend selection respects availability
         val (actualBackend, warnings) = BackendSelector.selectBackendWithFallback(
             primaryType = BackendType.RL4J,
             fallbackType = BackendType.MANUAL
         )
-        
-        // Should fall back to MANUAL since RL4J is not available
-        assertEquals(BackendType.MANUAL, actualBackend, "Should fall back to MANUAL when RL4J not available")
-        assertTrue(warnings.isNotEmpty(), "Should have warnings about fallback")
-        
-        val warningText = warnings.joinToString(" ")
-        assertTrue(warningText.contains("RL4J"), "Warning should mention RL4J")
-        assertTrue(warningText.contains("fallback") || warningText.contains("Falling back"), "Warning should mention fallback")
+        if (RL4JAvailability.isAvailable()) {
+            assertEquals(BackendType.RL4J, actualBackend, "Should stay on RL4J when available")
+            assertTrue(warnings.isEmpty(), "No warnings expected when RL4J is available")
+        } else {
+            assertEquals(BackendType.MANUAL, actualBackend, "Should fall back to MANUAL when RL4J not available")
+            assertTrue(warnings.isNotEmpty(), "Should have warnings about fallback")
+            val warningText = warnings.joinToString(" ")
+            assertTrue(warningText.contains("RL4J"), "Warning should mention RL4J")
+            assertTrue(warningText.contains("fallback") || warningText.contains("Falling back"), "Warning should mention fallback")
+        }
     }
 }

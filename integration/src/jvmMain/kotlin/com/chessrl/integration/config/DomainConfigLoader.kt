@@ -291,6 +291,8 @@ object DomainConfigLoader {
             "optimizer" -> base.copy(optimizer = from.optimizer)
             "batchSize" -> base.copy(batchSize = from.batchSize)
             "explorationRate" -> base.copy(explorationRate = from.explorationRate)
+            "initialExplorationRate" -> base.copy(initialExplorationRate = from.initialExplorationRate)
+            "explorationDecaySteps" -> base.copy(explorationDecaySteps = from.explorationDecaySteps)
             "targetUpdateFrequency" -> base.copy(targetUpdateFrequency = from.targetUpdateFrequency)
             "maxExperienceBuffer" -> base.copy(maxExperienceBuffer = from.maxExperienceBuffer)
             "doubleDqn" -> base.copy(doubleDqn = from.doubleDqn)
@@ -311,6 +313,7 @@ object DomainConfigLoader {
             // training opponent
             "trainOpponentType" -> base.copy(trainOpponentType = from.trainOpponentType)
             "trainOpponentDepth" -> base.copy(trainOpponentDepth = from.trainOpponentDepth)
+            "trainOpponentSoftmaxTemperature" -> base.copy(trainOpponentSoftmaxTemperature = from.trainOpponentSoftmaxTemperature)
             // training env controls
             "trainEarlyAdjudication" -> base.copy(trainEarlyAdjudication = from.trainEarlyAdjudication)
             "trainResignMaterialThreshold" -> base.copy(trainResignMaterialThreshold = from.trainResignMaterialThreshold)
@@ -344,6 +347,8 @@ object DomainConfigLoader {
             "optimizer" -> base.copy(optimizer = raw.lowercase())
             "batchSize" -> base.copy(batchSize = raw.toInt())
             "explorationRate" -> base.copy(explorationRate = raw.toDouble())
+            "initialExplorationRate" -> base.copy(initialExplorationRate = raw.toDouble())
+            "explorationDecaySteps" -> base.copy(explorationDecaySteps = raw.toInt())
             "targetUpdateFrequency" -> base.copy(targetUpdateFrequency = raw.toInt())
             "maxExperienceBuffer" -> base.copy(maxExperienceBuffer = raw.toInt())
             "doubleDqn" -> base.copy(doubleDqn = raw.equals("true", true))
@@ -364,6 +369,7 @@ object DomainConfigLoader {
             // training opponent
             "trainOpponentType" -> base.copy(trainOpponentType = raw)
             "trainOpponentDepth" -> base.copy(trainOpponentDepth = raw.toInt())
+            "trainOpponentSoftmaxTemperature" -> base.copy(trainOpponentSoftmaxTemperature = raw.toDouble())
             // training env controls
             "trainEarlyAdjudication" -> base.copy(trainEarlyAdjudication = raw.equals("true", true))
             "trainResignMaterialThreshold" -> base.copy(trainResignMaterialThreshold = raw.toInt())

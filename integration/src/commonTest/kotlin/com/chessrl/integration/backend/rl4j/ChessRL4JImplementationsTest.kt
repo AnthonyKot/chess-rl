@@ -146,17 +146,12 @@ class ChessRL4JImplementationsTest {
     
     @Test
     fun testChessActionSpaceSample() {
-        // Given a chess action space
         val actionSpace = ChessActionSpace()
-        
-        // When sampling actions
+        actionSpace.updateLegalActions(listOf(7, 21, 77))
+
         repeat(10) {
-            val sample = actionSpace.sample()
-            
-            // Then they should be valid
-            assertTrue(actionSpace.contains(sample))
-            assertTrue(sample >= 0)
-            assertTrue(sample < 4096)
+            val sample = actionSpace.randomAction()
+            assertTrue(sample in listOf(7, 21, 77))
         }
     }
     

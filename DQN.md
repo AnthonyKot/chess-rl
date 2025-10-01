@@ -118,6 +118,42 @@ val stepResult = environment.step(action)
 - Automatic model checkpointing
 - Performance tracking and logging
 
+### RL4J Parameter Mapping
+
+The same CLI/profile settings used by the manual DQN backend feed into RL4J via
+`RL4JConfigurationMapper`. The table below shows how key fields are mapped:
+
+| CLI / Profile Setting | RL4J Mapping | Notes |
+|----------------------|--------------|-------|
+| `--batch-size`, `ChessAgentConfig.batchSize` | `QLConfiguration.batchSize` | Shared between manual and RL4J |
+| `--max-experience-buffer` | `QLConfiguration.expRepMaxSize` | Replay buffer size |
+| `--target-update-frequency` | `QLConfiguration.targetDqnUpdateFreq` | Target sync interval |
+| `--max-steps` (profile `maxStepsPerGame`) | `QLConfiguration.maxEpochStep` | Episode length for RL4J |
+| `--games-per-cycle` | `QLConfiguration.maxStep ≈ maxStepsPerGame × gamesPerCycle` | Caps total steps per `train()` call |
+| `--hidden-layers` | `DQNDenseNetworkConfiguration.numLayers/numHiddenNodes` | RL4J repeats the first hidden size |
+| `--learning-rate` | `DQNDenseNetworkConfiguration.updater(Adam(lr))` | Shared learning rate |
+| `--exploration-rate` | `QLConfiguration.minEpsilon` (clamped ≥ 0.01) | RL4J epsilon floor |
+| `--initial-exploration-rate` | RL4J EpsGreedy policy start epsilon | Sets opening exploration; defaults to 0.4 if omitted |
+| `--exploration-decay-steps` | `QLConfiguration.epsilonNbStep` | Number of steps to anneal from start epsilon to floor |
+| `--gamma` | `QLConfiguration.gamma` | Discount factor |
+| `--double-dqn` | Currently ignored by RL4J (hardcoded false pending upgrade) |
+| `--max-cycles`, `--games-per-cycle`, `--checkpoint-dir` | managed by `TrainingPipeline` | Checkpoints land in the profile directory (e.g. `checkpoints/long-train/`) |
+
+Additional adjustments when RL4J is enabled:
+
+* Warm-up (`QLConfiguration.updateStart`) is clamped to half the computed `maxStep` to
+  avoid excessively long pre-training phases.
+* Epsilon start/floor/decay honour the new `initialExplorationRate`, `explorationRate`,
+  and `explorationDecaySteps` fields (falling back to sensible defaults when omitted).
+* `RL4JLearningBackend`/`BackendAwareChessAgentFactory` pass the full
+  `ChessRLConfig` into `RL4JChessAgent`, ensuring the mapper always reflects the
+  latest CLI or profile overrides without manual tweaks.
+
+With this mapping the manual and RL4J backends stay in sync: RL4J is the default,
+and switching to the legacy pipelines (`--nn dl4j` or `--nn manual`) honours the
+same command-line flags while RL4J handles its own replay and training lifecycle
+under the hood.
+
 ## Practical Usage
 
 ### Basic Training

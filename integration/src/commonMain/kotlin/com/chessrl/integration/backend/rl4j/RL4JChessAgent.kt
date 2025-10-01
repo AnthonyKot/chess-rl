@@ -7,8 +7,10 @@ import com.chessrl.integration.ChessEnvironment
 import com.chessrl.integration.backend.BackendConfig
 import com.chessrl.integration.backend.RL4JAvailability
 import com.chessrl.integration.logging.ChessRLLogger
+import com.chessrl.integration.logging.ComponentLogger
 import com.chessrl.rl.Experience
 import com.chessrl.rl.PolicyUpdateResult
+import com.chessrl.integration.config.ChessRLConfig
 import org.deeplearning4j.rl4j.learning.IEpochTrainer
 import org.deeplearning4j.rl4j.learning.ILearning
 import org.deeplearning4j.rl4j.learning.listener.TrainingListener
@@ -17,9 +19,12 @@ import org.deeplearning4j.rl4j.network.dqn.DQNFactoryStdDense
 import org.deeplearning4j.rl4j.network.dqn.IDQN
 import org.deeplearning4j.rl4j.policy.DQNPolicy
 import org.deeplearning4j.rl4j.util.IDataManager
+import org.nd4j.linalg.api.ndarray.INDArray
 import org.nd4j.linalg.factory.Nd4j
+import kotlin.math.ceil
 import kotlin.math.exp
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * RL4J-based chess agent that delegates all learning to RL4J's native trainers
@@ -29,7 +34,8 @@ import kotlin.math.max
 @Suppress("DEPRECATION") // TODO: migrate to RL4J's newer agent/builder APIs once upgraded
 class RL4JChessAgent(
     private val config: ChessAgentConfig,
-    private val backendConfig: BackendConfig? = null
+    private val backendConfig: BackendConfig? = null,
+    private val trainingConfig: ChessRLConfig? = null
 ) : ChessAgent {
 
     private val logger = ChessRLLogger.forComponent("RL4JChessAgent")
@@ -71,16 +77,18 @@ class RL4JChessAgent(
 
         RL4JAvailability.validateAvailability()
 
-        val mapper = RL4JConfigurationMapper(config, backendConfig)
+        val mapper = RL4JConfigurationMapper(config, backendConfig, trainingConfig)
         val mapping = mapper.build()
         mapping.warnings.forEach { warning ->
             logger.warn("RL4J configuration warning: $warning")
         }
 
+        currentExplorationRate = mapping.startEpsilon
+
         logger.info(
             "Initializing RL4J backend version summary: rl4j=${rl4jVersion()}, dl4j=${dl4jVersion()}, nd4j=${nd4jVersion()}" +
                 ", hyperparameters={batchSize=${config.batchSize}, buffer=${config.maxBufferSize}, lr=${config.learningRate}," +
-                " gamma=${config.gamma}, epsilon=${config.explorationRate}, targetUpdate=${config.targetUpdateFrequency}}"
+                " gamma=${config.gamma}, epsilon_start=${"%.3f".format(mapping.startEpsilon)}, epsilon_floor=${config.explorationRate}, targetUpdate=${config.targetUpdateFrequency}}"
         )
 
         val chessMdp = ChessMDP(ChessEnvironment())
@@ -95,9 +103,23 @@ class RL4JChessAgent(
 
         val qLearning = QLearningDiscreteDense(chessMdp, network, mapping.qLearningConfig)
         trainer = qLearning
-        val listener = RL4JTrainingMetricsListener()
+        val listener = RL4JTrainingMetricsListener(
+            agentLogger = logger,
+            maxStepTarget = mapping.qLearningConfig.maxStep,
+            maxEpochStep = mapping.qLearningConfig.maxEpochStep,
+            epsilonProvider = { qLearning.egPolicy?.epsilon?.toDouble() ?: currentExplorationRate },
+            initialEpsilon = mapping.startEpsilon,
+            minEpsilon = mapping.qLearningConfig.minEpsilon.toDouble()
+        )
         qLearning.addListener(listener)
         trainingListener = listener
+        qLearning.egPolicy?.let { policy ->
+            val applied = setEpsilonViaMethod(policy, mapping.startEpsilon) ||
+                setEpsilonViaField(policy, mapping.startEpsilon)
+            if (!applied) {
+                logger.debug("Unable to set initial epsilon via known hooks; RL4J default will be used")
+            }
+        }
         @Suppress("UNCHECKED_CAST")
         policy = qLearning.policy as DQNPolicy<ChessObservation>
 
@@ -289,15 +311,43 @@ class RL4JChessAgent(
 
 }
 
-private class RL4JTrainingMetricsListener : TrainingListener {
+private class RL4JTrainingMetricsListener(
+    private val agentLogger: ComponentLogger,
+    private val maxStepTarget: Int,
+    private val maxEpochStep: Int,
+    private val epsilonProvider: () -> Double,
+    private val initialEpsilon: Double,
+    private val minEpsilon: Double
+) : TrainingListener {
 
     private var totalReward: Double = 0.0
     private var totalSteps: Int = 0
     private var episodeCount: Int = 0
     private var lastReward: Double = 0.0
+    private var lastLogTimeMillis: Long = 0
+    private var startMessageLogged = false
+
+    private val expectedEpisodes: Int = calculateExpectedEpisodes()
 
     override fun onTrainingStart(): TrainingListener.ListenerResponse {
         reset()
+        lastLogTimeMillis = System.currentTimeMillis()
+        if (!startMessageLogged) {
+            val targetDescription = if (expectedEpisodes > 0) {
+                "up to $expectedEpisodes episodes (~$maxStepTarget steps)"
+            } else {
+                "an open-ended number of episodes"
+            }
+            agentLogger.info(
+                "RL4J training starting; target %s. epsilon_start=%s, epsilon_floor=%s. Progress logs every %d episodes or %ds",
+                targetDescription,
+                formatDouble(initialEpsilon),
+                formatDouble(minEpsilon),
+                PROGRESS_LOG_EVERY_EPISODES,
+                PROGRESS_LOG_EVERY_MILLIS / 1000
+            )
+            startMessageLogged = true
+        }
         return TrainingListener.ListenerResponse.CONTINUE
     }
 
@@ -317,6 +367,9 @@ private class RL4JTrainingMetricsListener : TrainingListener {
         totalReward += statEntry.reward
         totalSteps += statEntry.stepCounter
         lastReward = statEntry.reward
+        if (shouldLogProgress()) {
+            logProgress()
+        }
         return TrainingListener.ListenerResponse.CONTINUE
     }
 
@@ -329,6 +382,7 @@ private class RL4JTrainingMetricsListener : TrainingListener {
         totalSteps = 0
         episodeCount = 0
         lastReward = 0.0
+        lastLogTimeMillis = 0
     }
 
     fun snapshot(): MetricsSnapshot = MetricsSnapshot(
@@ -346,6 +400,73 @@ private class RL4JTrainingMetricsListener : TrainingListener {
     ) {
         fun averageReward(): Double = if (episodeCount > 0) totalReward / episodeCount else 0.0
     }
+
+    private fun shouldLogProgress(): Boolean {
+        if (episodeCount <= 0) return false
+        if (episodeCount == 1) return true
+        if (episodeCount % PROGRESS_LOG_EVERY_EPISODES == 0) return true
+        val now = System.currentTimeMillis()
+        return now - lastLogTimeMillis >= PROGRESS_LOG_EVERY_MILLIS
+    }
+
+    private fun logProgress() {
+        val epsilon = safeEpsilon()
+        val avgReward = if (episodeCount > 0) totalReward / episodeCount else 0.0
+        val stepPercent = if (maxStepTarget > 0) {
+            min(100.0, (totalSteps.toDouble() / max(maxStepTarget, 1) * 100.0))
+        } else {
+            null
+        }
+        val episodePercent = if (expectedEpisodes > 0) {
+            min(100.0, (episodeCount.toDouble() / expectedEpisodes * 100.0))
+        } else {
+            stepPercent
+        }
+
+        val episodeText = if (expectedEpisodes > 0) {
+            val percentText = episodePercent?.let { " (${formatPercent(it)})" } ?: ""
+            "$episodeCount/$expectedEpisodes$percentText"
+        } else {
+            episodeCount.toString()
+        }
+
+        val stepText = if (maxStepTarget > 0) {
+            val percentText = stepPercent?.let { " (${formatPercent(it)})" } ?: ""
+            "$totalSteps/$maxStepTarget$percentText"
+        } else {
+            totalSteps.toString()
+        }
+
+        agentLogger.info(
+            "RL4J progress: episode=%s, steps=%s, epsilon=%s, avgReward=%s, lastReward=%s",
+            episodeText,
+            stepText,
+            formatDouble(epsilon),
+            formatDouble(avgReward),
+            formatDouble(lastReward)
+        )
+        lastLogTimeMillis = System.currentTimeMillis()
+    }
+
+    private fun safeEpsilon(): Double = runCatching { epsilonProvider() }.getOrElse { Double.NaN }
+
+    private fun calculateExpectedEpisodes(): Int {
+        if (maxStepTarget <= 0 || maxEpochStep <= 0) return 0
+        return ceil(maxStepTarget.toDouble() / maxEpochStep).toInt().coerceAtLeast(1)
+    }
+
+    private fun formatDouble(value: Double): String {
+        return if (value.isFinite()) "%.4f".format(value) else "-"
+    }
+
+    private fun formatPercent(value: Double): String {
+        return "%.1f%%".format(value)
+    }
+
+    private companion object {
+        private const val PROGRESS_LOG_EVERY_EPISODES: Int = 5
+        private const val PROGRESS_LOG_EVERY_MILLIS: Long = 60_000L
+    }
 }
 
 private fun IDQN<*>.latestScore(): Double = runCatching { getLatestScore() }.getOrDefault(0.0)
@@ -355,3 +476,30 @@ private fun dl4jVersion(): String = IDQN::class.java.pkgVersion()
 private fun nd4jVersion(): String = Nd4j::class.java.pkgVersion()
 
 private fun Class<*>.pkgVersion(): String = this.`package`?.implementationVersion ?: "unknown"
+
+private fun setEpsilonViaMethod(policy: Any, epsilon: Double): Boolean {
+    val clazz = policy.javaClass
+    val attempts = listOf(
+        runCatching {
+            val method = clazz.getMethod("setEpsilon", java.lang.Float.TYPE)
+            method.invoke(policy, epsilon.toFloat())
+        },
+        runCatching {
+            val method = clazz.getMethod("setEpsilon", java.lang.Double.TYPE)
+            method.invoke(policy, epsilon)
+        }
+    )
+    return attempts.any { it.isSuccess }
+}
+
+private fun setEpsilonViaField(policy: Any, epsilon: Double): Boolean {
+    return runCatching {
+        val field = policy.javaClass.getDeclaredField("epsilon")
+        field.isAccessible = true
+        when (field.type) {
+            java.lang.Float.TYPE -> field.setFloat(policy, epsilon.toFloat())
+            java.lang.Double.TYPE -> field.setDouble(policy, epsilon)
+            else -> throw IllegalStateException("Unsupported epsilon field type: ${field.type}")
+        }
+    }.isSuccess
+}

@@ -1,5 +1,6 @@
 package com.chessrl.integration
 
+import com.chessrl.chess.Move
 import com.chessrl.integration.adapter.ChessEngineFactory
 import com.chessrl.integration.adapter.EngineBackend
 import com.chessrl.integration.backend.BackendType
@@ -19,6 +20,8 @@ import kotlin.random.Random
  * Loads a model, plays a single game, and writes the result to a file.
  */
 object SelfPlayWorker {
+
+    private const val SOFTMAX_TOP_K = 8
     
     @JvmStatic
     fun main(args: Array<String>) {
@@ -54,6 +57,7 @@ object SelfPlayWorker {
             hiddenLayers = argsMap["--hidden-layers"]?.let { parseHiddenLayers(it) },
             opponent = argsMap["--opponent"],
             opponentDepth = argsMap["--opponent-depth"]?.toInt() ?: 2,
+            opponentTemperature = argsMap["--opponent-temperature"]?.toDouble() ?: 1.0,
             trainEarlyAdjudication = argsMap["--train-early-adjudication"]?.equals("true", true)
                 ?: EnvironmentDefaults.ENABLE_EARLY_ADJUDICATION,
             trainResignMaterialThreshold = argsMap["--train-resign-threshold"]?.toInt()
@@ -115,7 +119,7 @@ object SelfPlayWorker {
         val selectionRandom = runCatching { SeedManager.getInstance().createSeededRandom("workerOpponentSelection-${params.gameId}") }
             .getOrNull() ?: Random.Default
         val opponentSelection = OpponentSelector.select(params.opponent, params.opponentDepth, selectionRandom)
-        val minimaxTeacher = if (opponentSelection.kind == OpponentKind.MINIMAX) {
+        val minimaxTeacher = if (opponentSelection.kind == OpponentKind.MINIMAX || opponentSelection.kind == OpponentKind.MINIMAX_SOFTMAX) {
             val depth = opponentSelection.minimaxDepth ?: params.opponentDepth
             val teacherDepth = if (depth <= 0) 2 else depth
             val rnd = runCatching { SeedManager.getInstance().createSeededRandom("minimaxWorker-${params.gameId}") }.getOrNull()
@@ -141,6 +145,22 @@ object SelfPlayWorker {
                             val fallback = validActions.firstOrNull { ai ->
                                 val m2 = actionEncoder.decodeAction(ai)
                                 m2.from == move.from && m2.to == move.to
+                            }
+                            fallback ?: validActions.first()
+                        }
+                    }
+                    OpponentKind.MINIMAX_SOFTMAX -> {
+                        val output = minimaxTeacher!!.act(
+                            board = environment.getCurrentBoard(),
+                            topK = SOFTMAX_TOP_K,
+                            tau = params.opponentTemperature
+                        )
+                        val sampledMove = sampleMoveFromPolicy(output.policy, selectionRandom) ?: output.bestMove
+                        val idx = actionEncoder.encodeMove(sampledMove)
+                        if (idx in validActions) idx else {
+                            val fallback = validActions.firstOrNull { ai ->
+                                val decoded = actionEncoder.decodeAction(ai)
+                                decoded.from == sampledMove.from && decoded.to == sampledMove.to
                             }
                             fallback ?: validActions.first()
                         }
@@ -235,7 +255,8 @@ object SelfPlayWorker {
             explorationRate = config.explorationRate,
             config = agentConfig,
             replayType = config.replayType,
-            gamma = config.gamma
+            gamma = config.gamma,
+            trainingConfig = config
         )
         
         // Load model weights if file exists
@@ -260,7 +281,20 @@ object SelfPlayWorker {
             }
         }
     }
-    
+
+    private fun sampleMoveFromPolicy(policy: Map<Move, Double>, random: Random): Move? {
+        if (policy.isEmpty()) return null
+        val total = policy.values.sum().takeIf { it.isFinite() && it > 0.0 } ?: return policy.entries.maxByOrNull { it.value }?.key
+        var r = random.nextDouble(total)
+        for ((move, weight) in policy) {
+            r -= weight
+            if (r <= 0.0) {
+                return move
+            }
+        }
+        return policy.entries.maxByOrNull { it.value }?.key
+    }
+
     private fun saveResult(result: WorkerGameResult, outputFile: String) {
         // Write summary JSON
         val summary = buildString {
@@ -316,6 +350,7 @@ private data class WorkerParams(
     val hiddenLayers: List<Int>? = null,
     val opponent: String? = null,
     val opponentDepth: Int = 2,
+    val opponentTemperature: Double = 1.0,
     val trainEarlyAdjudication: Boolean = EnvironmentDefaults.ENABLE_EARLY_ADJUDICATION,
     val trainResignMaterialThreshold: Int = EnvironmentDefaults.RESIGN_MATERIAL_THRESHOLD,
     val trainNoProgressPlies: Int = EnvironmentDefaults.NO_PROGRESS_PLIES,
