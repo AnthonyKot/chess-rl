@@ -1,0 +1,37 @@
+# Cloud-optimized training configuration
+# Higher concurrency, longer episodes, prioritized replay
+
+network:
+  hiddenLayers: "512x256x128"  # Slightly larger for cloud compute
+  learningRate: 0.0003
+  batchSize: 128
+  optimizer: "ADAM"
+
+rl:
+  explorationRate: 0.15
+  targetUpdateFrequency: 50
+  doubleDqn: true
+  gamma: 0.99
+  maxExperienceBuffer: 50000
+  replayType: "PRIORITIZED"  # Enable prioritized replay
+  maxBatchesPerCycle: 200
+
+selfplay:
+  gamesPerCycle: 100
+  maxConcurrentGames: 8  # Higher concurrency for cloud
+  maxStepsPerGame: 150
+  opponentUpdateFrequency: 10
+  opponentWarmupCycles: 3
+
+rewards:
+  winReward: 1.0
+  lossReward: -1.0
+  drawReward: 0.0
+  stepLimitPenalty: -0.003  # Moderate step penalty
+  enablePositionRewards: true
+  positionRewardWeight: 0.1
+
+system:
+  checkpointInterval: 5
+  logLevel: "INFO"
+  enableMetrics: true
