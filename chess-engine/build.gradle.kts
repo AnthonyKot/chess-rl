@@ -1,82 +1,63 @@
 plugins {
-    kotlin("multiplatform")
+    kotlin("jvm")
 }
 
 repositories {
     mavenCentral()
+    maven("https://jitpack.io")
 }
 
 kotlin {
     jvmToolchain(21)
-    // JVM target only
-    jvm {
-        testRuns["test"].executionTask.configure {
-            useJUnitPlatform()
-        }
-        compilations.getByName("main") {
-            // Use the full JVM runtime classpath to ensure all dependencies (including subprojects) are present
-            // Qualify with 'project' to avoid receiver clash inside the compilation scope
-            val runtimeCp = project.configurations.getByName("jvmRuntimeClasspath") + output.allOutputs
+}
 
-            // Demo/CLI tasks removed (demos pruned)
-            tasks.register("runTeacherCollector", JavaExec::class) {
-                dependsOn("jvmMainClasses")
-                classpath = runtimeCp
-                mainClass.set("com.chessrl.teacher.TeacherDataCollectorKt")
-                group = "application"
-                description = "Run the teacher data collector (NDJSON output)"
-                val raw = System.getProperty("args")
-                if (raw != null) {
-                    val cliArgs: List<String> = raw.split(" ").filter { it.isNotBlank() }
-                    args(cliArgs)
-                }
-            }
-            tasks.register("runImitationTrainer", JavaExec::class) {
-                dependsOn("jvmMainClasses")
-                classpath = runtimeCp
-                mainClass.set("com.chessrl.teacher.ImitationTrainerKt")
-                group = "application"
-                description = "Run imitation pretraining on a NDJSON dataset"
-                val raw = System.getProperty("args")
-                if (raw != null) {
-                    val cliArgs: List<String> = raw.split(" ").filter { it.isNotBlank() }
-                    args(cliArgs)
-                }
-            }
-            tasks.register("runDiversityReport", JavaExec::class) {
-                dependsOn("jvmMainClasses")
-                classpath = runtimeCp
-                mainClass.set("com.chessrl.teacher.DiversityReportKt")
-                group = "application"
-                description = "Analyze NDJSON teacher dataset diversity metrics"
-                val raw = System.getProperty("args")
-                if (raw != null) {
-                    val cliArgs: List<String> = raw.split(" ").filter { it.isNotBlank() }
-                    args(cliArgs)
-                }
-            }
-        }
-    }
+dependencies {
+    implementation(project(":nn-package"))
+    implementation("com.github.bhlangonijr:chesslib:1.3.3")
 
-    sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation(project(":nn-package"))
-            }
-        }
-        val commonTest by getting {
-            dependencies { implementation(kotlin("test")) }
-        }
-        val jvmMain by getting {
-            dependencies {
-                implementation(project(":nn-package"))
-            }
-        }
-        val jvmTest by getting
+    testImplementation(kotlin("test"))
+    testImplementation(kotlin("test-junit5"))
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+val mainSourceSet = sourceSets.named("main")
+
+fun registerCliTask(name: String, mainClassName: String, descriptionText: String) {
+    tasks.register<JavaExec>(name) {
+        group = "application"
+        description = descriptionText
+        dependsOn(tasks.named("classes"))
+        mainClass.set(mainClassName)
+        classpath = mainSourceSet.get().runtimeClasspath
+        System.getProperty("args")
+            ?.split(" ")
+            ?.filter { it.isNotBlank() }
+            ?.let { args(it) }
     }
 }
 
-// Ensure consistent Java toolchain for Kotlin/JVM compilations
+registerCliTask(
+    name = "runTeacherCollector",
+    mainClassName = "com.chessrl.teacher.TeacherDataCollectorKt",
+    descriptionText = "Run the teacher data collector (NDJSON output)"
+)
+
+registerCliTask(
+    name = "runImitationTrainer",
+    mainClassName = "com.chessrl.teacher.ImitationTrainerKt",
+    descriptionText = "Run imitation pretraining on a NDJSON dataset"
+)
+
+registerCliTask(
+    name = "runDiversityReport",
+    mainClassName = "com.chessrl.teacher.DiversityReportKt",
+    descriptionText = "Analyze NDJSON teacher dataset diversity metrics"
+)
+
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(21))

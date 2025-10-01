@@ -12,18 +12,6 @@ repositories {
 kotlin {
     jvmToolchain(21)
 }
-
-sourceSets {
-    val main by getting {
-        kotlin.srcDirs("src/commonMain/kotlin", "src/jvmMain/kotlin")
-        resources.srcDirs("src/commonMain/resources", "src/jvmMain/resources")
-    }
-    val test by getting {
-        kotlin.srcDirs("src/commonTest/kotlin", "src/jvmTest/kotlin")
-        resources.srcDirs("src/commonTest/resources", "src/jvmTest/resources")
-    }
-}
-
 dependencies {
     implementation(project(":nn-package"))
     implementation(project(":chess-engine"))

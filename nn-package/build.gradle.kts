@@ -1,5 +1,5 @@
 plugins {
-    kotlin("multiplatform")
+    kotlin("jvm")
 }
 
 repositories {
@@ -8,22 +8,16 @@ repositories {
 
 kotlin {
     jvmToolchain(21)
-    // JVM target only
-    jvm {
-        testRuns["test"].executionTask.configure { useJUnitPlatform() }
-    }
+}
 
-    sourceSets {
-        val commonMain by getting
-        val commonTest by getting { dependencies { implementation(kotlin("test")) } }
-        val jvmMain by getting
-        val jvmTest by getting {
-            dependencies {
-                implementation(kotlin("test-junit5"))
-                runtimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
-            }
-        }
-    }
+dependencies {
+    testImplementation(kotlin("test"))
+    testImplementation(kotlin("test-junit5"))
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 java {
