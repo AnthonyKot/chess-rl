@@ -35,18 +35,22 @@ object ConfigParser {
                 continue
             }
 
+            // Only consume the next token as a value if it exists and is not itself a flag.
+            // This lets boolean/mode flags like --train, --evaluate, --help coexist safely.
+            val nextIsValue = i + 1 < args.size && !args[i + 1].startsWith("--")
+
             if (flag == "--profile") {
-                if (i + 1 < args.size) {
+                if (nextIsValue) {
                     config = loadProfile(args[++i])
                 }
-            } else {
-                if (i + 1 < args.size) {
-                    val value = args[++i]
-                    flagToKey(flag)?.let { key ->
-                        config = applyConfigSetting(config, key, value)
-                    }
+            } else if (nextIsValue) {
+                val value = args[++i]
+                flagToKey(flag)?.let { key ->
+                    config = applyConfigSetting(config, key, value)
                 }
             }
+            // flags with no value (--train, --evaluate, --help, --baseline) are handled
+            // by ChessRLCLI mode detection, not here
 
             i++
         }
@@ -73,7 +77,9 @@ object ConfigParser {
                 "fast-debug" -> createFastDebugProfile()
                 "long-train" -> createLongTrainProfile()
                 "eval-only" -> createEvalOnlyProfile()
-                else -> throw IllegalArgumentException("Unknown profile: $profileName. Available profiles: fast-debug, long-train, eval-only")
+                "alphazero-fast" -> createAlphaZeroFastProfile()
+                "alphazero-train" -> createAlphaZeroTrainProfile()
+                else -> throw IllegalArgumentException("Unknown profile: $profileName. Available profiles: alphazero-fast, alphazero-train, fast-debug, long-train, eval-only")
             }
         }
     }
@@ -98,7 +104,9 @@ object ConfigParser {
             "fast-debug" -> createFastDebugProfile()
             "long-train" -> createLongTrainProfile()
             "eval-only" -> createEvalOnlyProfile()
-            else -> throw IllegalArgumentException("Profile '$profileName' not found. Available built-in profiles: fast-debug, long-train, eval-only")
+            "alphazero-fast" -> createAlphaZeroFastProfile()
+            "alphazero-train" -> createAlphaZeroTrainProfile()
+            else -> throw IllegalArgumentException("Profile '$profileName' not found. Available profiles: alphazero-fast, alphazero-train, fast-debug, long-train, eval-only")
         }
     }
     
@@ -166,9 +174,9 @@ object ConfigParser {
         return when (key) {
             "hiddenLayers" -> config.copy(hiddenLayers = parseHiddenLayers(value))
             "learningRate" -> config.copy(learningRate = value.toDoubleOrThrow(key))
-            "nnBackend" -> {
+            "nnBackend", "nn" -> {
                 val backend = BackendType.fromString(value)
-                    ?: throw IllegalArgumentException("Invalid backend for $key: $value")
+                    ?: throw IllegalArgumentException("Invalid backend for $key: $value. Valid values: ${BackendType.values().joinToString { it.name.lowercase() }}")
                 config.copy(nnBackend = backend)
             }
             "optimizer" -> config.copy(optimizer = value.lowercase())
@@ -185,7 +193,7 @@ object ConfigParser {
             "gamesPerCycle" -> config.copy(gamesPerCycle = value.toIntOrThrow(key))
             "maxConcurrentGames" -> config.copy(maxConcurrentGames = value.toIntOrThrow(key))
             "maxStepsPerGame" -> config.copy(maxStepsPerGame = value.toIntOrThrow(key))
-            "maxCycles" -> config.copy(maxCycles = value.toIntOrThrow(key))
+            "maxCycles", "cycles" -> config.copy(maxCycles = value.toIntOrThrow(key))
             "winReward" -> config.copy(winReward = value.toDoubleOrThrow(key))
             "lossReward" -> config.copy(lossReward = value.toDoubleOrThrow(key))
             "drawReward" -> config.copy(drawReward = value.toDoubleOrThrow(key))
@@ -205,6 +213,14 @@ object ConfigParser {
             "metricsFile" -> config.copy(metricsFile = value.trim('"'))
             "trainOpponentSoftmaxTemperature" -> config.copy(trainOpponentSoftmaxTemperature = value.toDoubleOrThrow(key))
             "workerHeap" -> config.copy(workerHeap = value.trim('"'))
+            // AlphaZero / MCTS settings
+            "mctsSimulations" -> config.copy(mctsSimulations = value.toIntOrThrow(key))
+            "cPuct" -> config.copy(cPuct = value.toDoubleOrThrow(key))
+            "mctsTemperature" -> config.copy(mctsTemperature = value.toDoubleOrThrow(key))
+            "mctsRecentGamesBuffer" -> config.copy(mctsRecentGamesBuffer = value.toIntOrThrow(key))
+            "mctsDirichletAlpha" -> config.copy(mctsDirichletAlpha = value.toDoubleOrThrow(key))
+            "mctsDirichletEpsilon" -> config.copy(mctsDirichletEpsilon = value.toDoubleOrThrow(key))
+            "mctsL2Regularization" -> config.copy(mctsL2Regularization = value.toDoubleOrThrow(key))
             else -> config
         }
     }
@@ -410,6 +426,44 @@ object ConfigParser {
         )
     }
     
+    private fun createAlphaZeroFastProfile(): ChessRLConfig {
+        return ChessRLConfig(
+            nnBackend = com.chessrl.integration.backend.BackendType.ALPHAZERO,
+            hiddenLayers = listOf(256, 128),
+            learningRate = 0.001,
+            batchSize = 64,
+            mctsSimulations = 50,
+            cPuct = 1.5,
+            mctsTemperature = 1.0,
+            mctsRecentGamesBuffer = 200,
+            gamesPerCycle = 10,
+            maxCycles = 20,
+            maxStepsPerGame = 120,
+            checkpointInterval = 5,
+            checkpointDirectory = "checkpoints/alphazero-fast",
+            evaluationGames = 20
+        )
+    }
+
+    private fun createAlphaZeroTrainProfile(): ChessRLConfig {
+        return ChessRLConfig(
+            nnBackend = com.chessrl.integration.backend.BackendType.ALPHAZERO,
+            hiddenLayers = listOf(512, 256),
+            learningRate = 0.0002,
+            batchSize = 128,
+            mctsSimulations = 200,
+            cPuct = 1.5,
+            mctsTemperature = 1.0,
+            mctsRecentGamesBuffer = 1000,
+            gamesPerCycle = 20,
+            maxCycles = 200,
+            maxStepsPerGame = 150,
+            checkpointInterval = 10,
+            checkpointDirectory = "checkpoints/alphazero-train",
+            evaluationGames = 50
+        )
+    }
+
     /**
      * Print usage information for command-line arguments.
      */

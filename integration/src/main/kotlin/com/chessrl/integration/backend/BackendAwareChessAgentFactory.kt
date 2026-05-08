@@ -52,6 +52,7 @@ object BackendAwareChessAgentFactory {
             BackendType.DL4J -> createDl4jDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma)
             BackendType.KOTLINDL -> createKotlinDlDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma)
             BackendType.RL4J -> createRL4JDQNAgent(backendConfig, agentConfig, enableDoubleDQN, replayType, gamma, trainingConfig)
+            BackendType.ALPHAZERO -> throw UnsupportedOperationException("AlphaZero agents are created by AlphaZeroLearningBackend, not this factory")
         }
     }
     
@@ -87,6 +88,7 @@ object BackendAwareChessAgentFactory {
             BackendType.DL4J -> createSeededDl4jDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma)
             BackendType.KOTLINDL -> createSeededKotlinDlDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma)
             BackendType.RL4J -> createSeededRL4JDQNAgent(backendConfig, agentConfig, seedManager, enableDoubleDQN, replayType, gamma, trainingConfig)
+            BackendType.ALPHAZERO -> throw UnsupportedOperationException("AlphaZero agents are created by AlphaZeroLearningBackend, not this factory")
         }
     }
     

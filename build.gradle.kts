@@ -10,7 +10,7 @@ repositories {
     maven("https://jitpack.io")
 }
 
-kotlin { jvmToolchain(21) }
+kotlin { jvmToolchain(23) }
 
 sourceSets {
     val main by getting

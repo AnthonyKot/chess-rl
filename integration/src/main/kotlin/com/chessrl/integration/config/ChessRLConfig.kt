@@ -189,7 +189,23 @@ data class ChessRLConfig(
     // Logging controls (lightweight)
     val logInterval: Int = 1,
     val summaryOnly: Boolean = false,
-    val metricsFile: String? = null
+    val metricsFile: String? = null,
+
+    // AlphaZero / MCTS configuration (only used when nnBackend = ALPHAZERO)
+    /** Number of MCTS simulations per move. More = stronger but slower. */
+    val mctsSimulations: Int = 100,
+    /** UCB-PUCT exploration constant — balances policy prior vs observed Q. */
+    val cPuct: Double = 1.5,
+    /** Action selection temperature: 1.0 = sampling (training), 0.0 = greedy (eval). */
+    val mctsTemperature: Double = 1.0,
+    /** Rolling buffer size (in AlphaZero samples) for training data. */
+    val mctsRecentGamesBuffer: Int = 500,
+    /** Dirichlet noise alpha for root exploration during self-play. */
+    val mctsDirichletAlpha: Double = 0.3,
+    /** Dirichlet noise weight at the root. */
+    val mctsDirichletEpsilon: Double = 0.25,
+    /** L2 weight decay for the dual-head network (unused directly; reserved for future use). */
+    val mctsL2Regularization: Double = 1e-4
 ) {
     
     /**

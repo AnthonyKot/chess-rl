@@ -359,9 +359,12 @@ object AdapterValidator {
             BackendType.RL4J -> {
                 throw UnsupportedOperationException("RL4J adapter not yet implemented")
             }
+            BackendType.ALPHAZERO -> {
+                throw UnsupportedOperationException("AlphaZero uses DualHeadNetwork directly, not a NetworkAdapter")
+            }
         }
     }
-    
+
     /**
      * Compute the difference between two output arrays
      */

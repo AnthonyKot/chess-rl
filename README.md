@@ -26,6 +26,20 @@ chess-rl-bot/
 ## Quick Start
 
 ### Training an Agent
+
+#### AlphaZero (recommended — MCTS + dual-head network)
+```bash
+# Fast iteration — verify the pipeline, ~10 min on a laptop
+./gradlew :integration:run --args="--train --profile alphazero-fast"
+
+# Production AlphaZero run — 200 MCTS simulations per move
+./gradlew :integration:run --args="--train --profile alphazero-train"
+
+# Custom AlphaZero with explicit flags
+./gradlew :integration:run --args="--train --nn alphazero --mcts-simulations 100 --mcts-c-puct 1.5 --cycles 50"
+```
+
+#### DQN (legacy — kept for comparison)
 ```bash
 # Development training (fast iteration)
 ./gradlew :integration:run --args="--train --profile fast-debug"
@@ -75,7 +89,8 @@ The system uses a centralized configuration (`ChessRLConfig`) that exposes only 
 | Group | Parameters (defaults) |
 |-------|-----------------------|
 | **Neural network** | `hiddenLayers = [512,256,128]`, `learningRate = 5e-4`, `optimizer = adam`, `batchSize = 64`, `nnBackend = rl4j` |
-| **RL training** | `explorationRate = 0.05` (floor), `initialExplorationRate = 0.35`, `explorationDecaySteps = auto`, `targetUpdateFrequency = 200`, `doubleDqn = true`, `gamma = 0.99`, `maxExperienceBuffer = 50_000`, `replayType = UNIFORM` |
+| **RL training (DQN)** | `explorationRate = 0.05` (floor), `initialExplorationRate = 0.35`, `explorationDecaySteps = auto`, `targetUpdateFrequency = 200`, `doubleDqn = true`, `gamma = 0.99`, `maxExperienceBuffer = 50_000`, `replayType = UNIFORM` |
+| **AlphaZero / MCTS** | `mctsSimulations = 100`, `cPuct = 1.5`, `mctsTemperature = 1.0`, `mctsRecentGamesBuffer = 500`, `mctsDirichletAlpha = 0.3`, `mctsDirichletEpsilon = 0.25` |
 | **Self-play** | `gamesPerCycle = 30`, `maxConcurrentGames = 4`, `maxStepsPerGame = 120`, `maxCycles = 100` |
 | **Rewards** | `winReward = 1.0`, `lossReward = -1.0`, `drawReward = 0.0`, `stepLimitPenalty = -0.5` |
 | **System** | `engine = chesslib`, `seed = null`, `checkpointInterval = 5`, `checkpointDirectory = checkpoints`, `evaluationGames = 20`, `workerHeap = null` |
@@ -86,9 +101,11 @@ Optional controls (minimax opponents, adjudication thresholds, logging cadence, 
 
 Profiles live in `integration/profiles.yaml`:
 
-- **fast-debug** – quick iteration (10 games × 10 cycles, smaller network, epsilon floor 0.08 with 0.35 start and short decay).
-- **long-train** – production self-play (50 games × 200 cycles, hidden layers 768-512-256, epsilon floor 0.03 with 0.40 start + 7.5k decay, minimax-softmax sparring at depth 1, prioritized checkpoints).
-- **long-train-mixed** – same as long-train but mixes heuristic/minimax opponents and uses prioritized replay.
+- **alphazero-fast** – MCTS quick start (10 games × 20 cycles, 50 simulations/move, network 256-128). Good for verifying the pipeline and watching early learning.
+- **alphazero-train** – MCTS production run (20 games × 200 cycles, 200 simulations/move, network 512-256, buffer 1000 games). Expected to exceed 800 ELO vs the DQN baseline.
+- **fast-debug** – DQN quick iteration (10 games × 10 cycles, smaller network, epsilon floor 0.08).
+- **long-train** – DQN production self-play (50 games × 200 cycles, 768-512-256 network, minimax-softmax sparring).
+- **long-train-mixed** – DQN with mixed heuristic/minimax opponents and prioritized replay.
 - **eval-only** – deterministic evaluation (seeded, exploration 0, 500 evaluation games).
 
 For RL4J these profile values are mapped directly into the RL4J builders. A typical
@@ -119,14 +136,84 @@ land in the profile’s `checkpointDirectory` as `model_cycle_XXX.json` every
 
 **Common flags**
 
-- `--profile <name>` – select a profile (`fast-debug`, `long-train`, `long-train-mixed`, `eval-only`)
-- `--nn <backend>` – choose neural-network backend (`dl4j`, `manual`)
+- `--profile <name>` – select a profile (`alphazero-fast`, `alphazero-train`, `fast-debug`, `long-train`, `long-train-mixed`, `eval-only`)
+- `--nn <backend>` – choose neural-network backend (`alphazero`, `rl4j`, `dl4j`, `manual`)
+
+**AlphaZero-specific flags** (only used when `--nn alphazero`)
+
+- `--mcts-simulations N` – MCTS simulations per move (default 100; 50 = fast, 400 = very strong)
+- `--mcts-c-puct F` – UCB exploration constant (default 1.5; lower = trust search more, higher = trust policy prior more)
+- `--mcts-temperature F` – action sampling temperature (1.0 = diverse training moves, 0.0 = greedy eval)
+- `--mcts-recent-games N` – rolling training buffer size in samples (default 500)
 - `--engine <backend>` – choose chess engine (`chesslib`, `builtin`)
 - `--cycles`, `--games-per-cycle`, `--max-concurrent-games`, `--max-steps` – override self-play settings
 - `--learning-rate`, `--batch-size`, `--exploration-rate`, `--initial-exploration-rate`, `--exploration-decay-steps`, `--target-update-frequency` – tweak training hyperparameters
 - `--checkpoint-dir`, `--worker-heap`, `--seed`, `--model`, `--modelA`, `--modelB`
 - `--train-opponent`, `--train-opponent-depth`, `--train-opponent-temperature` – configure sparring opponents (`self|minimax|minimax-softmax|heuristic|random`)
 - `--train-opponent`, `--train-opponent-depth`, `--train-opponent-temperature` – configure sparring opponents (`self|minimax|minimax-softmax|heuristic|random`)
+
+## AlphaZero Backend
+
+### Why AlphaZero instead of DQN
+
+The DQN implementation plateaus around 100–300 ELO for three structural reasons:
+
+1. **No lookahead.** DQN picks moves reactively from a single forward pass. Even a 400-ELO human looks 2–3 moves ahead.
+2. **Ill-posed action space.** The network predicts Q-values over all 4096 from-to combinations, but only ~28 are legal. Capacity is wasted on illegal moves.
+3. **Sparse credit assignment.** A win or loss signal at move 60 must propagate back through 60 Bellman updates to reach move 1.
+
+AlphaZero solves all three with Monte Carlo Tree Search (MCTS):
+
+- **Search replaces lookahead** — 100–200 simulations per move explores the tree, so tactical blunders get caught before a move is played.
+- **Policy head outputs only over legal moves** — no 4096-action problem.
+- **Value head at every position** — the network directly estimates who's winning, so every board state produces a training signal, not just terminal positions.
+
+Expected ELO gain over DQN with the same training budget: **+500–800 ELO**.
+
+### Architecture
+
+```
+Input (839-dim board)
+        │
+  Shared trunk [839 → 512 → 256, ReLU]
+        │
+   ┌────┴────┐
+Policy head  Value head
+[256→4096]  [256→1, tanh]
+(prior P)   (position V ∈ [-1,1])
+```
+
+### How MCTS uses the network
+
+Each simulation walks the tree selecting moves by UCB-PUCT:
+
+```
+score(action) = Q(s,a) + c_puct × P(s,a) × √N_parent / (1 + N(s,a))
+```
+
+- **Q** is the average outcome seen so far via this action (exploitation)
+- **P** is the policy head's prior probability (initial guidance)
+- The fraction shrinks as a move is visited more, redirecting exploration elsewhere
+
+After all simulations, the visit distribution `π` becomes the policy training target. The value target `z` is the actual game outcome (+1 win, −1 loss, 0 draw) from each position's player's perspective.
+
+**Loss** = cross_entropy(π, policy_head) + MSE(z, value_head)
+
+### Dirichlet noise
+
+At the root node during self-play, Dirichlet noise is mixed into the policy priors:
+
+```
+prior = (1 − ε) × P(s,a) + ε × Dirichlet(α)
+```
+
+This ensures the agent tries moves the policy initially rates low, preventing premature convergence. `mctsDirichletAlpha=0.3` and `mctsDirichletEpsilon=0.25` (AlphaZero defaults for chess).
+
+### Temperature schedule
+
+- **First 30 moves:** temperature = 1.0 → actions sampled proportional to visit counts (diverse training data)
+- **After move 30:** temperature = 0.0 → always play the most-visited move (decisive play)
+- **Evaluation:** always temperature = 0.0
 
 ## Performance Characteristics
 

@@ -52,6 +52,10 @@ object BackendFactory {
                 logger.info("Creating RL4J backend")
                 RL4JLearningBackend()
             }
+            BackendType.ALPHAZERO -> {
+                logger.info("Creating AlphaZero MCTS backend")
+                AlphaZeroLearningBackend()
+            }
         }
     }
     

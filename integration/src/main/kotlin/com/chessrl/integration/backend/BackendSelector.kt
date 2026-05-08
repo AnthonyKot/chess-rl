@@ -107,6 +107,10 @@ object BackendSelector {
                     logger.warn("RL4J backend not available")
                 }
             }
+            BackendType.ALPHAZERO -> {
+                // AlphaZero uses only built-in Kotlin code — always available
+                logger.debug("AlphaZero backend validation: OK")
+            }
         }
         
         return ValidationResult(

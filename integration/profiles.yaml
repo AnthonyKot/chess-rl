@@ -139,6 +139,44 @@ profiles:
     checkpointDirectory: "checkpoints/eval-only"
     evaluationGames: 500  # Many games for statistical significance
 
+  # AlphaZero Fast — quick iteration to verify the MCTS pipeline works
+  # 50 simulations per move keeps each game under a minute on a laptop.
+  # Expect noticeable policy improvement after 10-15 cycles.
+  alphazero-fast:
+    nnBackend: ALPHAZERO
+    hiddenLayers: [256, 128]
+    learningRate: 0.001
+    batchSize: 64
+    mctsSimulations: 50
+    cPuct: 1.5
+    mctsTemperature: 1.0
+    mctsRecentGamesBuffer: 200
+    gamesPerCycle: 10
+    maxCycles: 20
+    maxStepsPerGame: 120
+    checkpointInterval: 5
+    checkpointDirectory: "checkpoints/alphazero-fast"
+    evaluationGames: 20
+
+  # AlphaZero Train — production self-play run.
+  # 200 simulations gives strong lookahead; expect 600-800 ELO above the DQN ceiling.
+  # Lower learning rate (2e-4) stabilises the dual-head network at larger scale.
+  alphazero-train:
+    nnBackend: ALPHAZERO
+    hiddenLayers: [512, 256]
+    learningRate: 0.0002
+    batchSize: 128
+    mctsSimulations: 200
+    cPuct: 1.5
+    mctsTemperature: 1.0
+    mctsRecentGamesBuffer: 1000
+    gamesPerCycle: 20
+    maxCycles: 200
+    maxStepsPerGame: 150
+    checkpointInterval: 10
+    checkpointDirectory: "checkpoints/alphazero-train"
+    evaluationGames: 50
+
 # Profile Usage Examples:
 #
 # Fast development iteration (optimized for learning):

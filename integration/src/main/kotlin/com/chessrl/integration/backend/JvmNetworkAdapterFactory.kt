@@ -33,6 +33,10 @@ object JvmNetworkAdapterFactory {
                     logger.warn("RL4J backend not yet implemented, falling back to manual")
                     ManualNetworkAdapter(config)
                 }
+                BackendType.ALPHAZERO -> {
+                    logger.warn("AlphaZero uses DualHeadNetwork directly, not a NetworkAdapter")
+                    ManualNetworkAdapter(config)
+                }
             }
         } catch (e: Exception) {
             if (backendType != BackendType.MANUAL) {

@@ -372,6 +372,10 @@ class SyntheticTaskComparison(
                     ManualNetworkAdapter(config)
                 }
             }
+            BackendType.ALPHAZERO -> {
+                println("Warning: AlphaZero uses DualHeadNetwork directly, falling back to manual for comparison")
+                ManualNetworkAdapter(config)
+            }
         }
     }
     
